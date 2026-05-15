@@ -1,0 +1,10 @@
+resources:
+  jobs:
+    destroy_job:
+      name: "QSR Destroy [${bundle.target}]"
+      tasks:
+        - task_key: destroy
+          notebook_task:
+            notebook_path: ./src/setup/destroy_notebook.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
