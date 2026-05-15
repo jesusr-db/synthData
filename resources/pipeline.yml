@@ -1,0 +1,16 @@
+resources:
+  pipelines:
+    mvm_pipeline:
+      name: "QSR MVM Pipeline [${bundle.target}]"
+      channel: PREVIEW
+      continuous: true
+      catalog: ${var.catalog_name}
+      target: silver
+      libraries:
+        - notebook:
+            path: ./src/pipeline/mvm_pipeline.py
+      configuration:
+        pipeline.catalog: ${var.catalog_name}
+      clusters:
+        - label: default
+          num_workers: 2

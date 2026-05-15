@@ -1,0 +1,16 @@
+resources:
+  jobs:
+    generator_job:
+      name: "QSR Generator Live [${bundle.target}]"
+      schedule:
+        quartz_cron_expression: "0 * * * * ?"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: generate
+          notebook_task:
+            notebook_path: ./src/generator/main.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
+              num_units: ${var.num_units}
+              mode: live
