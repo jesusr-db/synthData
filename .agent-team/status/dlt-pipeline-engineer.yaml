@@ -1,0 +1,27 @@
+status: DONE
+branch: feat/dlt-pipeline
+artifacts:
+  - src/pipeline/__init__.py
+  - src/pipeline/mvm_pipeline.py
+silver_tables:
+  - guest_order
+  - order_item
+  - payment
+  - status_event
+  - delivery_order
+  - on_hand_balance
+  - waste_log
+  - receiving_order
+  - replenishment_order
+  - guest_profile
+  - digital_account
+  - loyalty_transaction
+  - reward_redemption
+  - shift
+  - time_punch
+gold_tables:
+  - unit_performance_daily
+  - sos_compliance_summary
+  - loyalty_cohort_metrics
+  - inventory_waste_summary
+concerns: []

@@ -1,0 +1,8 @@
+status: DONE
+branch: feat/integration
+artifacts:
+  - src/generator/runner.py
+  - src/generator/main.py
+  - tests/test_runner.py
+pytest_results: all_pass
+concerns: []
