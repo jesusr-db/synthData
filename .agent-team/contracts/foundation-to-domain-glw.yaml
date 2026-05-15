@@ -1,0 +1,187 @@
+name: foundation-to-domain-glw
+producer: foundation-engineer
+consumer: domain-glw-engineer
+consumed_in_phase: 2
+
+artifacts:
+  - path: src/generator/causal_context.py
+    access: read-only
+    description: CausalContext dataclass + build_context()
+  - path: src/generator/entropy.py
+    access: read-only
+    description: gaussian_noise and noise helpers
+  - path: src/generator/entity_registry.py
+    access: read-only
+    description: EntityRegistry — FK lookup for unit_id, guest_id, employee_id
+  - path: src/generator/reference/us_locations.py
+    access: read-only
+    description: generate_units() — 250 US QSR locations
+  - path: tests/conftest.py
+    access: read-only
+    description: Shared pytest fixtures
+
+outputs:
+  - path: src/generator/domains/guest.py
+    description: generate_guest_events() — guest_profile, digital_account
+  - path: src/generator/domains/loyalty.py
+    description: generate_loyalty_events() — loyalty_transaction, reward_redemption
+  - path: src/generator/domains/workforce.py
+    description: generate_workforce_events() — shift, time_punch
+  - path: tests/test_guest_loyalty_workforce.py
+    description: pytest suite for all three GLW domains
+
+schemas:
+  guest_profile:
+    event_type: guest_profile
+    fields:
+      - name: guest_id
+        type: str
+        required: true
+        description: UUID primary key, registered in entity_registry
+      - name: first_name
+        type: str
+        required: true
+        description: Faker generated
+      - name: last_name
+        type: str
+        required: true
+      - name: email
+        type: str
+        required: true
+      - name: phone
+        type: str
+        required: false
+      - name: signup_ts
+        type: datetime
+        required: true
+      - name: home_unit_id
+        type: str
+        required: false
+        description: FK → entity_registry units
+
+  digital_account:
+    event_type: digital_account
+    fields:
+      - name: account_id
+        type: str
+        required: true
+      - name: guest_id
+        type: str
+        required: true
+        description: FK → guest_profile.guest_id
+      - name: platform
+        type: str
+        required: true
+        description: app, web, 3pd_linked
+      - name: created_ts
+        type: datetime
+        required: true
+
+  loyalty_transaction:
+    event_type: loyalty_transaction
+    fields:
+      - name: loyalty_txn_id
+        type: str
+        required: true
+      - name: guest_id
+        type: str
+        required: true
+        description: FK → guest_profile.guest_id
+      - name: guest_order_id
+        type: str
+        required: false
+        description: FK → guest_order when earned on purchase
+      - name: points_earned
+        type: int
+        required: true
+      - name: tier
+        type: str
+        required: true
+        description: bronze, silver, gold, platinum
+      - name: txn_ts
+        type: datetime
+        required: true
+
+  reward_redemption:
+    event_type: reward_redemption
+    fields:
+      - name: redemption_id
+        type: str
+        required: true
+      - name: guest_id
+        type: str
+        required: true
+      - name: guest_order_id
+        type: str
+        required: true
+        description: FK → guest_order at redemption
+      - name: points_redeemed
+        type: int
+        required: true
+      - name: reward_type
+        type: str
+        required: true
+      - name: redemption_ts
+        type: datetime
+        required: true
+
+  shift:
+    event_type: shift
+    fields:
+      - name: shift_id
+        type: str
+        required: true
+      - name: employee_id
+        type: str
+        required: true
+        description: FK → entity_registry employees
+      - name: unit_id
+        type: str
+        required: true
+      - name: role
+        type: str
+        required: true
+        description: cashier, cook, driver, shift_lead, manager
+      - name: scheduled_start_ts
+        type: datetime
+        required: true
+      - name: scheduled_end_ts
+        type: datetime
+        required: true
+
+  time_punch:
+    event_type: time_punch
+    fields:
+      - name: punch_id
+        type: str
+        required: true
+      - name: shift_id
+        type: str
+        required: true
+        description: FK → shift.shift_id
+      - name: employee_id
+        type: str
+        required: true
+      - name: punch_type
+        type: str
+        required: true
+        description: clock_in, clock_out, break_start, break_end
+      - name: punch_ts
+        type: datetime
+        required: true
+
+validation:
+  - type: artifact_exists
+    description: src/generator/domains/guest.py exists
+  - type: artifact_exists
+    description: src/generator/domains/loyalty.py exists
+  - type: artifact_exists
+    description: src/generator/domains/workforce.py exists
+  - type: artifact_exists
+    description: tests/test_guest_loyalty_workforce.py exists and pytest passes
+  - type: schema_match
+    description: All generators return list[dict] each with event_type key
+  - type: schema_match
+    description: loyalty redemption rate ~8% of loyalty_transaction count
+  - type: schema_match
+    description: Staffing scales 1 per 25 orders with min 3 max 15 per unit per shift

@@ -1,0 +1,114 @@
+version: 1
+project: qsr-synthetic-data-generator
+last_updated: null
+
+phases:
+  - id: 1
+    name: foundation
+    status: pending
+    agents:
+      - foundation-engineer
+    steps:
+      read_phase_config: pending
+      resolve_contracts: pending
+      dispatch_agents: pending
+      await_agents: pending
+      merge_worktrees: pending
+      qa_gate: pending
+      update_progress: pending
+      introspection: pending
+    outputs: []
+    errors: []
+
+  - id: 2
+    name: domain-generators
+    status: pending
+    depends_on: [1]
+    agents:
+      - domain-orders-engineer
+      - domain-inventory-engineer
+      - domain-glw-engineer
+    steps:
+      read_phase_config: pending
+      resolve_contracts: pending
+      dispatch_agents: pending
+      await_agents: pending
+      merge_worktrees: pending
+      qa_gate: pending
+      update_progress: pending
+      introspection: pending
+    outputs: []
+    errors: []
+
+  - id: 3
+    name: integration-and-dlt
+    status: pending
+    depends_on: [2]
+    agents:
+      - integration-engineer
+      - dlt-pipeline-engineer
+    steps:
+      read_phase_config: pending
+      resolve_contracts: pending
+      dispatch_agents: pending
+      await_agents: pending
+      merge_worktrees: pending
+      qa_gate: pending
+      update_progress: pending
+      introspection: pending
+    outputs: []
+    errors: []
+
+  - id: 4
+    name: setup-and-resources
+    status: pending
+    depends_on: [3]
+    agents:
+      - setup-engineer
+    steps:
+      read_phase_config: pending
+      resolve_contracts: pending
+      dispatch_agents: pending
+      await_agents: pending
+      merge_worktrees: pending
+      qa_gate: pending
+      update_progress: pending
+      introspection: pending
+    outputs: []
+    errors: []
+
+  - id: 5
+    name: qa
+    status: pending
+    depends_on: [4]
+    agents:
+      - qa-engineer
+    steps:
+      read_phase_config: pending
+      resolve_contracts: pending
+      dispatch_agents: pending
+      await_agents: pending
+      merge_worktrees: pending
+      qa_gate: pending
+      update_progress: pending
+      introspection: pending
+    outputs: []
+    errors: []
+
+  - id: 6
+    name: deploy
+    status: pending
+    depends_on: [5]
+    agents:
+      - deploy-engineer
+    steps:
+      read_phase_config: pending
+      resolve_contracts: pending
+      dispatch_agents: pending
+      await_agents: pending
+      merge_worktrees: pending
+      qa_gate: pending
+      update_progress: pending
+      introspection: pending
+    outputs: []
+    errors: []

@@ -1,0 +1,49 @@
+id: 6
+name: deploy
+description: >
+  Final deployment phase. Deploy engineer discovers all agent-produced artifacts,
+  validates the DAB bundle, runs databricks bundle validate, and deploys to the
+  target workspace. Confirms pipeline is running and generator job is scheduled.
+
+depends_on: [5]
+
+agents:
+  - name: deploy-engineer
+    type: curated
+    parallel_group: 1
+
+inputs:
+  - path: src/
+    access: read-only
+    description: Complete source tree
+  - path: resources/
+    access: read-only
+    description: All DAB resource YAML files
+  - path: databricks.yml
+    access: read-only
+    description: DAB bundle manifest
+  - path: requirements.txt
+    access: read-only
+    description: Python dependencies
+  - path: conf/params.yml
+    access: read-only
+    description: Generator configuration parameters
+  - path: .agent-team/contracts/
+    access: read-only
+    description: All inter-agent contracts for artifact discovery
+
+outputs:
+  - path: .agent-team/status/deploy-phase-6.yaml
+    description: Deployment results and workspace resource URLs
+
+qa_scope:
+  phase: 6
+  checks:
+    - type: artifact_exists
+      description: databricks bundle validate passes with no errors
+    - type: artifact_exists
+      description: DLT pipeline resource deployed and in RUNNING state
+    - type: artifact_exists
+      description: generator_job deployed and scheduled (every-minute cron)
+    - type: artifact_exists
+      description: setup_job exists and has been triggered successfully

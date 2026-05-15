@@ -1,0 +1,53 @@
+id: 5
+name: qa
+description: >
+  Full quality validation across the entire codebase. Runs all pytest tests,
+  validates contract compliance, checks DAB bundle config, verifies FK
+  consistency in generator output, and confirms destroy_notebook teardown logic.
+
+depends_on: [4]
+
+agents:
+  - name: qa-engineer
+    type: curated
+    parallel_group: 1
+
+inputs:
+  - path: src/
+    access: read-only
+    description: Complete source tree
+  - path: tests/
+    access: read-only
+    description: Full test suite including smoke tests
+  - path: resources/
+    access: read-only
+    description: All DAB resource YAML files
+  - path: databricks.yml
+    access: read-only
+    description: DAB bundle manifest
+  - path: requirements.txt
+    access: read-only
+    description: Dependency list
+  - path: .agent-team/contracts/
+    access: read-only
+    description: All inter-agent contracts for compliance checking
+
+outputs:
+  - path: .agent-team/status/qa-phase-5.yaml
+    description: QA validation results
+
+qa_scope:
+  phase: 5
+  checks:
+    - type: artifact_exists
+      description: pytest tests/ -v — 0 failures
+    - type: schema_match
+      description: All @dlt.table functions in mvm_pipeline.py match event_type schemas
+    - type: schema_match
+      description: DOMAIN_TABLE_MAP in main.py covers all emitted event_types
+    - type: artifact_exists
+      description: databricks bundle validate passes (if Databricks CLI available)
+    - type: schema_match
+      description: destroy_notebook.py drops all objects created by setup_notebook.py
+    - type: schema_match
+      description: No hardcoded catalog names in resource YAML files

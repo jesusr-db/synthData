@@ -1,0 +1,59 @@
+id: 3
+name: integration-and-dlt
+description: >
+  Two parallel agents: integration-engineer wires all domain generators into
+  a unified runner + Databricks main.py notebook; dlt-pipeline-engineer writes
+  the complete Spark Declarative Pipeline (DLT) for all Silver + Gold tables.
+  Tasks 11–14 of the plan.
+
+depends_on: [2]
+
+agents:
+  - name: integration-engineer
+    type: dynamic
+    parallel_group: 1
+  - name: dlt-pipeline-engineer
+    type: dynamic
+    parallel_group: 1
+
+inputs:
+  - path: src/generator/
+    access: read-only
+    description: All generator modules including domain generators from Phase 2
+  - path: docs/superpowers/plans/2026-05-15-qsr-synthetic-data-generator.md
+    access: read-only
+    description: Tasks 11–14 specifications
+
+outputs:
+  - path: src/generator/runner.py
+    producer: integration-engineer
+    description: GeneratorConfig, build_tick_rows, backfill_ticks, live_tick
+  - path: src/generator/main.py
+    producer: integration-engineer
+    description: Databricks notebook entrypoint with DOMAIN_TABLE_MAP routing
+  - path: tests/test_runner.py
+    producer: integration-engineer
+  - path: src/pipeline/__init__.py
+    producer: dlt-pipeline-engineer
+  - path: src/pipeline/mvm_pipeline.py
+    producer: dlt-pipeline-engineer
+    description: >
+      Complete DLT pipeline: 15 Silver tables + 4 Gold tables
+      (unit_performance_daily, sos_compliance_summary, loyalty_cohort_metrics,
+      inventory_waste_summary)
+
+qa_scope:
+  phase: 3
+  checks:
+    - type: artifact_exists
+      description: src/generator/runner.py exists with build_tick_rows function
+    - type: artifact_exists
+      description: src/generator/main.py exists with DOMAIN_TABLE_MAP
+    - type: artifact_exists
+      description: src/pipeline/mvm_pipeline.py exists with all @dlt.table decorators
+    - type: schema_match
+      description: All 15 Silver table functions present in mvm_pipeline.py
+    - type: schema_match
+      description: All 4 Gold table functions present in mvm_pipeline.py
+    - type: artifact_exists
+      description: pytest tests/test_runner.py passes

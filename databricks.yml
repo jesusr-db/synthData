@@ -1,0 +1,20 @@
+bundle:
+  name: qsr-synth-data-generator
+
+variables:
+  catalog_name:
+    default: qsr_synth
+  num_units:
+    default: "250"
+  backfill_months:
+    default: "12"
+
+targets:
+  dev:
+    mode: development
+    default: true
+  prod:
+    mode: production
+
+include:
+  - resources/*.yml

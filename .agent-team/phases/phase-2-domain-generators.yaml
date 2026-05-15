@@ -1,0 +1,61 @@
+id: 2
+name: domain-generators
+description: >
+  Three domain event generators running in parallel. Each agent implements one
+  domain after the foundation modules are available. Tasks 8–10 of the plan.
+  All agents are independent of each other — they only share the read-only
+  foundation from Phase 1.
+
+depends_on: [1]
+
+agents:
+  - name: domain-orders-engineer
+    type: dynamic
+    parallel_group: 1
+  - name: domain-inventory-engineer
+    type: dynamic
+    parallel_group: 1
+  - name: domain-glw-engineer
+    type: dynamic
+    parallel_group: 1
+
+inputs:
+  - path: src/generator/
+    access: read-only
+    description: All foundation modules from Phase 1
+  - path: tests/conftest.py
+    access: read-only
+    description: Shared pytest fixtures
+  - path: docs/superpowers/plans/2026-05-15-qsr-synthetic-data-generator.md
+    access: read-only
+    description: Tasks 8–10 specifications
+
+outputs:
+  - path: src/generator/domains/orders.py
+    producer: domain-orders-engineer
+  - path: tests/test_orders.py
+    producer: domain-orders-engineer
+  - path: src/generator/domains/inventory.py
+    producer: domain-inventory-engineer
+  - path: tests/test_inventory.py
+    producer: domain-inventory-engineer
+  - path: src/generator/domains/guest.py
+    producer: domain-glw-engineer
+  - path: src/generator/domains/loyalty.py
+    producer: domain-glw-engineer
+  - path: src/generator/domains/workforce.py
+    producer: domain-glw-engineer
+  - path: tests/test_guest_loyalty_workforce.py
+    producer: domain-glw-engineer
+
+qa_scope:
+  phase: 2
+  checks:
+    - type: artifact_exists
+      description: All domain generator modules exist in src/generator/domains/
+    - type: artifact_exists
+      description: All test files exist and pytest passes
+    - type: schema_match
+      description: generate_orders_for_tick returns list[dict] with event_type key
+    - type: schema_match
+      description: FK consistency — order_item.guest_order_id subset of guest_order.guest_order_id

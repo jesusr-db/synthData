@@ -1,0 +1,47 @@
+id: 1
+name: foundation
+description: >
+  Project scaffold + core Python SCM modules. Creates the complete foundation
+  that all domain generator agents depend on. Tasks 1–7 of the plan.
+
+agents:
+  - name: foundation-engineer
+    type: dynamic
+    parallel_group: 1
+
+inputs:
+  - path: docs/superpowers/plans/2026-05-15-qsr-synthetic-data-generator.md
+    access: read-only
+    description: Full implementation plan with pseudocode for Tasks 1–7
+
+outputs:
+  - path: conf/params.yml
+    description: Generator configuration parameters
+  - path: databricks.yml
+    description: DAB bundle skeleton
+  - path: src/generator/causal_context.py
+    description: CausalContext SCM dataclass + build_context()
+  - path: src/generator/demand_model.py
+    description: orders_for_tick, channel_for_order, tender_for_order
+  - path: src/generator/entropy.py
+    description: gaussian_noise, prep_time_seconds, should_breach_sos, etc.
+  - path: src/generator/reference/us_locations.py
+    description: generate_units() — 250 US QSR restaurant locations
+  - path: src/generator/reference/menu_catalog.py
+    description: get_menu_items(), get_recipe_ingredients(), get_item_price()
+  - path: src/generator/reference/seeder.py
+    description: build_*_data() functions + seed_all(spark, catalog)
+  - path: src/generator/entity_registry.py
+    description: EntityRegistry — in-memory FK lookup for all reference IDs
+  - path: tests/
+    description: pytest test files for all foundation modules
+
+qa_scope:
+  phase: 1
+  checks:
+    - type: artifact_exists
+      description: All src/generator/ foundation modules exist
+    - type: artifact_exists
+      description: All tests/test_*.py files exist and pass
+    - type: schema_match
+      description: CausalContext has all required fields including Phase 2 stubs

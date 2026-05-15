@@ -1,0 +1,46 @@
+name: phase4-to-qa
+producer: setup-engineer
+consumer: qa-engineer
+consumed_in_phase: 5
+
+artifacts:
+  - path: src/
+    access: read-only
+    description: Complete source tree
+  - path: tests/
+    access: read-only
+    description: Full test suite including smoke tests
+  - path: resources/
+    access: read-only
+    description: All DAB resource YAML files
+  - path: databricks.yml
+    access: read-only
+    description: DAB bundle manifest
+  - path: requirements.txt
+    access: read-only
+    description: Dependency list
+  - path: conf/params.yml
+    access: read-only
+    description: Generator configuration
+
+outputs:
+  - path: .agent-team/status/qa-phase-5.yaml
+    description: QA validation results — pass/fail per check with details
+
+validation:
+  - type: artifact_exists
+    description: pytest tests/ -v — 0 failures across all test files
+  - type: schema_match
+    description: All @dlt.table functions in mvm_pipeline.py match event_type schemas from domain contracts
+  - type: schema_match
+    description: DOMAIN_TABLE_MAP in main.py covers all 14 emitted event_types
+  - type: artifact_exists
+    description: databricks bundle validate passes (if Databricks CLI available)
+  - type: schema_match
+    description: destroy_notebook.py drops all objects created by setup_notebook.py
+  - type: schema_match
+    description: No hardcoded catalog names in resource YAML files
+  - type: schema_match
+    description: FK consistency — order_item.guest_order_id ⊆ guest_order.guest_order_id
+  - type: schema_match
+    description: loyalty redemption rate between 5% and 12% of loyalty transactions

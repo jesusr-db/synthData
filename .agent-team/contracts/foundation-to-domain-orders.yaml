@@ -1,0 +1,148 @@
+name: foundation-to-domain-orders
+producer: foundation-engineer
+consumer: domain-orders-engineer
+consumed_in_phase: 2
+
+artifacts:
+  - path: src/generator/causal_context.py
+    access: read-only
+    description: CausalContext dataclass + build_context()
+  - path: src/generator/demand_model.py
+    access: read-only
+    description: orders_for_tick, channel_for_order, tender_for_order
+  - path: src/generator/entropy.py
+    access: read-only
+    description: gaussian_noise, prep_time_seconds, should_breach_sos helpers
+  - path: src/generator/entity_registry.py
+    access: read-only
+    description: EntityRegistry — FK lookup for unit_id, item_id, guest_id
+  - path: src/generator/reference/menu_catalog.py
+    access: read-only
+    description: get_menu_items(), get_recipe_ingredients(), get_item_price()
+  - path: src/generator/reference/us_locations.py
+    access: read-only
+    description: generate_units() — 250 US QSR locations
+  - path: tests/conftest.py
+    access: read-only
+    description: Shared pytest fixtures
+
+outputs:
+  - path: src/generator/domains/orders.py
+    description: generate_orders_for_tick() producing list[dict] events
+  - path: tests/test_orders.py
+    description: pytest suite for orders domain
+
+schemas:
+  guest_order:
+    event_type: guest_order
+    fields:
+      - name: guest_order_id
+        type: str
+        required: true
+        description: UUID primary key
+      - name: unit_id
+        type: str
+        required: true
+        description: FK → entity_registry units
+      - name: order_ts
+        type: datetime
+        required: true
+      - name: channel
+        type: str
+        required: true
+        description: one of 3pd, own_delivery, carryout, catering
+      - name: subtotal_usd
+        type: float
+        required: true
+      - name: tax_usd
+        type: float
+        required: true
+        description: 8.5% of subtotal
+      - name: total_usd
+        type: float
+        required: true
+
+  order_item:
+    event_type: order_item
+    fields:
+      - name: order_item_id
+        type: str
+        required: true
+      - name: guest_order_id
+        type: str
+        required: true
+        description: FK → guest_order.guest_order_id
+      - name: item_id
+        type: str
+        required: true
+        description: FK → menu_catalog items
+      - name: quantity
+        type: int
+        required: true
+      - name: unit_price_usd
+        type: float
+        required: true
+
+  payment:
+    event_type: payment
+    fields:
+      - name: payment_id
+        type: str
+        required: true
+      - name: guest_order_id
+        type: str
+        required: true
+        description: FK → guest_order.guest_order_id
+      - name: tender_type
+        type: str
+        required: true
+        description: credit, debit, cash, digital_wallet, loyalty_points
+      - name: amount_usd
+        type: float
+        required: true
+
+  status_event:
+    event_type: status_event
+    fields:
+      - name: status_event_id
+        type: str
+        required: true
+      - name: guest_order_id
+        type: str
+        required: true
+      - name: status
+        type: str
+        required: true
+        description: placed, in_prep, quality_check, ready, picked_up, delivered
+      - name: event_ts
+        type: datetime
+        required: true
+
+  delivery_order:
+    event_type: delivery_order
+    fields:
+      - name: delivery_id
+        type: str
+        required: true
+      - name: guest_order_id
+        type: str
+        required: true
+      - name: driver_id
+        type: str
+        required: false
+      - name: promised_ts
+        type: datetime
+        required: true
+      - name: actual_ts
+        type: datetime
+        required: false
+
+validation:
+  - type: artifact_exists
+    description: src/generator/domains/orders.py exists
+  - type: artifact_exists
+    description: tests/test_orders.py exists and pytest passes
+  - type: schema_match
+    description: generate_orders_for_tick returns list[dict] each with event_type key
+  - type: schema_match
+    description: FK consistency — order_item.guest_order_id subset of guest_order.guest_order_id

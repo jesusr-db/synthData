@@ -1,0 +1,107 @@
+name: phase3-to-setup
+producer: integration-engineer,dlt-pipeline-engineer
+consumer: setup-engineer
+consumed_in_phase: 4
+
+artifacts:
+  - path: src/generator/runner.py
+    access: read-only
+    description: GeneratorConfig and runner API
+  - path: src/generator/main.py
+    access: read-only
+    description: Notebook entrypoint — staging table names and schemas
+  - path: src/pipeline/mvm_pipeline.py
+    access: read-only
+    description: DLT pipeline — schema names and table references
+  - path: src/generator/reference/seeder.py
+    access: read-only
+    description: seed_all(spark, catalog) — reference data seeding
+  - path: src/generator/reference/us_locations.py
+    access: read-only
+    description: generate_units() — for seeding units table
+  - path: src/generator/reference/menu_catalog.py
+    access: read-only
+    description: For seeding menu and recipe tables
+  - path: src/generator/entity_registry.py
+    access: read-only
+    description: EntityRegistry for FK awareness in setup
+  - path: databricks.yml
+    access: read-modify
+    description: DAB bundle skeleton to finalize
+
+outputs:
+  - path: src/setup/setup_notebook.py
+    description: >
+      Catalog/schema init (qsr_synth.staging, ref, silver, gold) +
+      5 Bronze streaming tables + reference data seeding via seeder.py
+  - path: src/setup/destroy_notebook.py
+    description: Full teardown of all non-DAB-managed resources in reverse order
+  - path: resources/pipeline.yml
+    description: DLT pipeline DAB resource (continuous, PREVIEW channel)
+  - path: resources/setup_job.yml
+    description: One-time setup job DAB resource
+  - path: resources/generator_job.yml
+    description: Live generator job (every-minute cron schedule)
+  - path: resources/destroy_job.yml
+    description: Teardown job DAB resource
+  - path: requirements.txt
+    description: Python dependencies with pinned versions
+  - path: tests/test_smoke.py
+    description: End-to-end smoke tests validating all event types + FK integrity
+
+schemas:
+  setup_notebook_creates:
+    description: Objects created by setup_notebook.py (must all be torn down by destroy_notebook.py)
+    objects:
+      - catalog: qsr_synth
+      - schema: qsr_synth.staging
+      - schema: qsr_synth.ref
+      - schema: qsr_synth.silver
+      - schema: qsr_synth.gold
+      - table: qsr_synth.staging.stg_orders
+      - table: qsr_synth.staging.stg_inventory
+      - table: qsr_synth.staging.stg_guests
+      - table: qsr_synth.staging.stg_loyalty
+      - table: qsr_synth.staging.stg_workforce
+      - table: qsr_synth.ref.units
+      - table: qsr_synth.ref.menu_items
+      - table: qsr_synth.ref.recipe_ingredients
+      - table: qsr_synth.ref.employees
+
+  resource_variables:
+    description: All resource YAMLs must use variable references not hardcoded values
+    fields:
+      - name: catalog_name
+        type: var
+        required: true
+        pattern: "${var.catalog_name}"
+      - name: schema_name
+        type: var
+        required: false
+        pattern: "${var.schema_name}"
+
+validation:
+  - type: artifact_exists
+    description: src/setup/setup_notebook.py exists
+  - type: artifact_exists
+    description: src/setup/destroy_notebook.py exists
+  - type: artifact_exists
+    description: resources/pipeline.yml exists
+  - type: artifact_exists
+    description: resources/setup_job.yml exists
+  - type: artifact_exists
+    description: resources/generator_job.yml exists
+  - type: artifact_exists
+    description: resources/destroy_job.yml exists
+  - type: artifact_exists
+    description: requirements.txt exists with faker, numpy, python-dateutil, pyyaml, pytest
+  - type: artifact_exists
+    description: tests/test_smoke.py exists and pytest tests/ -v shows 0 failures
+  - type: schema_match
+    description: setup_notebook.py creates all 5 staging tables as streaming Delta tables
+  - type: schema_match
+    description: destroy_notebook.py drops all objects created by setup_notebook.py
+  - type: schema_match
+    description: No hardcoded catalog names in resource YAML files — only ${var.catalog_name}
+  - type: schema_match
+    description: generator_job.yml has every-minute cron schedule (0 * * * * *)

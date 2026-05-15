@@ -1,0 +1,46 @@
+name: qa-to-deploy
+producer: qa-engineer
+consumer: deploy-engineer
+consumed_in_phase: 6
+
+artifacts:
+  - path: .agent-team/status/qa-phase-5.yaml
+    access: read-only
+    description: QA validation results — must show all checks passed
+  - path: src/
+    access: read-only
+    description: Complete validated source tree
+  - path: resources/
+    access: read-only
+    description: All DAB resource YAML files
+  - path: databricks.yml
+    access: read-only
+    description: DAB bundle manifest
+  - path: requirements.txt
+    access: read-only
+    description: Python dependencies
+  - path: conf/params.yml
+    access: read-only
+    description: Generator configuration
+
+outputs:
+  - path: .agent-team/status/deploy-phase-6.yaml
+    description: Deployment results with workspace resource URLs and job IDs
+
+deploy_checklist:
+  - Run databricks bundle validate
+  - Run databricks bundle deploy
+  - Trigger setup_job and confirm successful completion
+  - Confirm DLT pipeline is in RUNNING or INITIALIZING state
+  - Confirm generator_job is scheduled and enabled
+  - Record all resource URLs in deploy-phase-6.yaml
+
+validation:
+  - type: artifact_exists
+    description: .agent-team/status/qa-phase-5.yaml exists with all_checks_passed=true
+  - type: artifact_exists
+    description: databricks bundle validate exits 0
+  - type: artifact_exists
+    description: databricks bundle deploy exits 0
+  - type: artifact_exists
+    description: .agent-team/status/deploy-phase-6.yaml written with pipeline_url and job_ids

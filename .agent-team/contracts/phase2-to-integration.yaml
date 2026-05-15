@@ -1,0 +1,113 @@
+name: phase2-to-integration
+producer: domain-orders-engineer,domain-inventory-engineer,domain-glw-engineer
+consumer: integration-engineer
+consumed_in_phase: 3
+
+artifacts:
+  - path: src/generator/domains/orders.py
+    access: read-only
+    description: generate_orders_for_tick() — returns list[dict] events
+  - path: src/generator/domains/inventory.py
+    access: read-only
+    description: generate_inventory_events(), generate_daily_receiving()
+  - path: src/generator/domains/guest.py
+    access: read-only
+    description: generate_guest_events()
+  - path: src/generator/domains/loyalty.py
+    access: read-only
+    description: generate_loyalty_events()
+  - path: src/generator/domains/workforce.py
+    access: read-only
+    description: generate_workforce_events()
+  - path: src/generator/causal_context.py
+    access: read-only
+    description: CausalContext dataclass
+  - path: src/generator/entity_registry.py
+    access: read-only
+    description: EntityRegistry
+  - path: src/generator/demand_model.py
+    access: read-only
+    description: orders_for_tick
+  - path: src/generator/entropy.py
+    access: read-only
+    description: gaussian_noise helpers
+  - path: src/generator/reference/us_locations.py
+    access: read-only
+    description: generate_units()
+  - path: src/generator/reference/menu_catalog.py
+    access: read-only
+    description: Menu data
+  - path: conf/params.yml
+    access: read-only
+    description: Generator configuration
+
+outputs:
+  - path: src/generator/runner.py
+    description: GeneratorConfig dataclass, build_tick_rows(), backfill_ticks(), live_tick()
+  - path: src/generator/main.py
+    description: Databricks notebook entrypoint with DOMAIN_TABLE_MAP
+  - path: tests/test_runner.py
+    description: pytest suite for runner module
+
+schemas:
+  runner_output:
+    description: Dict of staging table name → list[dict] rows per tick
+    fields:
+      - name: stg_orders
+        type: list[dict]
+        required: true
+        description: guest_order + order_item + payment + status_event + delivery_order events
+      - name: stg_inventory
+        type: list[dict]
+        required: true
+        description: on_hand_balance + waste_log + replenishment_order + receiving_order events
+      - name: stg_guests
+        type: list[dict]
+        required: true
+        description: guest_profile + digital_account events
+      - name: stg_loyalty
+        type: list[dict]
+        required: true
+        description: loyalty_transaction + reward_redemption events
+      - name: stg_workforce
+        type: list[dict]
+        required: true
+        description: shift + time_punch events
+
+  generator_config:
+    description: GeneratorConfig dataclass fields
+    fields:
+      - name: catalog
+        type: str
+        required: true
+      - name: schema
+        type: str
+        required: true
+        description: defaults to staging
+      - name: num_units
+        type: int
+        required: true
+        description: defaults to 250
+      - name: start_ts
+        type: datetime
+        required: true
+      - name: end_ts
+        type: datetime
+        required: false
+        description: None for live mode
+      - name: tick_seconds
+        type: int
+        required: true
+        description: defaults to 60
+
+validation:
+  - type: artifact_exists
+    description: src/generator/runner.py exists with build_tick_rows function
+  - type: artifact_exists
+    description: src/generator/main.py exists with DOMAIN_TABLE_MAP dict
+  - type: artifact_exists
+    description: tests/test_runner.py exists and pytest passes
+  - type: schema_match
+    description: DOMAIN_TABLE_MAP routes all 14 event_types to one of 5 staging tables
+  - type: schema_match
+    description: backfill_ticks yields GeneratorConfig-driven ticks in chronological order

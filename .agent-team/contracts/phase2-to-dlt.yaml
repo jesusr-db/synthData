@@ -1,0 +1,162 @@
+name: phase2-to-dlt
+producer: domain-orders-engineer,domain-inventory-engineer,domain-glw-engineer
+consumer: dlt-pipeline-engineer
+consumed_in_phase: 3
+
+description: >
+  DLT pipeline engineer reads domain generator schemas to write correctly-typed
+  Silver table definitions. No runtime dependency on domain code — schema
+  reference only to ensure column names and types match Bronze staging output.
+
+artifacts:
+  - path: src/generator/domains/orders.py
+    access: read-only
+    description: Event schema reference — guest_order, order_item, payment, status_event, delivery_order
+  - path: src/generator/domains/inventory.py
+    access: read-only
+    description: Event schema reference — on_hand_balance, waste_log, replenishment_order, receiving_order
+  - path: src/generator/domains/guest.py
+    access: read-only
+    description: Event schema reference — guest_profile, digital_account
+  - path: src/generator/domains/loyalty.py
+    access: read-only
+    description: Event schema reference — loyalty_transaction, reward_redemption
+  - path: src/generator/domains/workforce.py
+    access: read-only
+    description: Event schema reference — shift, time_punch
+  - path: conf/params.yml
+    access: read-only
+    description: Catalog and schema configuration
+
+outputs:
+  - path: src/pipeline/__init__.py
+    description: Empty init for pipeline package
+  - path: src/pipeline/mvm_pipeline.py
+    description: Complete DLT pipeline — 15 Silver + 4 Gold tables
+
+schemas:
+  silver_tables:
+    description: All 15 Silver @dlt.table functions required
+    tables:
+      - guest_order
+      - order_item
+      - payment
+      - status_event
+      - delivery_order
+      - on_hand_balance
+      - waste_log
+      - receiving_order
+      - replenishment_order
+      - guest_profile
+      - digital_account
+      - loyalty_transaction
+      - reward_redemption
+      - shift
+      - time_punch
+
+  gold_tables:
+    description: All 4 Gold @dlt.table functions required
+    tables:
+      - unit_performance_daily
+      - sos_compliance_summary
+      - loyalty_cohort_metrics
+      - inventory_waste_summary
+
+  gold_unit_performance_daily:
+    description: Aggregated unit metrics per day
+    fields:
+      - name: unit_id
+        type: str
+        required: true
+      - name: business_date
+        type: date
+        required: true
+      - name: order_count
+        type: int
+        required: true
+      - name: gross_sales_usd
+        type: decimal
+        required: true
+      - name: avg_ticket_usd
+        type: decimal
+        required: true
+      - name: delivery_order_count
+        type: int
+        required: true
+      - name: carryout_order_count
+        type: int
+        required: true
+
+  gold_sos_compliance_summary:
+    description: Speed-of-service compliance per unit per day
+    fields:
+      - name: unit_id
+        type: str
+        required: true
+      - name: business_date
+        type: date
+        required: true
+      - name: total_orders
+        type: int
+        required: true
+      - name: sos_breach_count
+        type: int
+        required: true
+      - name: sos_compliance_pct
+        type: decimal
+        required: true
+      - name: avg_prep_seconds
+        type: decimal
+        required: true
+
+  gold_loyalty_cohort_metrics:
+    description: Loyalty engagement by tier per month
+    fields:
+      - name: tier
+        type: str
+        required: true
+      - name: month
+        type: date
+        required: true
+      - name: active_members
+        type: int
+        required: true
+      - name: points_earned
+        type: bigint
+        required: true
+      - name: redemption_rate
+        type: decimal
+        required: true
+
+  gold_inventory_waste_summary:
+    description: Daily waste metrics per unit and item
+    fields:
+      - name: unit_id
+        type: str
+        required: true
+      - name: item_id
+        type: str
+        required: true
+      - name: business_date
+        type: date
+        required: true
+      - name: total_waste_qty
+        type: decimal
+        required: true
+      - name: waste_cost_usd
+        type: decimal
+        required: false
+
+validation:
+  - type: artifact_exists
+    description: src/pipeline/mvm_pipeline.py exists
+  - type: schema_match
+    description: All 15 Silver @dlt.table decorated functions present
+  - type: schema_match
+    description: All 4 Gold @dlt.table decorated functions present
+  - type: schema_match
+    description: Silver tables use readStream.table() for Bronze ingestion
+  - type: schema_match
+    description: Gold tables use dlt.read() to join Silver tables
+  - type: schema_match
+    description: All @dlt.expect_or_drop quality constraints defined on Silver tables
