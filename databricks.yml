@@ -9,12 +9,19 @@ variables:
   backfill_months:
     default: "12"
 
+workspace:
+  host: https://e2-demo-field-eng.cloud.databricks.com
+
 targets:
   dev:
     mode: development
     default: true
+    workspace:
+      profile: aws
   prod:
     mode: production
+    workspace:
+      profile: aws
 
 include:
   - resources/*.yml

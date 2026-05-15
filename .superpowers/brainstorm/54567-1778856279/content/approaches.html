@@ -1,0 +1,82 @@
+<h2>Three Architecture Approaches</h2>
+<p class="subtitle">Pick the one that fits best — or tell me what to mix</p>
+
+<div class="options">
+
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Single Landing Zone + Streaming Fan-out</h3>
+      <p>A generator job writes all synthetic events to one <code>landing.synthetic_events</code> Delta table. A single Structured Streaming job reads it, parses each event by type, and routes to the correct MVM target tables via <code>foreachBatch</code>.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul>
+          <li>One job to monitor and debug</li>
+          <li>Simple deployment (2 components)</li>
+          <li>Easy to replay / reprocess events</li>
+        </ul></div>
+        <div class="cons"><h4>Cons</h4><ul>
+          <li>Fan-out routing logic grows complex with 153 tables</li>
+          <li>Single bottleneck for all domains</li>
+          <li>No native DLT data quality enforcement</li>
+        </ul></div>
+      </div>
+      <div style="margin-top:12px; background:#1e1e2e; border-radius:8px; padding:12px; font-family:monospace; font-size:12px; color:#cdd6f4;">
+        <span style="color:#89b4fa">Generator Job</span> → <span style="color:#a6e3a1">landing.synthetic_events</span> → <span style="color:#f9e2af">Streaming Job (foreachBatch)</span> → <span style="color:#cba6f7">MVM Tables (all domains)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Domain-Partitioned Sources + Delta Live Tables ⭐ Recommended</h3>
+      <p>The generator writes to domain-specific staging Delta tables (<code>order_events</code>, <code>inventory_events</code>, etc.). A <strong>Spark Declarative Pipeline (DLT)</strong> defines each MVM table as a <code>@dlt.table</code> with <code>readStream</code>, expectations, and FK enrichment. Deployed via Databricks Asset Bundle.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul>
+          <li>DLT handles checkpointing, retries, and lineage</li>
+          <li>Built-in data quality expectations per table</li>
+          <li>Scales per-domain independently</li>
+          <li>Full DAB deployment (bundle.yml declares pipeline + jobs)</li>
+          <li>Clean separation: generate → stage → transform → serve</li>
+        </ul></div>
+        <div class="cons"><h4>Cons</h4><ul>
+          <li>More moving parts (staging tables + DLT pipeline)</li>
+          <li>DLT adds pipeline compute cost</li>
+        </ul></div>
+      </div>
+      <div style="margin-top:12px; background:#1e1e2e; border-radius:8px; padding:12px; font-family:monospace; font-size:12px; color:#cdd6f4;">
+        <span style="color:#89b4fa">Generator Job</span> → <span style="color:#a6e3a1">Staging Tables (per domain)</span> → <span style="color:#f9e2af">DLT Pipeline (readStream per table)</span> → <span style="color:#cba6f7">MVM Silver Tables</span> → <span style="color:#f38ba8">Gold Metrics Views</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Pure DLT with Custom Rate Source</h3>
+      <p>The entire system lives inside one DLT pipeline. A custom Python function generates events inline using a <code>@dlt.view</code> with a rate-based trigger. No external generator job — DLT manages the full lifecycle from event creation to serving.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul>
+          <li>Minimal infrastructure — one pipeline does everything</li>
+          <li>Unified lineage from generation to gold layer</li>
+          <li>No separate generator job to schedule</li>
+        </ul></div>
+        <div class="cons"><h4>Cons</h4><ul>
+          <li>Hard to backfill history (DLT rate source doesn't support time travel)</li>
+          <li>Harder to inject external API data (weather, events) into DLT source</li>
+          <li>Less control over event timing and realistic entropy</li>
+          <li>Can't easily replay or reseed data</li>
+        </ul></div>
+      </div>
+      <div style="margin-top:12px; background:#1e1e2e; border-radius:8px; padding:12px; font-family:monospace; font-size:12px; color:#cdd6f4;">
+        <span style="color:#89b4fa">DLT Pipeline</span> → <span style="color:#a6e3a1">@dlt.view (inline generator)</span> → <span style="color:#cba6f7">MVM Tables</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="section" style="margin-top:24px; padding:16px; background:#313244; border-radius:8px; border-left:4px solid #89b4fa;">
+  <span class="label">My recommendation</span>
+  <p style="margin-top:8px"><strong>Option B</strong> — Domain-partitioned staging + DLT pipeline. The configurable backfill window, weather API injection, and 153-table MVM schema all need a generator job that runs independently from the streaming layer. DLT gives you quality enforcement and lineage for free. DAB deploys the whole thing in one command.</p>
+</div>

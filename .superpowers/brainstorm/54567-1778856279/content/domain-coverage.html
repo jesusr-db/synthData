@@ -1,0 +1,124 @@
+<h2>Section 2 — Domain Coverage</h2>
+<p class="subtitle">Which of the 153 MVM tables get streaming vs. reference seeding vs. roadmap</p>
+
+<style>
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 16px; }
+  th { text-align: left; padding: 8px 12px; background: #313244; color: #9399b2; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid #45475a; }
+  td { padding: 8px 12px; border-bottom: 1px solid #313244; vertical-align: top; color: #cdd6f4; }
+  tr:hover td { background: #1e1e2e; }
+  .badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+  .b-stream { background: #1e3a5f; color: #89b4fa; }
+  .b-ref { background: #1a3a2a; color: #a6e3a1; }
+  .b-computed { background: #2d1b4e; color: #cba6f7; }
+  .b-road { background: #3a1a1a; color: #f38ba8; }
+  .domain-name { font-weight: 700; color: #cdd6f4; }
+  .table-list { color: #9399b2; font-size: 11px; margin-top: 2px; }
+</style>
+
+<table>
+  <thead>
+    <tr>
+      <th>Domain</th>
+      <th>Strategy</th>
+      <th>Key Tables</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><span class="domain-name">Order</span></td>
+      <td><span class="badge b-stream">Streaming</span></td>
+      <td><span class="table-list">guest_order, order_item, order_modifier, payment, status_event, delivery_order, channel</span></td>
+      <td>Core heartbeat. Every 60s burst generates realistic order volume per location. Status events model the prep → ready → fulfilled lifecycle.</td>
+    </tr>
+    <tr>
+      <td><span class="domain-name">Inventory</span></td>
+      <td><span class="badge b-stream">Streaming</span></td>
+      <td><span class="table-list">on_hand_balance, waste_log, receiving_order, replenishment_order, stock_transfer, adjustment</span></td>
+      <td>on_hand_balance decrements with each order_item. Daily receiving orders restock PAR levels. Waste events ~3% of prep volume.</td>
+    </tr>
+    <tr>
+      <td><span class="domain-name">Guest</span></td>
+      <td><span class="badge b-stream">Streaming</span></td>
+      <td><span class="table-list">guest_profile, digital_account, guest_preference</span></td>
+      <td>~40% of orders tied to a returning guest profile. New profiles created on ~15% of orders. Realistic repeat rate.</td>
+    </tr>
+    <tr>
+      <td><span class="domain-name">Loyalty</span></td>
+      <td><span class="badge b-stream">Streaming</span></td>
+      <td><span class="table-list">member, loyalty_transaction, point_balance, reward_redemption</span></td>
+      <td>~30% of guest-linked orders earn points. ~8% of members redeem a reward per visit. Tier progression over time.</td>
+    </tr>
+    <tr>
+      <td><span class="domain-name">Workforce</span></td>
+      <td><span class="badge b-stream">Streaming</span></td>
+      <td><span class="table-list">shift, labor_assignment, time_punch</span></td>
+      <td>Shift schedules generated per location per day. Staffing levels scale with projected order volume. Occasional no-show events.</td>
+    </tr>
+    <tr>
+      <td><span class="domain-name">Restaurant</span></td>
+      <td><span class="badge b-ref">Reference</span></td>
+      <td><span class="table-list">unit, location_profile, format_config, operating_hours, area_management, capacity_config, pos_terminal</span></td>
+      <td>Seeded once. 100–500 units across US metros. District/region hierarchy (area_management). QSR format: carryout + delivery focus.</td>
+    </tr>
+    <tr>
+      <td><span class="domain-name">Menu</span></td>
+      <td><span class="badge b-ref">Reference</span> <span class="badge b-stream" style="margin-left:4px">+ slow updates</span></td>
+      <td><span class="table-list">menu_item, menu, recipe, item_price, nutrition_profile, allergen_declaration</span></td>
+      <td>Seeded with Domino's-style catalog (~80 items: pizzas, wings, sides, drinks, desserts). LTO items added monthly. Price updates quarterly.</td>
+    </tr>
+    <tr>
+      <td><span class="domain-name">Finance</span></td>
+      <td><span class="badge b-ref">Reference</span></td>
+      <td><span class="table-list">cost_center, profit_center, gl_account, financial_period</span></td>
+      <td>GL structure seeded once. FK targets for order and inventory transactions. Financial periods auto-generated for the full date range.</td>
+    </tr>
+    <tr>
+      <td><span class="domain-name">Franchise</span></td>
+      <td><span class="badge b-ref">Reference</span></td>
+      <td><span class="table-list">franchisee, territory, unit_ownership</span></td>
+      <td>~80% franchised units, ~20% corporate-owned. Realistic franchisee-to-unit ratios (avg 5–12 units per franchisee).</td>
+    </tr>
+    <tr>
+      <td><span class="domain-name">Procurement</span></td>
+      <td><span class="badge b-ref">Reference</span> <span class="badge b-stream" style="margin-left:4px">+ periodic</span></td>
+      <td><span class="table-list">supplier, purchase_order, goods_receipt</span></td>
+      <td>Suppliers seeded once. Weekly purchase orders generated per location to match PAR replenishment. Receiving records match inventory receiving_order.</td>
+    </tr>
+    <tr>
+      <td><span class="domain-name">Food Safety</span></td>
+      <td><span class="badge b-ref">Reference</span></td>
+      <td><span class="table-list">haccp_plan, critical_control_point, temperature_log</span></td>
+      <td>HACCP plans seeded per menu category. Temperature logs generated periodically (4× per day per location). Occasional flagged events for realism.</td>
+    </tr>
+    <tr>
+      <td><span class="domain-name">unit_performance</span></td>
+      <td><span class="badge b-computed">Computed</span></td>
+      <td><span class="table-list">unit_performance (AUV, COGS%, labor%, SSS)</span></td>
+      <td>Derived by DLT Gold layer from order + inventory + workforce streams. No direct generation — computed from actuals.</td>
+    </tr>
+    <tr>
+      <td><span class="domain-name">Marketing</span></td>
+      <td><span class="badge b-road">Roadmap</span></td>
+      <td><span class="table-list">campaign, promotion, loyalty_program_config</span></td>
+      <td>Complex campaign logic deferred to Phase 2. Promotions referenced as FK stubs only for now.</td>
+    </tr>
+    <tr>
+      <td><span class="domain-name">Real Estate</span></td>
+      <td><span class="badge b-road">Roadmap</span></td>
+      <td><span class="table-list">site, lease, property_profile</span></td>
+      <td>Lease and property data not needed for core demo/analytics/ML use cases. Deferred.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="section" style="margin-top:20px; padding:14px; background:#313244; border-radius:8px; border-left:4px solid #89b4fa;">
+  <span class="label">Summary</span>
+  <p style="margin-top:6px; font-size:13px;">
+    <strong>5 domains fully streaming</strong> (Order, Inventory, Guest, Loyalty, Workforce) — these create the live "heartbeat."<br>
+    <strong>6 domains reference/periodic</strong> (Restaurant, Menu, Finance, Franchise, Procurement, Food Safety) — seeded at deploy, updated slowly.<br>
+    <strong>1 computed</strong> (unit_performance) — DLT Gold derives it from actuals.<br>
+    <strong>2 deferred</strong> (Marketing, Real Estate) — Phase 2 roadmap.
+  </p>
+  <p style="margin-top:8px; font-size:13px;">Does this coverage look right? Anything you want to promote from Roadmap → active, or demote from Streaming → Reference?</p>
+</div>

@@ -5,7 +5,7 @@ resources:
       tasks:
         - task_key: setup
           notebook_task:
-            notebook_path: ./src/setup/setup_notebook.py
+            notebook_path: ../src/setup/setup_notebook.py
             base_parameters:
               catalog_name: ${var.catalog_name}
               num_units: ${var.num_units}

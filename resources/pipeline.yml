@@ -8,7 +8,7 @@ resources:
       target: silver
       libraries:
         - notebook:
-            path: ./src/pipeline/mvm_pipeline.py
+            path: ../src/pipeline/mvm_pipeline.py
       configuration:
         pipeline.catalog: ${var.catalog_name}
       clusters:

@@ -1,0 +1,144 @@
+<h2>Section 3 — Demand Model & Seasonality</h2>
+<p class="subtitle">How order volume, item mix, and channel shift across time — all applied per location</p>
+
+<style>
+  .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
+  .chart-box { background: #1e1e2e; border: 1px solid #45475a; border-radius: 10px; padding: 16px; }
+  .chart-box h4 { margin: 0 0 12px 0; font-size: 13px; color: #cdd6f4; }
+  .chart-box .sub { font-size: 11px; color: #6c7086; margin-bottom: 12px; margin-top: -8px; }
+
+  .bar-chart { display: flex; align-items: flex-end; gap: 3px; height: 80px; }
+  .bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .bar { width: 100%; border-radius: 3px 3px 0 0; }
+  .bar-label { font-size: 9px; color: #6c7086; white-space: nowrap; }
+  .bar-val { font-size: 9px; color: #9399b2; }
+
+  .event-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+  .event-row { display: flex; align-items: center; gap: 10px; }
+  .event-name { font-size: 11px; color: #cdd6f4; flex: 1; }
+  .event-bar-outer { flex: 2; background: #313244; border-radius: 4px; height: 14px; overflow: hidden; }
+  .event-bar-inner { height: 100%; border-radius: 4px; }
+  .event-mult { font-size: 11px; color: #9399b2; white-space: nowrap; }
+
+  .mix-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .mix-label { font-size: 11px; color: #cdd6f4; width: 120px; }
+  .mix-bar-outer { flex: 1; background: #313244; border-radius: 4px; height: 16px; overflow: hidden; }
+  .mix-bar-inner { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 6px; font-size: 10px; font-weight: 700; color: #1e1e2e; }
+
+  .full-width { grid-column: 1 / -1; }
+  .noise-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .noise-chip { background: #313244; border: 1px solid #45475a; border-radius: 6px; padding: 5px 10px; font-size: 11px; color: #9399b2; }
+  .noise-chip strong { color: #cdd6f4; }
+  .removed { text-decoration: line-through; opacity: 0.35; }
+</style>
+
+<div class="charts-grid">
+
+  <!-- Time of Day -->
+  <div class="chart-box">
+    <h4>Time-of-Day Demand Curve (hourly multiplier)</h4>
+    <p class="sub">Domino's skews heavy dinner + late night vs. traditional QSR</p>
+    <div class="bar-chart">
+      <div class="bar-wrap"><div class="bar" style="height:8%;background:#45475a"></div><div class="bar-label">6a</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:12%;background:#45475a"></div><div class="bar-label">7</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:15%;background:#45475a"></div><div class="bar-label">8</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:18%;background:#6c7086"></div><div class="bar-label">9</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:22%;background:#6c7086"></div><div class="bar-label">10</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:55%;background:#89b4fa"></div><div class="bar-label">11</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:80%;background:#89b4fa"></div><div class="bar-label">12p</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:70%;background:#89b4fa"></div><div class="bar-label">1</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:42%;background:#6c7086"></div><div class="bar-label">2</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:30%;background:#6c7086"></div><div class="bar-label">3</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:35%;background:#6c7086"></div><div class="bar-label">4</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:65%;background:#cba6f7"></div><div class="bar-label">5</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:90%;background:#cba6f7"></div><div class="bar-label">6</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:100%;background:#cba6f7"></div><div class="bar-label">7</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:95%;background:#cba6f7"></div><div class="bar-label">8</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:75%;background:#cba6f7"></div><div class="bar-label">9</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:60%;background:#f9e2af"></div><div class="bar-label">10</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:45%;background:#f9e2af"></div><div class="bar-label">11</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:28%;background:#45475a"></div><div class="bar-label">12a</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:12%;background:#45475a"></div><div class="bar-label">1a</div></div>
+    </div>
+    <div style="display:flex;gap:12px;margin-top:10px;flex-wrap:wrap;">
+      <span style="font-size:10px;color:#89b4fa">■ Lunch peak</span>
+      <span style="font-size:10px;color:#cba6f7">■ Dinner peak</span>
+      <span style="font-size:10px;color:#f9e2af">■ Late night</span>
+    </div>
+  </div>
+
+  <!-- Day of Week -->
+  <div class="chart-box">
+    <h4>Day-of-Week Multiplier</h4>
+    <p class="sub">Weekends +25–60% vs. weekday baseline (Mon = 1.0×)</p>
+    <div class="bar-chart" style="height:90px;">
+      <div class="bar-wrap"><div class="bar" style="height:60%;background:#6c7086"></div><div class="bar-val">1.0×</div><div class="bar-label">Mon</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:65%;background:#6c7086"></div><div class="bar-val">1.1×</div><div class="bar-label">Tue</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:70%;background:#89b4fa"></div><div class="bar-val">1.2×</div><div class="bar-label">Wed</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:75%;background:#89b4fa"></div><div class="bar-val">1.25×</div><div class="bar-label">Thu</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:88%;background:#cba6f7"></div><div class="bar-val">1.45×</div><div class="bar-label">Fri</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:100%;background:#cba6f7"></div><div class="bar-val">1.6×</div><div class="bar-label">Sat</div></div>
+      <div class="bar-wrap"><div class="bar" style="height:82%;background:#f9e2af"></div><div class="bar-val">1.35×</div><div class="bar-label">Sun</div></div>
+    </div>
+  </div>
+
+  <!-- Special Events -->
+  <div class="chart-box">
+    <h4>Special Event Multipliers (national + seasonal)</h4>
+    <p class="sub">Applied to all locations; NFL events additionally boost nearby units</p>
+    <div class="event-list">
+      <div class="event-row"><div class="event-name">Super Bowl Sunday</div><div class="event-bar-outer"><div class="event-bar-inner" style="width:100%;background:#f38ba8"></div></div><div class="event-mult">3.2×</div></div>
+      <div class="event-row"><div class="event-name">New Year's Eve</div><div class="event-bar-outer"><div class="event-bar-inner" style="width:72%;background:#f38ba8"></div></div><div class="event-mult">2.3×</div></div>
+      <div class="event-row"><div class="event-name">NFL Sunday (game day)</div><div class="event-bar-outer"><div class="event-bar-inner" style="width:62%;background:#fab387"></div></div><div class="event-mult">2.0×</div></div>
+      <div class="event-row"><div class="event-name">Halloween</div><div class="event-bar-outer"><div class="event-bar-inner" style="width:56%;background:#fab387"></div></div><div class="event-mult">1.8×</div></div>
+      <div class="event-row"><div class="event-name">Black Friday</div><div class="event-bar-outer"><div class="event-bar-inner" style="width:50%;background:#f9e2af"></div></div><div class="event-mult">1.6×</div></div>
+      <div class="event-row"><div class="event-name">Summer Fridays (Jun–Aug)</div><div class="event-bar-outer"><div class="event-bar-inner" style="width:44%;background:#a6e3a1"></div></div><div class="event-mult">1.4×</div></div>
+      <div class="event-row"><div class="event-name">Christmas Eve</div><div class="event-bar-outer"><div class="event-bar-inner" style="width:34%;background:#6c7086"></div></div><div class="event-mult">1.1×</div></div>
+      <div class="event-row"><div class="event-name">Christmas Day</div><div class="event-bar-outer"><div class="event-bar-inner" style="width:22%;background:#45475a"></div></div><div class="event-mult">0.7×</div></div>
+      <div class="event-row"><div class="event-name">January (post-holiday slump)</div><div class="event-bar-outer"><div class="event-bar-inner" style="width:28%;background:#45475a"></div></div><div class="event-mult">0.85×</div></div>
+    </div>
+  </div>
+
+  <!-- Channel + Payment Mix -->
+  <div class="chart-box">
+    <h4>Order Channel Distribution</h4>
+    <p class="sub">Delivery + carryout only — no dine-in. Late night shifts heavily toward delivery.</p>
+    <div style="margin-top: 8px;">
+      <div class="mix-row"><div class="mix-label">3PD Delivery</div><div class="mix-bar-outer"><div class="mix-bar-inner" style="width:40%;background:#f38ba8">40%</div></div></div>
+      <div class="mix-row"><div class="mix-label">Own Delivery</div><div class="mix-bar-outer"><div class="mix-bar-inner" style="width:16%;background:#fab387">16%</div></div></div>
+      <div class="mix-row"><div class="mix-label">Carryout</div><div class="mix-bar-outer"><div class="mix-bar-inner" style="width:40%;background:#a6e3a1">40%</div></div></div>
+      <div class="mix-row"><div class="mix-label">Catering</div><div class="mix-bar-outer"><div class="mix-bar-inner" style="width:4%;background:#cba6f7">4%</div></div></div>
+      <div class="mix-row removed"><div class="mix-label">Dine-in</div><div class="mix-bar-outer"><div class="mix-bar-inner" style="width:0%;background:#45475a"></div></div><div style="font-size:10px;color:#45475a;margin-left:8px">removed</div></div>
+    </div>
+    <h4 style="margin-top:16px">Payment Tender Mix</h4>
+    <div style="margin-top:8px">
+      <div class="mix-row"><div class="mix-label">Credit/Debit Card</div><div class="mix-bar-outer"><div class="mix-bar-inner" style="width:55%;background:#89b4fa">55%</div></div></div>
+      <div class="mix-row"><div class="mix-label">Digital Wallet</div><div class="mix-bar-outer"><div class="mix-bar-inner" style="width:22%;background:#cba6f7">22%</div></div></div>
+      <div class="mix-row"><div class="mix-label">Loyalty Redemption</div><div class="mix-bar-outer"><div class="mix-bar-inner" style="width:12%;background:#a6e3a1">12%</div></div></div>
+      <div class="mix-row"><div class="mix-label">Cash</div><div class="mix-bar-outer"><div class="mix-bar-inner" style="width:11%;background:#f9e2af">11%</div></div></div>
+    </div>
+  </div>
+
+  <!-- Entropy / Noise -->
+  <div class="chart-box full-width">
+    <h4>Entropy & Realism Injectors</h4>
+    <p class="sub">Applied per-location and per-event to prevent synthetic "too-clean" patterns</p>
+    <div class="noise-list">
+      <div class="noise-chip"><strong>Order volume</strong> ±15% Gaussian noise per hour</div>
+      <div class="noise-chip"><strong>Prep time</strong> Normal(μ=12min, σ=3min) carryout; Normal(μ=31min, σ=6min) delivery</div>
+      <div class="noise-chip"><strong>SOS breach</strong> ~8% of orders; spikes to 18% during event multipliers</div>
+      <div class="noise-chip"><strong>Cancelled orders</strong> ~2.5% rate; higher on 3PD channel</div>
+      <div class="noise-chip"><strong>Waste events</strong> ~3% of prep volume, skewed toward end-of-day</div>
+      <div class="noise-chip"><strong>Item price drift</strong> Quarterly ±3–6% price adjustments per menu item</div>
+      <div class="noise-chip"><strong>Unit-level variance</strong> Each location has a ±20% persistent volume bias (high/low performers)</div>
+      <div class="noise-chip"><strong>Staff no-shows</strong> ~4% shift no-show rate; correlates with SOS breaches</div>
+      <div class="noise-chip"><strong>Loyalty tier drift</strong> Members progress through tiers based on cumulative spend over time</div>
+      <div class="noise-chip"><strong>New guest growth</strong> ~0.8% net new guest profile creation per day per location</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="section" style="margin-top:20px; padding:14px; background:#313244; border-radius:8px; border-left:4px solid #a6e3a1;">
+  <p style="font-size:13px;">Updated — dine-in removed. 3PD Delivery 40%, Own Delivery 16%, Carryout 40%, Catering 4%. Ready to move to <strong>Section 4</strong> (DAB structure, Unity Catalog layout, job topology)?</p>
+</div>

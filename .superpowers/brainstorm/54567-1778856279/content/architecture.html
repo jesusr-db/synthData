@@ -1,0 +1,120 @@
+<h2>System Architecture — Section 1</h2>
+<p class="subtitle">Five components, fully deployable via Databricks Asset Bundle</p>
+
+<style>
+  .arch-grid { display: grid; grid-template-columns: 1fr; gap: 14px; max-width: 860px; margin: 20px auto; }
+  .arch-row { display: flex; align-items: stretch; gap: 10px; }
+  .arch-box { flex: 1; background: #1e1e2e; border: 1px solid #45475a; border-radius: 10px; padding: 14px 16px; }
+  .arch-box h4 { margin: 0 0 4px 0; font-size: 13px; color: #cdd6f4; }
+  .arch-box p { margin: 0; font-size: 12px; color: #9399b2; line-height: 1.5; }
+  .arch-box .tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .tag-job { background: #1e3a5f; color: #89b4fa; }
+  .tag-dlt { background: #2d1b4e; color: #cba6f7; }
+  .tag-ref { background: #1a3a2a; color: #a6e3a1; }
+  .tag-api { background: #3a2a1a; color: #fab387; }
+  .arrow { display: flex; align-items: center; justify-content: center; font-size: 20px; color: #6c7086; min-width: 28px; flex-shrink: 0; }
+  .layer-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #6c7086; padding: 4px 0 6px 4px; }
+</style>
+
+<div class="arch-grid">
+
+  <!-- Row 1: External APIs -->
+  <div>
+    <div class="layer-label">External Signal (daily refresh)</div>
+    <div class="arch-row">
+      <div class="arch-box" style="border-color:#fab387">
+        <span class="tag tag-api">API</span>
+        <h4>Weather API (NOAA / OpenWeatherMap)</h4>
+        <p>Per metro area. Called once at bootstrap (historical), then daily for 7-day forecast. Stored in <code>ref.weather_conditions</code>.</p>
+      </div>
+      <div class="arch-box" style="border-color:#fab387">
+        <span class="tag tag-api">API</span>
+        <h4>Events API (Ticketmaster / SeatGeek)</h4>
+        <p>Sporting events, concerts, festivals per geo. Lat/lon matched to restaurant locations within 3 miles. Stored in <code>ref.local_events</code>.</p>
+      </div>
+      <div class="arch-box" style="border-color:#a6e3a1">
+        <span class="tag tag-ref">Reference</span>
+        <h4>US Holiday Calendar</h4>
+        <p>Federal + regional holidays, Super Bowl, college football schedule. Hard-coded lookup table seeded at deploy time.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Arrow -->
+  <div class="arrow" style="justify-content:flex-start; padding-left:20px">↓ demand multipliers</div>
+
+  <!-- Row 2: Generator -->
+  <div>
+    <div class="layer-label">Event Generator (Databricks Job — runs every 60s for live, batch for backfill)</div>
+    <div class="arch-row">
+      <div class="arch-box" style="border-color:#89b4fa; flex: 2">
+        <span class="tag tag-job">Spark Job</span>
+        <h4>Synthetic Event Generator</h4>
+        <p>Produces realistic events for each MVM domain. Two modes:<br>
+        <strong>Backfill mode</strong> — generates N months of history in batch, timestamps replayed into the past.<br>
+        <strong>Live mode</strong> — generates next 60 seconds of events, writes to staging with <code>NOW()</code> timestamps. Applies demand multipliers from weather, events, time-of-day curves, and day-of-week patterns.</p>
+      </div>
+      <div class="arch-box" style="border-color:#89b4fa">
+        <span class="tag tag-job">Spark Job</span>
+        <h4>Reference Seeder</h4>
+        <p>Runs once at deploy. Creates 100–500 <code>unit</code> records across US metros, seeds menu items (Domino's-style: pizzas, wings, sides, drinks), staff, channels, franchisees, GL accounts, suppliers.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Arrow -->
+  <div class="arrow" style="justify-content:flex-start; padding-left:20px">↓ raw events → staging Delta tables (append-only, partitioned by domain)</div>
+
+  <!-- Row 3: Staging -->
+  <div>
+    <div class="layer-label">Staging Layer (Bronze — one Delta table per domain group)</div>
+    <div class="arch-row">
+      <div class="arch-box" style="border-color:#a6e3a1">
+        <span class="tag tag-ref">Delta</span>
+        <h4>order_events</h4>
+        <p>guest_order, order_item, order_modifier, payment, status_event, delivery_order</p>
+      </div>
+      <div class="arch-box" style="border-color:#a6e3a1">
+        <span class="tag tag-ref">Delta</span>
+        <h4>inventory_events</h4>
+        <p>on_hand_balance, waste_log, receiving_order, stock_transfer, adjustment</p>
+      </div>
+      <div class="arch-box" style="border-color:#a6e3a1">
+        <span class="tag tag-ref">Delta</span>
+        <h4>workforce_events</h4>
+        <p>shift records, labor hour tracking, station assignments</p>
+      </div>
+      <div class="arch-box" style="border-color:#a6e3a1">
+        <span class="tag tag-ref">Delta</span>
+        <h4>guest_events</h4>
+        <p>guest profile activity, loyalty transactions, digital account events</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Arrow -->
+  <div class="arrow" style="justify-content:flex-start; padding-left:20px">↓ readStream — DLT continuous pipeline</div>
+
+  <!-- Row 4: DLT -->
+  <div>
+    <div class="layer-label">DLT Pipeline — Spark Declarative Pipeline (Silver + Gold)</div>
+    <div class="arch-row">
+      <div class="arch-box" style="border-color:#cba6f7; flex: 2">
+        <span class="tag tag-dlt">DLT Silver</span>
+        <h4>MVM Target Tables (153 tables)</h4>
+        <p>Each MVM table declared as <code>@dlt.table</code> with <code>readStream</code> source, FK enrichment, and quality expectations (e.g., <code>expect_or_drop("valid_order", "total_amount > 0")</code>). Continuously updated as staging receives new events.</p>
+      </div>
+      <div class="arch-box" style="border-color:#f38ba8">
+        <span class="tag tag-dlt">DLT Gold</span>
+        <h4>Metric Views</h4>
+        <p>Pre-built aggregations from <code>metrics/</code> SQL files in the repo: AUV, COGS%, labor%, SOS compliance, loyalty redemption rate, waste %, SSS growth.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="section" style="margin-top:16px; padding:14px; background:#313244; border-radius:8px; border-left:4px solid #a6e3a1;">
+  <span class="label">Does this architecture look right?</span>
+  <p style="margin-top:6px; font-size:13px;">Reply in the terminal to confirm or request changes before we move to Section 2 (Domain Coverage — which of the 153 tables get full streaming vs. reference-only seeding).</p>
+</div>

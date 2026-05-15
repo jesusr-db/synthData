@@ -1,0 +1,18 @@
+all_checks_passed: true
+steps:
+  artifact_discovery: pass
+  bundle_manifest_review: pass
+  bundle_validate: pass
+  deploy: pass
+fixes_applied:
+  - "Added workspace.host (https://e2-demo-field-eng.cloud.databricks.com) and profile (aws) to databricks.yml — was missing, causing auth failure"
+  - "Fixed notebook paths in resources/*.yml from ./src/ to ../src/ — paths must be relative to resources/ dir, not bundle root"
+  - "Fixed mvm_pipeline.py line 1: removed extra text after notebook magic comment — DAB requires exactly '# Databricks notebook source' with no trailing content"
+  - "Created UC catalog qsr_synth and schemas (silver, bronze) before deploy — catalog must exist before DLT pipeline resource can be created"
+workspace_resources:
+  pipeline_url: "https://e2-demo-field-eng.cloud.databricks.com/pipelines/1c4be164-77c0-43c0-895b-b632a4fcc913?o=1444828305810485"
+  setup_job_url: "https://e2-demo-field-eng.cloud.databricks.com/jobs/414456996991890?o=1444828305810485"
+  generator_job_url: "https://e2-demo-field-eng.cloud.databricks.com/jobs/693723992275246?o=1444828305810485"
+  destroy_job_url: "https://e2-demo-field-eng.cloud.databricks.com/jobs/114619735150415?o=1444828305810485"
+concerns:
+  - "qsr_synth catalog was created manually via SQL (not by the setup_job) because DLT pipeline DAB resource requires the catalog to exist at deploy time. The setup_job should remain the owner of schema/table creation, but the catalog itself must pre-exist or be created outside DAB before bundle deploy."
