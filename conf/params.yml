@@ -1,0 +1,5 @@
+catalog_name: qsr_synth
+num_units: 250
+backfill_months: 12
+live_tick_seconds: 60
+base_orders_per_unit_per_hour: 18
