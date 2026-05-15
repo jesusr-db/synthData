@@ -1,0 +1,9 @@
+status: DONE
+branch: feat/domain-glw
+artifacts:
+  - src/generator/domains/guest.py
+  - src/generator/domains/loyalty.py
+  - src/generator/domains/workforce.py
+  - tests/test_guest_loyalty_workforce.py
+pytest_results: all_pass
+concerns: []

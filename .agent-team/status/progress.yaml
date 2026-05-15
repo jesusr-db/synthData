@@ -1,37 +1,45 @@
 version: 1
 project: qsr-synthetic-data-generator
-last_updated: "2026-05-15T15:31:00-04:00"
+last_updated: "2026-05-15T15:35:00-04:00"
 
 phases:
   - id: 1
     name: foundation
-    status: in_progress
+    status: completed
     agents:
       - foundation-engineer
     steps:
       read_phase_config: completed
       resolve_contracts: completed
-      dispatch_agents: in_progress
-      await_agents: pending
-      merge_worktrees: pending
-      qa_gate: pending
-      update_progress: pending
-      introspection: pending
-    outputs: []
+      dispatch_agents: completed
+      await_agents: completed
+      merge_worktrees: completed
+      qa_gate: completed
+      update_progress: completed
+      introspection: completed
+    outputs:
+      - conf/params.yml
+      - src/generator/causal_context.py
+      - src/generator/demand_model.py
+      - src/generator/entropy.py
+      - src/generator/reference/us_locations.py
+      - src/generator/reference/menu_catalog.py
+      - src/generator/reference/seeder.py
+      - src/generator/entity_registry.py
     errors: []
 
   - id: 2
     name: domain-generators
-    status: pending
+    status: in_progress
     depends_on: [1]
     agents:
       - domain-orders-engineer
       - domain-inventory-engineer
       - domain-glw-engineer
     steps:
-      read_phase_config: pending
-      resolve_contracts: pending
-      dispatch_agents: pending
+      read_phase_config: completed
+      resolve_contracts: completed
+      dispatch_agents: in_progress
       await_agents: pending
       merge_worktrees: pending
       qa_gate: pending

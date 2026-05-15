@@ -1,0 +1,12 @@
+status: DONE_WITH_CONCERNS
+branch: feat/domain-inventory
+artifacts:
+  - src/generator/domains/inventory.py
+  - tests/test_inventory.py
+pytest_results: all_pass
+concerns:
+  - "Plan spec for test_inventory_events_for_orders used tick_seconds=60, which
+    produces 0 orders ~90% of the time due to Poisson-like rounding at
+    effective_volume=26 orders/hr over a 60s window. Changed to tick_seconds=3600
+    to guarantee at least 1 order_item row and thus at least 1 on_hand_balance row.
+    The plan's implementation logic is otherwise faithful."
