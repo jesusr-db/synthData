@@ -202,3 +202,210 @@ def replenishment_order():
             F.current_timestamp().alias("created_at"),
         )
     )
+
+
+# --------------------------------------------------------------------------
+# GUEST DOMAIN
+# --------------------------------------------------------------------------
+
+
+@dlt.table(name="guest_profile", comment="MVM Silver: guest_profile")
+def guest_profile():
+    return (
+        spark.readStream.table(f"{catalog}.staging.guest_events")
+        .filter(F.col("event_type") == "guest_profile")
+        .select(
+            F.col("guest_profile_id").cast(LongType()),
+            F.col("unit_id").cast(LongType()),
+            F.col("first_name"),
+            F.col("last_name"),
+            F.col("email"),
+            F.col("phone"),
+            F.col("zip_code"),
+            F.col("created_date"),
+            F.col("account_status"),
+            F.current_timestamp().alias("created_at"),
+        )
+    )
+
+
+@dlt.table(name="digital_account", comment="MVM Silver: digital_account")
+def digital_account():
+    return (
+        spark.readStream.table(f"{catalog}.staging.guest_events")
+        .filter(F.col("event_type") == "guest_profile")
+        .select(
+            F.col("digital_account_id").cast(LongType()),
+            F.col("guest_profile_id").cast(LongType()),
+            F.col("account_status"),
+            F.col("created_date"),
+            F.current_timestamp().alias("created_at"),
+        )
+    )
+
+
+# --------------------------------------------------------------------------
+# LOYALTY DOMAIN
+# --------------------------------------------------------------------------
+
+
+@dlt.table(name="loyalty_transaction", comment="MVM Silver: loyalty_transaction")
+def loyalty_transaction():
+    return (
+        spark.readStream.table(f"{catalog}.staging.loyalty_events")
+        .filter(F.col("event_type") == "loyalty_transaction")
+        .select(
+            F.col("loyalty_transaction_id").cast(LongType()),
+            F.col("member_id").cast(LongType()),
+            F.col("guest_order_id").cast(LongType()),
+            F.col("unit_id").cast(LongType()),
+            F.col("transaction_type"),
+            F.col("points_delta").cast(IntegerType()),
+            F.col("transaction_at").cast(TimestampType()),
+            F.col("tier"),
+            F.current_timestamp().alias("created_at"),
+        )
+    )
+
+
+@dlt.table(name="reward_redemption", comment="MVM Silver: reward_redemption")
+def reward_redemption():
+    return (
+        spark.readStream.table(f"{catalog}.staging.loyalty_events")
+        .filter(F.col("event_type") == "reward_redemption")
+        .select(
+            F.col("reward_redemption_id").cast(LongType()),
+            F.col("member_id").cast(LongType()),
+            F.col("guest_order_id").cast(LongType()),
+            F.col("unit_id").cast(LongType()),
+            F.col("points_redeemed").cast(IntegerType()),
+            F.col("reward_value").cast(DoubleType()),
+            F.col("redeemed_at").cast(TimestampType()),
+            F.current_timestamp().alias("created_at"),
+        )
+    )
+
+
+# --------------------------------------------------------------------------
+# WORKFORCE DOMAIN
+# --------------------------------------------------------------------------
+
+
+@dlt.table(name="shift", comment="MVM Silver: shift")
+def shift():
+    return (
+        spark.readStream.table(f"{catalog}.staging.workforce_events")
+        .filter(F.col("event_type") == "shift")
+        .select(
+            F.col("shift_id").cast(LongType()),
+            F.col("unit_id").cast(LongType()),
+            F.col("employee_id").cast(LongType()),
+            F.col("shift_label"),
+            F.col("shift_start").cast(TimestampType()),
+            F.col("shift_end").cast(TimestampType()),
+            F.col("status"),
+            F.col("date"),
+            F.current_timestamp().alias("created_at"),
+        )
+    )
+
+
+@dlt.table(name="time_punch", comment="MVM Silver: time_punch")
+def time_punch():
+    return (
+        spark.readStream.table(f"{catalog}.staging.workforce_events")
+        .filter(F.col("event_type") == "time_punch")
+        .select(
+            F.col("time_punch_id").cast(LongType()),
+            F.col("employee_id").cast(LongType()),
+            F.col("unit_id").cast(LongType()),
+            F.col("punch_in").cast(TimestampType()),
+            F.col("punch_out").cast(TimestampType()),
+            F.col("hours_worked").cast(DoubleType()),
+            F.current_timestamp().alias("created_at"),
+        )
+    )
+
+
+# --------------------------------------------------------------------------
+# GOLD LAYER
+# --------------------------------------------------------------------------
+
+
+@dlt.table(name="unit_performance_daily", comment="Gold: daily unit performance")
+def unit_performance_daily():
+    return (
+        dlt.read("guest_order")
+        .groupBy(
+            F.col("unit_id"),
+            F.to_date("placed_at").alias("date"),
+        )
+        .agg(
+            F.count("guest_order_id").alias("order_count"),
+            F.sum("total_amount").alias("daily_revenue"),
+            F.avg("total_amount").alias("avg_order_value"),
+            F.sum(
+                F.when(F.col("order_status") == "cancelled", 1).otherwise(0)
+            ).alias("cancelled_count"),
+        )
+    )
+
+
+@dlt.table(name="sos_compliance_summary", comment="Gold: SOS compliance by unit/channel/date")
+def sos_compliance_summary():
+    return (
+        dlt.read("status_event")
+        .filter(F.col("current_state") == "ready")
+        .join(
+            dlt.read("guest_order").select("guest_order_id", "channel", "placed_at"),
+            "guest_order_id",
+        )
+        .groupBy(
+            F.col("unit_id"),
+            F.col("channel"),
+            F.to_date("placed_at").alias("date"),
+        )
+        .agg(
+            F.count("status_event_id").alias("total_orders"),
+            F.sum(F.col("is_sos_breach").cast(IntegerType())).alias("sos_breaches"),
+            F.avg("elapsed_seconds_in_prior_state").alias("avg_prep_seconds"),
+        )
+        .withColumn(
+            "sos_compliance_pct",
+            F.round(1.0 - F.col("sos_breaches") / F.col("total_orders"), 4),
+        )
+    )
+
+
+@dlt.table(name="loyalty_cohort_metrics", comment="Gold: loyalty cohort metrics by tier/date")
+def loyalty_cohort_metrics():
+    return (
+        dlt.read("loyalty_transaction")
+        .groupBy(
+            F.col("unit_id"),
+            F.col("tier"),
+            F.to_date("transaction_at").alias("date"),
+        )
+        .agg(
+            F.countDistinct("member_id").alias("active_members"),
+            F.sum("points_delta").alias("total_points_earned"),
+            F.count("loyalty_transaction_id").alias("transaction_count"),
+        )
+    )
+
+
+@dlt.table(name="inventory_waste_summary", comment="Gold: inventory waste by unit/date")
+def inventory_waste_summary():
+    return (
+        dlt.read("waste_log")
+        .groupBy(
+            F.col("unit_id"),
+            F.to_date("logged_at").alias("date"),
+            F.col("waste_category"),
+        )
+        .agg(
+            F.sum("waste_cost").alias("total_waste_cost"),
+            F.sum("waste_quantity").alias("total_waste_qty"),
+            F.count("waste_log_id").alias("waste_event_count"),
+        )
+    )
