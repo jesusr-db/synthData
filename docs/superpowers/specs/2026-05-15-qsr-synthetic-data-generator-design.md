@@ -85,7 +85,7 @@ Seeded once by `setup_job`; updated periodically (menu LTOs monthly, prices quar
 **Menu** — `menu_item`, `menu`, `recipe`, `recipe_ingredient`, `item_price`, `nutrition_profile`, `allergen_declaration`  
 **Finance** — `cost_center`, `profit_center`, `gl_account`, `financial_period`  
 **Franchise** — `franchisee`, `territory`, `unit_ownership`  
-**Procurement** — `supplier`, `purchase_order`, `goods_receipt` (weekly replenishment orders generated)  
+**Procurement** — `supplier`, `purchase_order` (reference stubs, seeded once); `goods_receipt` records are created by the inventory domain generator to match `replenishment_order` events — not seeded statically  
 **Food Safety** — `haccp_plan`, `critical_control_point`, `temperature_log` (periodic, 4× daily per unit)
 
 ### 3.3 Computed (DLT Gold)
@@ -284,13 +284,15 @@ conf/
 
 ```
 deploy time:
-  setup_job ──────────────────────→ (creates catalog, schemas, seeds ref data)
+  setup_job Task 1 ────────────────→ (creates catalog, schemas, seeds ref data)
        │
        └──→ generator_job (backfill mode) ──→ DLT pipeline (processes backfill)
                                                      │
-                                            (Gold tables exist)
+                                            (Gold tables exist after first DLT batch)
                                                      │
-                                            setup_job resumes ──→ CREATE METRIC VIEWS
+                                            setup_job Task 2 ──→ CREATE METRIC VIEWS
+  Note: Task 2 is triggered manually (or via a separate job run) after confirming
+  the DLT pipeline has completed at least one successful batch and Gold tables exist.
 
 steady state:
   generator_job (live, every 60s) ──→ staging tables ──→ DLT pipeline (continuous)
