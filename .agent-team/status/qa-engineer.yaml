@@ -1,0 +1,54 @@
+status: DONE_WITH_CONCERNS
+
+artifacts:
+  - tests/test_demand_model.py  # fixed tick_seconds in one test
+  - .agent-team/status/qa-phase-5.yaml
+
+checks:
+  - name: pytest_suite
+    status: PASS
+    details: "55/55 after fixing test_dinner_friday_more_than_monday_morning.
+      Root cause was tick=60s making both contexts round to 0 orders."
+
+  - name: dlt_silver_tables
+    status: PASS
+    details: "All 15 Silver table functions present and correctly structured."
+
+  - name: dlt_gold_tables
+    status: PASS
+    details: "All 4 Gold table functions present, use dlt.read() (not readStream)."
+
+  - name: dlt_readstream_pattern
+    status: PASS
+    details: "Silver uses spark.readStream.table(); Gold uses dlt.read(); @dlt.expect_or_drop used."
+
+  - name: domain_table_map
+    status: PASS
+    details: "All 14 required event_types mapped. Extra entries are harmless."
+
+  - name: no_hardcoded_catalogs
+    status: PASS
+    details: "Zero occurrences of literal 'qsr_synth' in resources/*.yml."
+
+  - name: destroy_covers_setup
+    status: PASS
+    details: "All 5 staging tables, 4 metric views, staging and metrics schemas covered.
+      Ref tables also dropped. DAB-managed Silver/Gold deferred to bundle destroy."
+
+  - name: no_spark_in_pure_python
+    status: PASS
+    details: "No module-level pyspark imports in pure Python modules. seeder.py uses
+      a deferred function-body import (acceptable lazy pattern)."
+
+  - name: bundle_validate
+    status: SKIP
+    details: "Databricks CLI not authenticated in this environment. Bundle YAML
+      structure reviewed manually — no issues found."
+
+recommendations:
+  - "Consider separating digital_account into its own event_type emission from guest.py
+    if the schema ever needs to evolve guest_profile and digital_account independently."
+  - "Add a seed or retry loop to test_dinner_friday_more_than_monday_morning if tick
+    size ever needs to go below ~900s — Gaussian noise can cause transient failures
+    at very small ticks."
+  - "Configure Databricks CLI auth in CI so bundle_validate runs in pipeline."
