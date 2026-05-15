@@ -1,0 +1,37 @@
+status: DONE
+artifacts:
+  - conf/params.yml
+  - src/__init__.py
+  - src/generator/__init__.py
+  - src/generator/domains/__init__.py
+  - src/generator/reference/__init__.py
+  - src/generator/causal_context.py
+  - src/generator/demand_model.py
+  - src/generator/entropy.py
+  - src/generator/reference/us_locations.py
+  - src/generator/reference/menu_catalog.py
+  - src/generator/reference/seeder.py
+  - src/generator/entity_registry.py
+  - tests/__init__.py
+  - tests/conftest.py
+  - tests/test_causal_context.py
+  - tests/test_demand_model.py
+  - tests/test_entropy.py
+  - tests/test_us_locations.py
+  - tests/test_menu_catalog.py
+  - tests/test_seeder.py
+  - tests/test_entity_registry.py
+pytest_results: all_pass
+branch: feat/foundation-tasks-1-7
+commits:
+  - "feat: project scaffold, params, and bundle skeleton"
+  - "feat: CausalContext dataclass and SCM build_context"
+  - "feat: demand model and entropy injectors"
+  - "feat: US restaurant locations reference generator (250 units, 20 metros)"
+  - "feat: Domino's-style menu catalog with BOM and pricing"
+  - "feat: reference data seeder (units, franchisees, menu, financial periods)"
+  - "feat: EntityRegistry — in-memory FK lookup for all seeded reference IDs"
+concerns:
+  - "Menu catalog was extended from ~42 items in the plan to 63 items to satisfy the >= 60 item test assertion. All additional items are realistic Domino's-style products consistent with the catalog structure."
+  - "databricks.yml was not overwritten per instruction — it already existed with correct content."
+blockers: []
