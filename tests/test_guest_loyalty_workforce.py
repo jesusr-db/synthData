@@ -53,6 +53,28 @@ def test_high_volume_means_more_staff():
     high_staff = len([r for r in high if r["event_type"] == "shift"])
     assert high_staff >= low_staff
 
+def test_new_guest_registrations_have_varied_status():
+    all_rows = []
+    for _ in range(200):
+        rows = generate_new_guest_profiles(unit_id=1, date_str="2025-09-19",
+                                           growth_rate=0.008, base_pool=500)
+        all_rows.extend(rows)
+    statuses = {r["account_status"] for r in all_rows}
+    assert "active" in statuses
+    if len(all_rows) > 30:
+        assert "inactive" in statuses, "Expected some inactive registrations across 200 runs"
+
+def test_generate_guest_churn_emits_inactive_profiles():
+    from src.generator.domains.guest import generate_guest_churn
+    reg = _reg()
+    rows = generate_guest_churn(unit_id=1, registry=reg, date_str="2025-09-19",
+                                 churn_rate=0.05,
+                                 tick_ts=datetime(2025, 9, 19, 10, 0))
+    assert len(rows) > 0
+    for r in rows:
+        assert r["event_type"] == "guest_profile"
+        assert r["account_status"] == "inactive"
+
 def test_reward_redemption_has_matching_redeem_transaction():
     from src.generator.domains.orders import generate_orders_for_tick
     ctx = build_context(1, datetime(2025, 9, 19, 19, 0), 2.0)

@@ -68,6 +68,9 @@ class EntityRegistry:
         """Return member_id if guest is a loyalty member (same ID as profile for simplicity)."""
         return guest_profile_id if self.is_loyalty_member(guest_profile_id) else None
 
+    def guest_ids_for_unit(self, unit_id: int) -> list[int]:
+        return self._guest_pool.get(unit_id, [])
+
     def financial_period_for_date(self, d: date) -> Optional[int]:
         d_str = d.isoformat()
         for p in self._periods:
