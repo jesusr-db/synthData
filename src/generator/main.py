@@ -73,7 +73,7 @@ def write_batch(rows: list[dict]):
             print(f"[WARN] Unknown event_type '{et}' — skipped")
     for (table, _), event_rows in by_table_event.items():
         df = spark.createDataFrame(event_rows)
-        df.write.format("delta").mode("append").saveAsTable(table)
+        df.write.format("delta").mode("append").option("mergeSchema", "true").saveAsTable(table)
 
 
 # COMMAND ----------
