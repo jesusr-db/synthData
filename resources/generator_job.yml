@@ -8,11 +8,15 @@ resources:
         quartz_cron_expression: "0 * * * * ?"
         timezone_id: "UTC"
         pause_status: PAUSED
+      environments:
+        - environment_key: generator
+          spec:
+            client: "1"
+            dependencies:
+              - faker>=20.0.0
       tasks:
         - task_key: generate
-          libraries:
-            - pypi:
-                package: faker>=20.0.0
+          environment_key: generator
           notebook_task:
             notebook_path: ../src/generator/main.py
             base_parameters:
