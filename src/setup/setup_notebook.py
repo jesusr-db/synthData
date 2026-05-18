@@ -217,28 +217,4 @@ from src.generator.reference.seeder import seed_all
 seed_all(spark, catalog_name, num_units=num_units)
 print(f"[INFO] Reference tables seeded")
 
-# COMMAND ----------
-# Step 5: Create UC Metric Views on Gold tables
-# Gold tables are created by the DLT pipeline — skip views that don't have a backing table yet.
-GOLD_TO_VIEW = {
-    "unit_performance_daily":  "unit_performance_daily",
-    "sos_compliance_summary":  "sos_compliance_summary",
-    "loyalty_cohort_metrics":  "loyalty_cohort_metrics",
-    "inventory_waste_summary": "inventory_waste_summary",
-}
-
-existing_silver = {
-    r.tableName for r in spark.sql(f"SHOW TABLES IN {catalog_name}.silver").collect()
-} if spark.catalog.databaseExists(f"{catalog_name}.silver") else set()
-
-for gold_table, view_name in GOLD_TO_VIEW.items():
-    if gold_table not in existing_silver:
-        print(f"[SKIP] Gold table {catalog_name}.silver.{gold_table} not yet created by DLT pipeline — skipping metric view")
-        continue
-    spark.sql(f"""
-        CREATE OR REPLACE VIEW {catalog_name}.metrics.{view_name}
-        AS SELECT * FROM {catalog_name}.silver.{gold_table}
-    """)
-    print(f"[INFO] Metric view ready: {catalog_name}.metrics.{view_name}")
-
 print("[INFO] Setup complete")
