@@ -42,3 +42,16 @@ def test_daily_receiving_produces_receiving_orders():
     rows = generate_daily_receiving(unit_id=1, reg=reg, order_date="2025-09-19")
     assert len(rows) > 0
     assert all(r["event_type"] == "receiving_order" for r in rows)
+
+def test_waste_categories_are_diverse():
+    from src.generator.domains.orders import generate_orders_for_tick
+    ctx = build_context(1, datetime(2025, 9, 19, 21, 0), 2.0)
+    reg = _reg()
+    order_rows = generate_orders_for_tick(ctx, reg, tick_seconds=3600)
+    all_cats = []
+    for _ in range(20):
+        rows = generate_inventory_events(ctx, reg, order_rows)
+        all_cats.extend(r["waste_category"] for r in rows if r["event_type"] == "waste_log")
+    valid = {"overproduction", "spoilage", "theft", "expired", "damaged"}
+    assert all(c in valid for c in all_cats), f"Invalid category: {set(all_cats) - valid}"
+    assert len(set(all_cats)) >= 2, "Expected multiple distinct waste categories across 20 runs"

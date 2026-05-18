@@ -4,6 +4,9 @@ from src.generator.causal_context import CausalContext
 from src.generator.entity_registry import EntityRegistry
 from src.generator.entropy import should_waste
 
+_WASTE_CATS = ["overproduction", "spoilage", "theft", "expired", "damaged"]
+_WASTE_WEIGHTS = [50, 25, 10, 10, 5]
+
 _inv_counter = 0
 
 def _next_inv_id() -> int:
@@ -50,7 +53,7 @@ def generate_inventory_events(ctx: CausalContext, registry: EntityRegistry,
                 "unit_id": ctx.unit_id,
                 "stock_sku": sku,
                 "waste_quantity": waste_qty,
-                "waste_category": "overproduction",
+                "waste_category": random.choices(_WASTE_CATS, weights=_WASTE_WEIGHTS, k=1)[0],
                 "waste_cost": round(waste_qty * 2.5, 2),
                 "logged_at": ctx.timestamp,
             })
