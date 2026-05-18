@@ -69,5 +69,19 @@ def generate_loyalty_events(ctx: CausalContext, registry: EntityRegistry,
                 "reward_value": round(redeem_points / 100, 2),
                 "redeemed_at": order["placed_at"],
             })
+            dt_id = _next_id()
+            rows.append({
+                "event_type": "loyalty_transaction",
+                "event_id": dt_id,
+                "event_ts": ctx.timestamp,
+                "loyalty_transaction_id": dt_id,
+                "member_id": mid,
+                "guest_order_id": order["guest_order_id"],
+                "unit_id": ctx.unit_id,
+                "transaction_type": "redeem",
+                "points_delta": -redeem_points,
+                "transaction_at": order["placed_at"],
+                "tier": tier,
+            })
 
     return rows

@@ -52,3 +52,25 @@ def test_high_volume_means_more_staff():
     low_staff = len([r for r in low if r["event_type"] == "shift"])
     high_staff = len([r for r in high if r["event_type"] == "shift"])
     assert high_staff >= low_staff
+
+def test_reward_redemption_has_matching_redeem_transaction():
+    from src.generator.domains.orders import generate_orders_for_tick
+    ctx = build_context(1, datetime(2025, 9, 19, 19, 0), 2.0)
+    reg = _reg()
+    order_rows = generate_orders_for_tick(ctx, reg, tick_seconds=3600)
+    loyalty_rows = generate_loyalty_events(ctx, reg, order_rows)
+
+    redemption_order_ids = {r["guest_order_id"] for r in loyalty_rows if r["event_type"] == "reward_redemption"}
+    redeem_txn_order_ids = {r["guest_order_id"] for r in loyalty_rows if r.get("transaction_type") == "redeem"}
+    assert redemption_order_ids == redeem_txn_order_ids, \
+        "Every reward_redemption must have a matching redeem loyalty_transaction"
+
+def test_redeem_transaction_has_negative_points_delta():
+    from src.generator.domains.orders import generate_orders_for_tick
+    ctx = build_context(1, datetime(2025, 9, 19, 19, 0), 2.0)
+    reg = _reg()
+    order_rows = generate_orders_for_tick(ctx, reg, tick_seconds=3600)
+    loyalty_rows = generate_loyalty_events(ctx, reg, order_rows)
+    for r in loyalty_rows:
+        if r.get("transaction_type") == "redeem":
+            assert r["points_delta"] < 0, f"Expected negative points_delta, got {r['points_delta']}"
