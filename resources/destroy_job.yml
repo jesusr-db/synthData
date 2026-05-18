@@ -4,8 +4,13 @@ resources:
       name: "QSR Destroy [${bundle.target}]"
       tags:
         project: qsr-synth-data-generator
+      environments:
+        - environment_key: default
+          spec:
+            client: "1"
       tasks:
         - task_key: destroy
+          environment_key: default
           notebook_task:
             notebook_path: ../src/setup/destroy_notebook.py
             base_parameters:

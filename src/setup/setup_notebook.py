@@ -63,7 +63,7 @@ spark.sql(f"""
         financial_period_id             BIGINT,
         sos_breach                      BOOLEAN,
         menu_item_id                    BIGINT,
-        quantity                        INT,
+        quantity                        BIGINT,
         unit_price                      DOUBLE,
         line_gross_amount               DOUBLE,
         line_net_amount                 DOUBLE,
@@ -77,12 +77,12 @@ spark.sql(f"""
         prior_state                     STRING,
         current_state                   STRING,
         event_timestamp                 TIMESTAMP,
-        elapsed_seconds_in_prior_state  INT,
-        sos_target_seconds              INT,
+        elapsed_seconds_in_prior_state  BIGINT,
+        sos_target_seconds              BIGINT,
         is_sos_breach                   BOOLEAN,
         platform_order_reference        STRING,
-        estimated_delivery_seconds      INT,
-        actual_delivery_seconds         INT,
+        estimated_delivery_seconds      BIGINT,
+        actual_delivery_seconds         BIGINT,
         delivery_status                 STRING
     )
     USING DELTA
@@ -166,10 +166,10 @@ spark.sql(f"""
         member_id               BIGINT,
         guest_order_id          BIGINT,
         transaction_type        STRING,
-        points_delta            INT,
+        points_delta            BIGINT,
         transaction_at          TIMESTAMP,
         tier                    STRING,
-        points_redeemed         INT,
+        points_redeemed         BIGINT,
         reward_value            DOUBLE,
         redeemed_at             TIMESTAMP
     )
