@@ -10,6 +10,9 @@ resources:
         pause_status: PAUSED
       tasks:
         - task_key: generate
+          libraries:
+            - pypi:
+                package: faker>=20.0.0
           notebook_task:
             notebook_path: ../src/generator/main.py
             base_parameters:
