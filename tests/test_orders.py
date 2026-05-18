@@ -133,3 +133,51 @@ def test_cancelled_items_have_higher_waste_rate_than_fulfilled():
     cancelled_rate = sum(1 for r in cancelled_items if r["waste_flag"]) / len(cancelled_items)
     assert cancelled_rate > fulfilled_rate, \
         f"Expected cancelled waste rate ({cancelled_rate:.3f}) > fulfilled ({fulfilled_rate:.3f})"
+
+def test_units_have_market_price_index():
+    units = generate_units(10)
+    for u in units:
+        assert "market_price_index" in u, "Each unit must have a market_price_index"
+        assert 0.85 <= u["market_price_index"] <= 1.25, \
+            f"market_price_index {u['market_price_index']} out of range [0.85, 1.25]"
+
+def test_aov_varies_across_units():
+    """Units with high market_price_index should produce higher average order values."""
+    from src.generator.reference.menu_catalog import get_menu_items, get_recipe_ingredients
+    from src.generator.reference.seeder import build_financial_periods_data
+
+    # Build two registries: one with all units forced to low price index, one high
+    low_units = [{"unit_id": i, "unit_name": f"U{i}", "city": "A", "state": "TX",
+                  "lat": 30.0, "lon": -97.0, "metro_area": "Austin-Round Rock, TX",
+                  "district_id": 1, "region_id": 1, "franchisee_id": None,
+                  "format": "carryout_delivery", "unit_volume_bias": 1.0,
+                  "is_franchise": False, "status": "active",
+                  "market_price_index": 0.85} for i in range(1, 4)]
+    high_units = [{"unit_id": i, "unit_name": f"U{i}", "city": "B", "state": "NY",
+                   "lat": 40.7, "lon": -74.0, "metro_area": "New York-Newark-Jersey City, NY",
+                   "district_id": 1, "region_id": 1, "franchisee_id": None,
+                   "format": "carryout_delivery", "unit_volume_bias": 1.0,
+                   "is_franchise": False, "status": "active",
+                   "market_price_index": 1.25} for i in range(1, 4)]
+
+    menu = get_menu_items()
+    bom = get_recipe_ingredients()
+    fp = build_financial_periods_data(3)
+    low_reg = EntityRegistry(units=low_units, menu_items=menu, bom=bom, financial_periods=fp)
+    high_reg = EntityRegistry(units=high_units, menu_items=menu, bom=bom, financial_periods=fp)
+
+    ctx = build_context(1, datetime(2025, 9, 19, 12, 0), 1.0)
+    low_totals, high_totals = [], []
+    for _ in range(20):
+        for r in generate_orders_for_tick(ctx, low_reg, tick_seconds=3600):
+            if r["event_type"] == "guest_order" and r["order_status"] == "fulfilled":
+                low_totals.append(r["total_amount"])
+        for r in generate_orders_for_tick(ctx, high_reg, tick_seconds=3600):
+            if r["event_type"] == "guest_order" and r["order_status"] == "fulfilled":
+                high_totals.append(r["total_amount"])
+
+    if low_totals and high_totals:
+        low_aov = sum(low_totals) / len(low_totals)
+        high_aov = sum(high_totals) / len(high_totals)
+        assert high_aov > low_aov, \
+            f"Expected high-price-index AOV ({high_aov:.2f}) > low ({low_aov:.2f})"

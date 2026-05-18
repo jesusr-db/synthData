@@ -45,9 +45,9 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
         menu_item = registry.random_menu_item(placed_at.hour)
         mid = menu_item["menu_item_id"]
         qty = 1 if menu_item["category"] != "drinks" else random.choice([1, 2])
-        unit_price = registry.get_menu_item(mid)["base_price"]
+        unit_price = round(registry.get_menu_item(mid)["base_price"] * registry.unit_price_index(ctx.unit_id), 2)
         if channel == "3pd_delivery":
-            unit_price += 0.75
+            unit_price = round(unit_price + 1.25, 2)
         line_gross = round(unit_price * qty, 2)
         subtotal += line_gross
         item_id = order_id * 10 + i

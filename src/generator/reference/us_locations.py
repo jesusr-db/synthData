@@ -71,5 +71,6 @@ def generate_units(num_units: int, seed: int = 42) -> list[dict]:
             "unit_volume_bias": round(unit_volume_bias(), 4),
             "is_franchise": is_franchise,
             "status": "active",
+            "market_price_index": round(random.uniform(0.85, 1.25), 4),
         })
     return _assign_districts(units)

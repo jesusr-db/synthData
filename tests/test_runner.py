@@ -28,11 +28,12 @@ def _make_config():
 
 def test_build_tick_rows_returns_domain_rows():
     cfg, reg = _make_config()
+    # Use 1-hour tick so Poisson(18) reliably yields orders
     rows = build_tick_rows(
         unit_id=1,
         timestamp=datetime(2025, 9, 19, 19, 0),
         registry=reg,
-        tick_seconds=60,
+        tick_seconds=3600,
         base_orders_per_hour=cfg.base_orders_per_unit_per_hour,
     )
     event_types = {r["event_type"] for r in rows}

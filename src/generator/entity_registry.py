@@ -71,6 +71,9 @@ class EntityRegistry:
     def guest_ids_for_unit(self, unit_id: int) -> list[int]:
         return self._guest_pool.get(unit_id, [])
 
+    def unit_price_index(self, unit_id: int) -> float:
+        return self._unit_by_id[unit_id].get("market_price_index", 1.0)
+
     def financial_period_for_date(self, d: date) -> Optional[int]:
         d_str = d.isoformat()
         for p in self._periods:
