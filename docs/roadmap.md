@@ -87,6 +87,91 @@ setup
 
 ---
 
+## Phase 2.5 — Data Quality Fixes (Generator Realism)
+
+Six data quality gaps identified via silver table analysis. All fixes are in the generator layer — no DLT or schema changes needed.
+
+### Fix 1 — Order Discounts (`orders.py`)
+
+**Gap:** `line_discount_amount` and `discount_amount` are 0.00 on 100% of records.
+
+**Fix:** ~12% of orders receive a discount (app promo, coupon, loyalty promo):
+- Pick discount type: app (10% off subtotal), coupon (flat $2–$5), loyalty promo (15% off for gold/platinum)
+- Apply proportionally to `line_discount_amount` on each item; set `discount_amount` on `guest_order`
+- Recalculate `line_net_amount = line_gross - line_discount`, `subtotal`, `total_amount`
+- Discount rate higher for loyalty members (20% vs 8% for non-members)
+
+---
+
+### Fix 2 — Order Item Status (`orders.py`)
+
+**Gap:** `item_status` is "fulfilled" for 100% of records. Cancelled orders still emit items as fulfilled.
+
+**Fix:**
+- If parent order is cancelled → `item_status = "cancelled"` on all items
+- ~1% of fulfilled-order items get `item_status = "refunded"` (post-fulfillment refund)
+- Remaining fulfilled as before
+
+---
+
+### Fix 3 — Waste Flags on Order Items (`orders.py`)
+
+**Gap:** `waste_flag = false` on all 4M+ items despite 35K waste_log events in inventory.
+
+**Fix:** ~2% of order items get `waste_flag = True`:
+- Higher rate on cancelled orders (~15% of cancelled items → waste)
+- Higher rate at end of day (hour >= 20): +1.5× multiplier (matches `should_waste` in entropy.py)
+- Correlates item-level waste with the existing inventory waste_log events
+
+---
+
+### Fix 4 — Loyalty Redemption (Burn) Transactions (`loyalty.py`)
+
+**Gap:** `loyalty_transaction.transaction_type` is exclusively "earn". Reward redemptions exist in `reward_redemption` table but no corresponding debit in `loyalty_transaction`.
+
+**Fix:** When generating a `reward_redemption` event, also emit a `loyalty_transaction` with:
+- `transaction_type = "redeem"`
+- `points_delta = -redeem_points` (negative — points deducted)
+- Same `member_id`, `guest_order_id`, `transaction_at`
+
+Result: loyalty_transaction will have both earn and redeem records; burn rate ~8% of orders with members.
+
+---
+
+### Fix 5 — Waste Categories (`inventory.py`)
+
+**Gap:** `waste_category` is "overproduction" for 100% of waste events.
+
+**Fix:** Sample from realistic category distribution:
+| Category | Weight |
+|---|---|
+| overproduction | 50% |
+| spoilage | 25% |
+| theft | 10% |
+| expired | 10% |
+| damaged | 5% |
+
+---
+
+### Fix 6 — Guest Account Status (`guest.py`)
+
+**Gap:** `account_status = "active"` for 100% of guest profiles.
+
+**Fix (two parts):**
+1. New guest registrations: ~3% created as `"inactive"` (email unverified), ~0.5% as `"suspended"` (fraud flag)
+2. Daily churn events: ~0.2% of existing guest pool per unit per day generates a profile update event with `account_status = "inactive"` — models natural churn/account deletion
+
+---
+
+### Implementation Notes
+
+- All 6 fixes are isolated to `src/generator/domains/` — no schema, DLT, or job changes
+- Fixes 1–5 apply to both backfill and live modes (same code path)
+- Fix 6 applies to `generate_new_guest_profiles()` (new registrations) and a new `generate_guest_churn()` daily function in `runner.py`
+- After implementing: destroy existing data, run setup_job to regenerate clean 1-month backfill with correct distributions
+
+---
+
 ## Phase 3 — External Signal Integration (from original design spec)
 
 - `ref.weather_conditions` — currently empty stub; populate with weather API
