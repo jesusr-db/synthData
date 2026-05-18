@@ -82,8 +82,35 @@ def write_batch(rows: list[dict]):
 
 
 # COMMAND ----------
+def _latest_staging_ts():
+    """Return the max event_ts across all staging tables, or None if tables are empty."""
+    from datetime import timedelta
+    STAGING_TABLES = [
+        f"{catalog_name}.staging.order_events",
+        f"{catalog_name}.staging.inventory_events",
+        f"{catalog_name}.staging.guest_events",
+        f"{catalog_name}.staging.loyalty_events",
+        f"{catalog_name}.staging.workforce_events",
+    ]
+    max_ts = None
+    for table in STAGING_TABLES:
+        row = spark.sql(f"SELECT MAX(event_ts) AS ts FROM {table}").collect()[0]
+        if row.ts is not None:
+            ts = row.ts.replace(tzinfo=None) if hasattr(row.ts, 'tzinfo') else row.ts
+            if max_ts is None or ts > max_ts:
+                max_ts = ts
+    if max_ts is None:
+        return None
+    # Advance to next full hour to avoid re-generating the last partial tick
+    return (max_ts.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
+
+
 if mode == "backfill":
-    print(f"[INFO] Starting backfill: {backfill_months} months, catalog={catalog_name}")
+    start_dt = _latest_staging_ts()
+    if start_dt is not None:
+        print(f"[INFO] Rehydrating from latest staging timestamp: {start_dt}")
+    else:
+        print(f"[INFO] No existing data — backfilling {backfill_months} month(s), catalog={catalog_name}")
     total_rows = 0
     for i, batch in enumerate(
         backfill_ticks(
@@ -91,6 +118,7 @@ if mode == "backfill":
             backfill_months,
             tick_seconds=3600,
             base_orders_per_hour=base_orders,
+            start_dt=start_dt,
         )
     ):
         write_batch(batch)

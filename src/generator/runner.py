@@ -41,12 +41,13 @@ def backfill_ticks(
     backfill_months: int,
     tick_seconds: int = 3600,
     base_orders_per_hour: int = 18,
+    start_dt: datetime | None = None,
 ) -> Iterator[list[dict]]:
-    """Yield batches of rows for all units, one hour at a time, from N months ago to now."""
+    """Yield batches of rows for all units, one hour at a time, from start_dt (or N months ago) to now."""
     from dateutil.relativedelta import relativedelta
 
     now = datetime.now().replace(minute=0, second=0, microsecond=0)
-    start = now - relativedelta(months=backfill_months)
+    start = start_dt if start_dt is not None else now - relativedelta(months=backfill_months)
     current = start
     while current <= now:
         batch = []
