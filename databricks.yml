@@ -7,7 +7,7 @@ variables:
   num_units:
     default: "250"
   backfill_months:
-    default: "12"
+    default: "1"
   live_tick_seconds:
     default: "60"
   base_orders_per_unit_per_hour:

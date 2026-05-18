@@ -21,7 +21,7 @@ except Exception:
     # Defaults for interactive execution — always use job parameters in deployment
     catalog_name = "jmrdemo"
     num_units = 250
-    backfill_months = 12
+    backfill_months = 1
     live_tick_seconds = 60
     base_orders = 18
     mode = "live"
