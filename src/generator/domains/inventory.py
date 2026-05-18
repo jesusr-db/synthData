@@ -35,7 +35,7 @@ def generate_inventory_events(ctx: CausalContext, registry: EntityRegistry,
             "quantity_on_hand": round(on_hand, 3),
             "quantity_reserved": round(qty_used, 3),
             "par_level": par_level,
-            "snapshot_at": ctx.timestamp.isoformat(),
+            "snapshot_at": ctx.timestamp,
         })
         # Waste events: ~3% of prep volume, skewed late-night
         if should_waste(ctx.waste_probability, ctx.hour_of_day):
@@ -48,7 +48,7 @@ def generate_inventory_events(ctx: CausalContext, registry: EntityRegistry,
                 "waste_quantity": waste_qty,
                 "waste_category": "overproduction",
                 "waste_cost": round(waste_qty * 2.5, 2),
-                "logged_at": ctx.timestamp.isoformat(),
+                "logged_at": ctx.timestamp,
             })
         # Trigger replenishment if on_hand drops below 25% of PAR
         if on_hand < par_level * 0.25:
@@ -60,7 +60,7 @@ def generate_inventory_events(ctx: CausalContext, registry: EntityRegistry,
                 "order_type": "auto_par",
                 "order_quantity": round(par_level - on_hand, 3),
                 "order_status": "submitted",
-                "ordered_at": ctx.timestamp.isoformat(),
+                "ordered_at": ctx.timestamp,
             })
 
     return rows

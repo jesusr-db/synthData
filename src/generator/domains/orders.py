@@ -51,7 +51,7 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
             "line_discount_amount": 0.0,
             "item_status": "fulfilled",
             "waste_flag": False,
-            "placed_at": placed_at.isoformat(),
+            "placed_at": placed_at,
         })
 
     subtotal = round(subtotal, 2)
@@ -79,11 +79,11 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
         "discount_amount": 0.0,
         "tax_amount": tax,
         "total_amount": total if not is_cancelled else 0.0,
-        "placed_at": placed_at.isoformat(),
-        "ready_at": ready_at.isoformat() if not is_cancelled else None,
-        "fulfilled_at": (ready_at + timedelta(seconds=random.randint(60, 300))).isoformat()
+        "placed_at": placed_at,
+        "ready_at": ready_at if not is_cancelled else None,
+        "fulfilled_at": ready_at + timedelta(seconds=random.randint(60, 300))
                         if not is_cancelled else None,
-        "cancelled_at": placed_at.isoformat() if is_cancelled else None,
+        "cancelled_at": placed_at if is_cancelled else None,
         "financial_period_id": fp_id,
         "sos_breach": sos_breach,
     })
@@ -103,7 +103,7 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
                 "unit_id": ctx.unit_id,
                 "prior_state": state_from,
                 "current_state": state_to,
-                "event_timestamp": (placed_at + timedelta(seconds=delta_secs)).isoformat(),
+                "event_timestamp": placed_at + timedelta(seconds=delta_secs),
                 "elapsed_seconds_in_prior_state": delta_secs,
                 "sos_target_seconds": 720 if channel == "carryout" else 1800,
                 "is_sos_breach": sos_breach and state_to == "ready",
@@ -118,7 +118,7 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
             "tender_type": tender,
             "amount": total,
             "settlement_date": placed_at.date().isoformat(),
-            "paid_at": placed_at.isoformat(),
+            "paid_at": placed_at,
         })
         # delivery order for delivery channels
         if "delivery" in channel:
