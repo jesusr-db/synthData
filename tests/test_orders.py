@@ -48,3 +48,26 @@ def test_total_amount_equals_subtotal_plus_tax():
     for r in rows:
         if r["event_type"] == "guest_order" and r["order_status"] != "cancelled":
             assert abs(r["total_amount"] - (r["subtotal"] + r["tax_amount"])) < 0.01
+
+def test_cancelled_orders_emit_items():
+    ctx = build_context(1, datetime(2025, 9, 19, 19, 0), 2.0)
+    reg = _registry()
+    rows = generate_orders_for_tick(ctx, reg, tick_seconds=3600)
+    cancelled_ids = {r["guest_order_id"] for r in rows
+                     if r["event_type"] == "guest_order" and r["order_status"] == "cancelled"}
+    if not cancelled_ids:
+        return  # no cancelled orders this tick — non-deterministic, skip
+    cancelled_items = [r for r in rows if r["event_type"] == "order_item"
+                       and r["guest_order_id"] in cancelled_ids]
+    assert len(cancelled_items) > 0, "Cancelled orders must emit order_item rows"
+    assert all(r["item_status"] == "cancelled" for r in cancelled_items)
+
+def test_fulfilled_items_have_valid_status():
+    ctx = _ctx()
+    reg = _registry()
+    rows = generate_orders_for_tick(ctx, reg, tick_seconds=3600)
+    fulfilled_ids = {r["guest_order_id"] for r in rows
+                     if r["event_type"] == "guest_order" and r["order_status"] == "fulfilled"}
+    items = [r for r in rows if r["event_type"] == "order_item" and r["guest_order_id"] in fulfilled_ids]
+    valid = {"fulfilled", "refunded"}
+    assert all(r["item_status"] in valid for r in items)

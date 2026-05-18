@@ -17,15 +17,15 @@ def _next_order_id() -> int:
 
 def _build_order(ctx: CausalContext, registry: EntityRegistry,
                  order_id: int, channel: str) -> list[dict]:
-    """Build all rows for one order: guest_order + order_items + payment + status_events."""
     rows = []
     placed_at = ctx.timestamp + timedelta(seconds=random.randint(0, 55))
     guest_id = registry.random_guest_profile_id(ctx.unit_id)
     member_id = registry.random_member_id(guest_id)
     is_member = member_id is not None
     fp_id = registry.financial_period_for_date(placed_at.date())
+    is_cancelled = should_cancel(ctx.cancellation_rate, channel)
+    status = "cancelled" if is_cancelled else "fulfilled"
 
-    # Build 1–5 order items
     num_items = random.choices([1, 2, 3, 4, 5], weights=[20, 35, 25, 15, 5])[0]
     item_rows = []
     subtotal = 0.0
@@ -39,6 +39,14 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
         line_gross = round(unit_price * qty, 2)
         subtotal += line_gross
         item_id = order_id * 10 + i
+
+        if is_cancelled:
+            item_status = "cancelled"
+        elif random.random() < 0.01:
+            item_status = "refunded"
+        else:
+            item_status = "fulfilled"
+
         item_rows.append({
             "event_type": "order_item",
             "event_id": item_id,
@@ -52,7 +60,7 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
             "line_gross_amount": line_gross,
             "line_net_amount": line_gross,
             "line_discount_amount": 0.0,
-            "item_status": "fulfilled",
+            "item_status": item_status,
             "waste_flag": False,
             "placed_at": placed_at,
         })
@@ -61,12 +69,11 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
     tax = round(subtotal * _TAX_RATE, 2)
     total = round(subtotal + tax, 2)
 
-    is_cancelled = should_cancel(ctx.cancellation_rate, channel)
-    status = "cancelled" if is_cancelled else "fulfilled"
-
     prep_secs = prep_time_seconds(channel)
     ready_at = placed_at + timedelta(seconds=prep_secs)
     sos_breach = should_breach_sos(ctx.sos_breach_probability)
+
+    rows.extend(item_rows)  # always emit items (Fix 2)
 
     rows.append({
         "event_type": "guest_order",
@@ -93,7 +100,6 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
     })
 
     if not is_cancelled:
-        rows.extend(item_rows)
         for j, (state_from, state_to, delta_secs) in enumerate([
             ("placed", "preparing", 60),
             ("preparing", "ready", prep_secs),
