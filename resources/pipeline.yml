@@ -3,7 +3,7 @@ resources:
     mvm_pipeline:
       name: "QSR MVM Pipeline [${bundle.target}]"
       channel: PREVIEW
-      continuous: true
+      continuous: false
       catalog: ${var.catalog_name}
       target: silver
       libraries:

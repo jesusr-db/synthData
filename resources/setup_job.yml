@@ -38,3 +38,11 @@ resources:
               live_tick_seconds: ${var.live_tick_seconds}
               base_orders_per_unit_per_hour: ${var.base_orders_per_unit_per_hour}
               mode: backfill
+
+        - task_key: unpause_generator
+          depends_on:
+            - task_key: backfill
+          notebook_task:
+            notebook_path: ../src/setup/unpause_generator_notebook.py
+            base_parameters:
+              generator_job_id: ${resources.jobs.generator_job.id}
