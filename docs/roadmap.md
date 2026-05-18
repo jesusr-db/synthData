@@ -163,6 +163,28 @@ Result: loyalty_transaction will have both earn and redeem records; burn rate ~8
 
 ---
 
+### Fix 7 — AOV Variance (`orders.py`, `entity_registry.py`, reference data)
+
+**Gap:** Average order value is ~$26.50 across all units, channels, and dates — no meaningful variation. Real QSR AOV varies 30–60% across these dimensions.
+
+**Root causes:**
+- Menu item prices are flat with no per-unit market adjustment
+- Item mix (num_items, category selection) doesn't vary by channel or daypart beyond minor weights
+- `unit_volume_bias` affects order *count* but not order *value*
+- Price drift (±3–6% quarterly, per design spec) is not implemented yet
+
+**Fix (three levers):**
+
+1. **Per-unit price index** (`ref.unit` seeded field): assign each unit a `market_price_index` between 0.85–1.25 at seed time (urban flagship vs suburban low-cost). Apply multiplier to `unit_price` in every order item. Expected AOV range: $22–$33.
+
+2. **Channel uplift**: catering orders should be 3–8× AOV (larger quantities, bulk items). 3PD already adds $0.75/item; increase to $1.25 and add a per-order 3PD platform fee (~$3.50) to `discount_amount` offset or a separate fee field.
+
+3. **Quarterly price drift** (per design spec, unimplemented): each `menu_item` gets a `price_multiplier` that drifts ±3–6% per quarter. Seed price history in `ref.item_price` and apply at order time based on `financial_period_id`.
+
+**Expected outcome:** AOV range $18–$85 depending on unit market index, channel, and quarter. Mean stays near $26 but with realistic std dev of ~$8.
+
+---
+
 ### Implementation Notes
 
 - All 6 fixes are isolated to `src/generator/domains/` — no schema, DLT, or job changes
