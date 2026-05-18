@@ -10,6 +10,17 @@ from src.generator.entropy import prep_time_seconds, should_breach_sos, should_c
 _TAX_RATE = 0.085
 _order_counter = 0
 
+
+def _member_tier(member_id: int) -> str:
+    spend = (member_id * 47) % 4000
+    if spend >= 3500:
+        return "platinum"
+    if spend >= 1500:
+        return "gold"
+    if spend >= 500:
+        return "silver"
+    return "bronze"
+
 def _next_order_id() -> int:
     global _order_counter
     _order_counter += 1
@@ -67,6 +78,33 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
         })
 
     subtotal = round(subtotal, 2)
+
+    # Apply discount to non-cancelled orders (~8-20% of orders)
+    discount_amount = 0.0
+    disc_rate = 0.20 if is_member else 0.08
+    if not is_cancelled and random.random() < disc_rate:
+        disc_type = random.choices(
+            ["app_promo", "coupon", "loyalty_promo"], weights=[50, 30, 20]
+        )[0]
+        if disc_type == "app_promo":
+            discount_amount = round(subtotal * 0.10, 2)
+        elif disc_type == "coupon":
+            discount_amount = round(random.uniform(2.0, 5.0), 2)
+        else:
+            tier = _member_tier(member_id) if is_member else "bronze"
+            pct = 0.15 if tier in ("gold", "platinum") else 0.10
+            discount_amount = round(subtotal * pct, 2)
+        discount_amount = min(discount_amount, subtotal)
+
+        # Distribute discount proportionally to line items
+        for item in item_rows:
+            item_disc = round(item["line_gross_amount"] / subtotal * discount_amount, 2) \
+                if subtotal > 0 else 0.0
+            item["line_discount_amount"] = item_disc
+            item["line_net_amount"] = round(item["line_gross_amount"] - item_disc, 2)
+
+        subtotal = round(sum(item["line_net_amount"] for item in item_rows), 2)
+
     tax = round(subtotal * _TAX_RATE, 2)
     total = round(subtotal + tax, 2)
 
@@ -88,7 +126,7 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
         "profile_id": guest_id,
         "member_id": member_id,
         "subtotal": subtotal,
-        "discount_amount": 0.0,
+        "discount_amount": discount_amount,
         "tax_amount": tax,
         "total_amount": total if not is_cancelled else 0.0,
         "placed_at": placed_at,

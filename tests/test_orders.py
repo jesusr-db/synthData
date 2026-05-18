@@ -83,6 +83,40 @@ def test_waste_flag_set_on_some_items_at_late_night():
         assert any(r["waste_flag"] for r in all_items), \
             "Expected some waste_flag=True at late-night high-volume"
 
+def test_some_orders_have_discounts():
+    ctx = _ctx()
+    reg = _registry()
+    all_orders = []
+    for _ in range(30):
+        all_orders.extend(r for r in generate_orders_for_tick(ctx, reg, tick_seconds=3600)
+                          if r["event_type"] == "guest_order" and r["order_status"] == "fulfilled")
+    discounted = [o for o in all_orders if o.get("discount_amount", 0) > 0]
+    assert len(discounted) > 0, "Expected some discounted orders across 30 ticks"
+
+def test_discounted_order_math_is_correct():
+    ctx = _ctx()
+    reg = _registry()
+    all_rows = []
+    for _ in range(30):
+        all_rows.extend(generate_orders_for_tick(ctx, reg, tick_seconds=3600))
+    discounted_orders = [r for r in all_rows if r["event_type"] == "guest_order"
+                         and r.get("discount_amount", 0) > 0]
+    for o in discounted_orders:
+        assert abs(o["total_amount"] - (o["subtotal"] + o["tax_amount"])) < 0.02, \
+            f"total {o['total_amount']} != subtotal {o['subtotal']} + tax {o['tax_amount']}"
+
+def test_line_net_amount_equals_gross_minus_discount():
+    ctx = _ctx()
+    reg = _registry()
+    rows = []
+    for _ in range(10):
+        rows.extend(generate_orders_for_tick(ctx, reg, tick_seconds=3600))
+    for item in rows:
+        if item["event_type"] == "order_item":
+            expected = round(item["line_gross_amount"] - item["line_discount_amount"], 2)
+            assert abs(item["line_net_amount"] - expected) < 0.02, \
+                f"line_net {item['line_net_amount']} != gross {item['line_gross_amount']} - disc {item['line_discount_amount']}"
+
 def test_cancelled_items_have_higher_waste_rate_than_fulfilled():
     ctx = build_context(1, datetime(2025, 9, 19, 21, 0), 2.0)
     reg = _registry()
