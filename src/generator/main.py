@@ -62,15 +62,17 @@ DOMAIN_TABLE_MAP = {
 
 def write_batch(rows: list[dict]):
     """Route rows by event_type to the appropriate staging Delta table."""
-    by_table: dict[str, list[dict]] = defaultdict(list)
+    # Group by (table, event_type) — same event_type guarantees a uniform schema
+    # per createDataFrame call (mixed types produce AXIS_LENGTH_MISMATCH errors)
+    by_table_event: dict[tuple, list[dict]] = defaultdict(list)
     for row in rows:
         et = row.get("event_type")
         if et in DOMAIN_TABLE_MAP:
-            by_table[DOMAIN_TABLE_MAP[et]].append(row)
+            by_table_event[(DOMAIN_TABLE_MAP[et], et)].append(row)
         else:
             print(f"[WARN] Unknown event_type '{et}' — skipped")
-    for table, table_rows in by_table.items():
-        df = spark.createDataFrame([Row(**r) for r in table_rows])
+    for (table, _), event_rows in by_table_event.items():
+        df = spark.createDataFrame(event_rows)
         df.write.format("delta").mode("append").saveAsTable(table)
 
 
