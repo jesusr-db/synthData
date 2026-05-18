@@ -1,15 +1,17 @@
 # Databricks notebook source
 # COMMAND ----------
 import sys
-import yaml
-from pathlib import Path
 
-# Load params — injected as widgets or read from conf/params.yml
+_nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+_bundle_root = "/Workspace" + "/".join(_nb_path.replace("/Workspace", "").split("/")[:-3])
+if _bundle_root not in sys.path:
+    sys.path.insert(0, _bundle_root)
+
+# COMMAND ----------
 try:
     catalog_name = dbutils.widgets.get("catalog_name")
 except Exception:
-    params = yaml.safe_load(Path("/Workspace/conf/params.yml").read_text())
-    catalog_name = params["catalog_name"]
+    catalog_name = "jmrdemo"
 
 print(f"[INFO] Destroy: catalog={catalog_name}")
 
