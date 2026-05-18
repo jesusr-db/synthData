@@ -2,6 +2,8 @@ resources:
   jobs:
     setup_job:
       name: "QSR Setup [${bundle.target}]"
+      tags:
+        project: qsr-synth-data-generator
       tasks:
         - task_key: setup
           notebook_task:
@@ -9,3 +11,19 @@ resources:
             base_parameters:
               catalog_name: ${var.catalog_name}
               num_units: ${var.num_units}
+
+        - task_key: start_pipeline
+          depends_on:
+            - task_key: setup
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.mvm_pipeline.id}
+
+        - task_key: backfill
+          depends_on:
+            - task_key: setup
+          notebook_task:
+            notebook_path: ../src/generator/main.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
+              num_units: ${var.num_units}
+              mode: backfill

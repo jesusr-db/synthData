@@ -14,3 +14,5 @@ resources:
       clusters:
         - label: default
           num_workers: 2
+      tags:
+        project: qsr-synth-data-generator

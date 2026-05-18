@@ -2,6 +2,8 @@ resources:
   jobs:
     destroy_job:
       name: "QSR Destroy [${bundle.target}]"
+      tags:
+        project: qsr-synth-data-generator
       tasks:
         - task_key: destroy
           notebook_task:

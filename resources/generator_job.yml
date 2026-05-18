@@ -2,10 +2,12 @@ resources:
   jobs:
     generator_job:
       name: "QSR Generator Live [${bundle.target}]"
+      tags:
+        project: qsr-synth-data-generator
       schedule:
         quartz_cron_expression: "0 * * * * ?"
         timezone_id: "UTC"
-        pause_status: UNPAUSED
+        pause_status: PAUSED
       tasks:
         - task_key: generate
           notebook_task:

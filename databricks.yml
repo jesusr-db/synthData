@@ -3,21 +3,21 @@ bundle:
 
 variables:
   catalog_name:
-    default: qsr_synth
+    default: jmrdemo
   num_units:
     default: "250"
   backfill_months:
     default: "12"
 
 workspace:
-  host: https://e2-demo-field-eng.cloud.databricks.com
+  profile: DEFAULT
 
 targets:
   dev:
     mode: development
     default: true
     workspace:
-      profile: aws
+      profile: DEFAULT
   prod:
     mode: production
     workspace:
