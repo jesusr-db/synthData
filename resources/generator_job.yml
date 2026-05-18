@@ -25,3 +25,9 @@ resources:
               live_tick_seconds: ${var.live_tick_seconds}
               base_orders_per_unit_per_hour: ${var.base_orders_per_unit_per_hour}
               mode: live
+
+        - task_key: trigger_pipeline
+          depends_on:
+            - task_key: generate
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.mvm_pipeline.id}
