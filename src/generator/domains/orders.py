@@ -25,6 +25,7 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
     fp_id = registry.financial_period_for_date(placed_at.date())
     is_cancelled = should_cancel(ctx.cancellation_rate, channel)
     status = "cancelled" if is_cancelled else "fulfilled"
+    late_night = ctx.hour_of_day >= 20
 
     num_items = random.choices([1, 2, 3, 4, 5], weights=[20, 35, 25, 15, 5])[0]
     item_rows = []
@@ -61,7 +62,7 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
             "line_net_amount": line_gross,
             "line_discount_amount": 0.0,
             "item_status": item_status,
-            "waste_flag": False,
+            "waste_flag": random.random() < (0.15 if is_cancelled else (0.03 if late_night else 0.02)),
             "placed_at": placed_at,
         })
 

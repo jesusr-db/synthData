@@ -71,3 +71,31 @@ def test_fulfilled_items_have_valid_status():
     items = [r for r in rows if r["event_type"] == "order_item" and r["guest_order_id"] in fulfilled_ids]
     valid = {"fulfilled", "refunded"}
     assert all(r["item_status"] in valid for r in items)
+
+def test_waste_flag_set_on_some_items_at_late_night():
+    ctx = build_context(1, datetime(2025, 9, 19, 21, 0), 2.0)
+    reg = _registry()
+    all_items = []
+    for _ in range(15):
+        rows = generate_orders_for_tick(ctx, reg, tick_seconds=3600)
+        all_items.extend(r for r in rows if r["event_type"] == "order_item")
+    if len(all_items) > 20:
+        assert any(r["waste_flag"] for r in all_items), \
+            "Expected some waste_flag=True at late-night high-volume"
+
+def test_cancelled_items_have_higher_waste_rate_than_fulfilled():
+    ctx = build_context(1, datetime(2025, 9, 19, 21, 0), 2.0)
+    reg = _registry()
+    fulfilled_items, cancelled_items = [], []
+    for _ in range(30):
+        rows = generate_orders_for_tick(ctx, reg, tick_seconds=3600)
+        fulfilled_items.extend(r for r in rows if r["event_type"] == "order_item"
+                                and r.get("item_status") == "fulfilled")
+        cancelled_items.extend(r for r in rows if r["event_type"] == "order_item"
+                                and r.get("item_status") == "cancelled")
+    if not fulfilled_items or not cancelled_items:
+        return
+    fulfilled_rate = sum(1 for r in fulfilled_items if r["waste_flag"]) / len(fulfilled_items)
+    cancelled_rate = sum(1 for r in cancelled_items if r["waste_flag"]) / len(cancelled_items)
+    assert cancelled_rate > fulfilled_rate, \
+        f"Expected cancelled waste rate ({cancelled_rate:.3f}) > fulfilled ({fulfilled_rate:.3f})"
