@@ -72,7 +72,12 @@ def write_batch(rows: list[dict]):
         else:
             print(f"[WARN] Unknown event_type '{et}' — skipped")
     for (table, _), event_rows in by_table_event.items():
-        df = spark.createDataFrame(event_rows)
+        # PySpark cannot infer type for columns that are None in every row;
+        # drop them here — mergeSchema fills the gap with NULL in Delta.
+        all_keys = {k for r in event_rows for k in r}
+        present_keys = {k for k in all_keys if any(r.get(k) is not None for r in event_rows)}
+        cleaned = [{k: r.get(k) for k in present_keys} for r in event_rows]
+        df = spark.createDataFrame(cleaned)
         df.write.format("delta").mode("append").option("mergeSchema", "true").saveAsTable(table)
 
 
