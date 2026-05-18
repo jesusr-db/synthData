@@ -1,10 +1,15 @@
 # Databricks notebook source
 # COMMAND ----------
 import sys
-import yaml
-from pathlib import Path
 
-# Load params — injected as widgets or read from conf/params.yml
+# Add bundle root to sys.path so `src.*` imports resolve when run as a job
+_nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+_bundle_root = "/Workspace" + "/".join(_nb_path.replace("/Workspace", "").split("/")[:-3])
+if _bundle_root not in sys.path:
+    sys.path.insert(0, _bundle_root)
+
+# COMMAND ----------
+# Load params — injected as job widgets (all params live in databricks.yml variables)
 try:
     catalog_name = dbutils.widgets.get("catalog_name")
     num_units = int(dbutils.widgets.get("num_units"))
@@ -13,12 +18,12 @@ try:
     base_orders = int(dbutils.widgets.get("base_orders_per_unit_per_hour"))
     mode = dbutils.widgets.get("mode")  # "backfill" or "live"
 except Exception:
-    params = yaml.safe_load(Path("/Workspace/conf/params.yml").read_text())
-    catalog_name = params["catalog_name"]
-    num_units = params["num_units"]
-    backfill_months = params["backfill_months"]
-    live_tick_seconds = params["live_tick_seconds"]
-    base_orders = params["base_orders_per_unit_per_hour"]
+    # Defaults for interactive execution — always use job parameters in deployment
+    catalog_name = "jmrdemo"
+    num_units = 250
+    backfill_months = 12
+    live_tick_seconds = 60
+    base_orders = 18
     mode = "live"
 
 # COMMAND ----------

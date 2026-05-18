@@ -15,4 +15,6 @@ resources:
             base_parameters:
               catalog_name: ${var.catalog_name}
               num_units: ${var.num_units}
+              live_tick_seconds: ${var.live_tick_seconds}
+              base_orders_per_unit_per_hour: ${var.base_orders_per_unit_per_hour}
               mode: live

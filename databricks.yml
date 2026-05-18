@@ -8,6 +8,10 @@ variables:
     default: "250"
   backfill_months:
     default: "12"
+  live_tick_seconds:
+    default: "60"
+  base_orders_per_unit_per_hour:
+    default: "18"
 
 workspace:
   profile: DEFAULT
