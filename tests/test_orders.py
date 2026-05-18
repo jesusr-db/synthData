@@ -134,6 +134,27 @@ def test_cancelled_items_have_higher_waste_rate_than_fulfilled():
     assert cancelled_rate > fulfilled_rate, \
         f"Expected cancelled waste rate ({cancelled_rate:.3f}) > fulfilled ({fulfilled_rate:.3f})"
 
+def test_catering_orders_have_higher_aov_than_carryout():
+    reg = EntityRegistry(units=generate_units(3), menu_items=get_menu_items(),
+                          bom=get_recipe_ingredients(),
+                          financial_periods=build_financial_periods_data(1))
+    ctx = build_context(1, datetime(2025, 9, 19, 12, 0), 1.0)
+
+    def mean_aov_for_channel(ch):
+        totals = []
+        for _ in range(100):
+            rows = generate_orders_for_tick(ctx, reg, tick_seconds=3600)
+            totals.extend(r["total_amount"] for r in rows
+                          if r["event_type"] == "guest_order"
+                          and r["channel"] == ch and r["order_status"] == "fulfilled")
+        return sum(totals) / len(totals) if totals else 0
+
+    aov_catering = mean_aov_for_channel("catering")
+    aov_carryout = mean_aov_for_channel("carryout")
+    if aov_catering > 0 and aov_carryout > 0:
+        assert aov_catering > aov_carryout * 2, \
+            f"Catering AOV ({aov_catering:.2f}) should be >2x carryout ({aov_carryout:.2f})"
+
 def test_units_have_market_price_index():
     units = generate_units(10)
     for u in units:

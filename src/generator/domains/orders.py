@@ -39,13 +39,18 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
     late_night = ctx.hour_of_day >= 20
 
     num_items = random.choices([1, 2, 3, 4, 5], weights=[20, 35, 25, 15, 5])[0]
+    if channel == "catering":
+        num_items *= random.randint(3, 8)
     item_rows = []
     subtotal = 0.0
     for i in range(num_items):
         menu_item = registry.random_menu_item(placed_at.hour)
         mid = menu_item["menu_item_id"]
         qty = 1 if menu_item["category"] != "drinks" else random.choice([1, 2])
-        unit_price = round(registry.get_menu_item(mid)["base_price"] * registry.unit_price_index(ctx.unit_id), 2)
+        base_price = registry.get_menu_item(mid)["base_price"]
+        price_mult = registry.item_price_multiplier(mid, fp_id)
+        market_idx = registry.unit_price_index(ctx.unit_id)
+        unit_price = round(base_price * price_mult * market_idx, 2)
         if channel == "3pd_delivery":
             unit_price = round(unit_price + 1.25, 2)
         line_gross = round(unit_price * qty, 2)

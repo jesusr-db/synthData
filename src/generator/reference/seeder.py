@@ -40,6 +40,24 @@ def build_financial_periods_data(backfill_months: int = 12) -> list[dict]:
         period_id += 1
     return rows
 
+def build_item_price_data(financial_periods: list[dict]) -> list[dict]:
+    """Per (menu_item, financial_period) price multiplier that drifts ±3-6% per quarter."""
+    import random
+    from src.generator.reference.menu_catalog import get_menu_items
+    items = get_menu_items()
+    rows = []
+    for item in items:
+        multiplier = 1.0
+        for period in sorted(financial_periods, key=lambda p: p["start_date"]):
+            drift = random.uniform(-0.03, 0.06)
+            multiplier = round(max(0.7, min(1.4, multiplier * (1 + drift))), 4)
+            rows.append({
+                "menu_item_id": item["menu_item_id"],
+                "financial_period_id": period["financial_period_id"],
+                "price_multiplier": multiplier,
+            })
+    return rows
+
 def build_suppliers_data() -> list[dict]:
     return [
         {"supplier_id": 1, "supplier_name": "US Foods", "category": "food_beverage", "status": "active"},
@@ -62,7 +80,9 @@ def seed_all(spark, catalog: str, num_units: int = 250, backfill_months: int = 1
 
     write(build_units_df_data(num_units), "unit")
     write(build_franchisees_data(num_units), "franchisee")
-    write(build_financial_periods_data(backfill_months), "financial_period")
+    periods = build_financial_periods_data(backfill_months)
+    write(periods, "financial_period")
+    write(build_item_price_data(periods), "item_price")
     write(build_suppliers_data(), "supplier")
     write(get_menu_items(), "menu_item")
     write(get_recipe_ingredients(), "recipe_ingredient")

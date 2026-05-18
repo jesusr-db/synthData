@@ -6,7 +6,8 @@ class EntityRegistry:
     """In-memory lookup of all seeded entity IDs for FK consistency."""
 
     def __init__(self, units: list[dict], menu_items: list[dict], bom: list[dict],
-                 financial_periods: list[dict], num_guests_per_unit: int = 200):
+                 financial_periods: list[dict], num_guests_per_unit: int = 200,
+                 item_prices: list[dict] | None = None):
         self._units = units
         self._unit_ids = [u["unit_id"] for u in units]
         self._unit_by_id = {u["unit_id"]: u for u in units}
@@ -17,6 +18,10 @@ class EntityRegistry:
         for row in bom:
             self._bom_by_item.setdefault(row["menu_item_id"], []).append(row)
         self._periods = sorted(financial_periods, key=lambda p: p["start_date"])
+
+        self._item_price_mult: dict[tuple[int, int], float] = {}
+        for row in (item_prices or []):
+            self._item_price_mult[(row["menu_item_id"], row["financial_period_id"])] = row["price_multiplier"]
 
         # Pre-generate a guest pool per unit: IDs 1..N * num_units
         self._guest_pool: dict[int, list[int]] = {}
@@ -74,6 +79,9 @@ class EntityRegistry:
     def unit_price_index(self, unit_id: int) -> float:
         return self._unit_by_id[unit_id].get("market_price_index", 1.0)
 
+    def item_price_multiplier(self, menu_item_id: int, financial_period_id) -> float:
+        return self._item_price_mult.get((menu_item_id, financial_period_id), 1.0)
+
     def financial_period_for_date(self, d: date) -> Optional[int]:
         d_str = d.isoformat()
         for p in self._periods:
@@ -88,4 +96,6 @@ class EntityRegistry:
         menu = [r.asDict() for r in spark.table(f"{catalog}.ref.menu_item").collect()]
         bom = [r.asDict() for r in spark.table(f"{catalog}.ref.recipe_ingredient").collect()]
         periods = [r.asDict() for r in spark.table(f"{catalog}.ref.financial_period").collect()]
-        return cls(units=units, menu_items=menu, bom=bom, financial_periods=periods)
+        item_prices = [r.asDict() for r in spark.table(f"{catalog}.ref.item_price").collect()]
+        return cls(units=units, menu_items=menu, bom=bom, financial_periods=periods,
+                   item_prices=item_prices)

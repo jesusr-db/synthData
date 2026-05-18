@@ -4,6 +4,17 @@ from src.generator.reference.seeder import (
     build_suppliers_data
 )
 
+def test_build_item_price_data_returns_valid_multipliers():
+    from src.generator.reference.seeder import build_item_price_data
+    periods = build_financial_periods_data(6)
+    rows = build_item_price_data(periods)
+    assert len(rows) > 0
+    for row in rows:
+        assert "menu_item_id" in row
+        assert "financial_period_id" in row
+        assert 0.7 <= row["price_multiplier"] <= 1.4, \
+            f"price_multiplier {row['price_multiplier']} out of bounds"
+
 def test_build_units_returns_correct_count():
     rows = build_units_df_data(num_units=10)
     assert len(rows) == 10
