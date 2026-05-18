@@ -14,7 +14,6 @@ def _next_inv_id() -> int:
 def generate_inventory_events(ctx: CausalContext, registry: EntityRegistry,
                                order_rows: list[dict]) -> list[dict]:
     rows = []
-    # Decrement on_hand_balance for each order_item sold
     depleted: dict[str, float] = {}
     for row in order_rows:
         if row["event_type"] != "order_item":
@@ -27,9 +26,12 @@ def generate_inventory_events(ctx: CausalContext, registry: EntityRegistry,
     for sku, qty_used in depleted.items():
         par_level = 20.0
         on_hand = max(0.0, par_level - qty_used + random.uniform(0, 5))
+        ohb_id = _next_inv_id()
         rows.append({
             "event_type": "on_hand_balance",
-            "on_hand_balance_id": _next_inv_id(),
+            "event_id": ohb_id,
+            "event_ts": ctx.timestamp,
+            "on_hand_balance_id": ohb_id,
             "unit_id": ctx.unit_id,
             "stock_sku": sku,
             "quantity_on_hand": round(on_hand, 3),
@@ -37,12 +39,14 @@ def generate_inventory_events(ctx: CausalContext, registry: EntityRegistry,
             "par_level": par_level,
             "snapshot_at": ctx.timestamp,
         })
-        # Waste events: ~3% of prep volume, skewed late-night
         if should_waste(ctx.waste_probability, ctx.hour_of_day):
             waste_qty = round(qty_used * random.uniform(0.02, 0.06), 3)
+            wl_id = _next_inv_id()
             rows.append({
                 "event_type": "waste_log",
-                "waste_log_id": _next_inv_id(),
+                "event_id": wl_id,
+                "event_ts": ctx.timestamp,
+                "waste_log_id": wl_id,
                 "unit_id": ctx.unit_id,
                 "stock_sku": sku,
                 "waste_quantity": waste_qty,
@@ -50,11 +54,13 @@ def generate_inventory_events(ctx: CausalContext, registry: EntityRegistry,
                 "waste_cost": round(waste_qty * 2.5, 2),
                 "logged_at": ctx.timestamp,
             })
-        # Trigger replenishment if on_hand drops below 25% of PAR
         if on_hand < par_level * 0.25:
+            rpl_id = _next_inv_id()
             rows.append({
                 "event_type": "replenishment_order",
-                "replenishment_order_id": _next_inv_id(),
+                "event_id": rpl_id,
+                "event_ts": ctx.timestamp,
+                "replenishment_order_id": rpl_id,
                 "unit_id": ctx.unit_id,
                 "stock_sku": sku,
                 "order_type": "auto_par",
@@ -66,13 +72,17 @@ def generate_inventory_events(ctx: CausalContext, registry: EntityRegistry,
     return rows
 
 def generate_daily_receiving(unit_id: int, reg: EntityRegistry,
-                              order_date: str) -> list[dict]:
+                              order_date: str,
+                              tick_ts: datetime | None = None) -> list[dict]:
     """Simulate daily supplier delivery restocking PAR levels."""
     rows = []
     for sku in _all_skus(reg):
+        rcv_id = _next_inv_id()
         rows.append({
             "event_type": "receiving_order",
-            "receiving_order_id": _next_inv_id(),
+            "event_id": rcv_id,
+            "event_ts": tick_ts,
+            "receiving_order_id": rcv_id,
             "unit_id": unit_id,
             "stock_sku": sku,
             "received_quantity": round(random.uniform(15, 30), 2),

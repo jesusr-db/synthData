@@ -38,9 +38,12 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
             unit_price += 0.75
         line_gross = round(unit_price * qty, 2)
         subtotal += line_gross
+        item_id = order_id * 10 + i
         item_rows.append({
             "event_type": "order_item",
-            "order_item_id": order_id * 10 + i,
+            "event_id": item_id,
+            "event_ts": ctx.timestamp,
+            "order_item_id": item_id,
             "guest_order_id": order_id,
             "unit_id": ctx.unit_id,
             "menu_item_id": mid,
@@ -61,13 +64,14 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
     is_cancelled = should_cancel(ctx.cancellation_rate, channel)
     status = "cancelled" if is_cancelled else "fulfilled"
 
-    # guest_order row
     prep_secs = prep_time_seconds(channel)
     ready_at = placed_at + timedelta(seconds=prep_secs)
     sos_breach = should_breach_sos(ctx.sos_breach_probability)
 
     rows.append({
         "event_type": "guest_order",
+        "event_id": order_id,
+        "event_ts": ctx.timestamp,
         "guest_order_id": order_id,
         "unit_id": ctx.unit_id,
         "channel": channel,
@@ -90,7 +94,6 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
 
     if not is_cancelled:
         rows.extend(item_rows)
-        # status events: placed → preparing → ready → fulfilled
         for j, (state_from, state_to, delta_secs) in enumerate([
             ("placed", "preparing", 60),
             ("preparing", "ready", prep_secs),
@@ -98,6 +101,8 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
         ]):
             rows.append({
                 "event_type": "status_event",
+                "event_id": order_id * 10 + j,
+                "event_ts": ctx.timestamp,
                 "status_event_id": order_id * 10 + j,
                 "guest_order_id": order_id,
                 "unit_id": ctx.unit_id,
@@ -108,10 +113,11 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
                 "sos_target_seconds": 720 if channel == "carryout" else 1800,
                 "is_sos_breach": sos_breach and state_to == "ready",
             })
-        # payment
         tender = tender_for_order(ctx, is_member)
         rows.append({
             "event_type": "payment",
+            "event_id": order_id,
+            "event_ts": ctx.timestamp,
             "payment_id": order_id,
             "guest_order_id": order_id,
             "unit_id": ctx.unit_id,
@@ -120,10 +126,11 @@ def _build_order(ctx: CausalContext, registry: EntityRegistry,
             "settlement_date": placed_at.date().isoformat(),
             "paid_at": placed_at,
         })
-        # delivery order for delivery channels
         if "delivery" in channel:
             rows.append({
                 "event_type": "delivery_order",
+                "event_id": order_id,
+                "event_ts": ctx.timestamp,
                 "delivery_order_id": order_id,
                 "guest_order_id": order_id,
                 "unit_id": ctx.unit_id,

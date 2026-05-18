@@ -1,4 +1,5 @@
 import random
+from datetime import datetime
 from faker import Faker
 
 _fake = Faker()
@@ -11,7 +12,8 @@ def _next_guest_id() -> int:
 
 def generate_new_guest_profiles(unit_id: int, date_str: str,
                                  growth_rate: float = 0.008,
-                                 base_pool: int = 500) -> list[dict]:
+                                 base_pool: int = 500,
+                                 tick_ts: datetime | None = None) -> list[dict]:
     """~0.8% of base_pool guests are new per day per unit."""
     n = max(0, round(base_pool * growth_rate * random.gauss(1.0, 0.3)))
     rows = []
@@ -19,6 +21,8 @@ def generate_new_guest_profiles(unit_id: int, date_str: str,
         gid = _next_guest_id()
         rows.append({
             "event_type": "guest_profile",
+            "event_id": gid,
+            "event_ts": tick_ts,
             "guest_profile_id": gid,
             "unit_id": unit_id,
             "first_name": _fake.first_name(),
@@ -27,7 +31,7 @@ def generate_new_guest_profiles(unit_id: int, date_str: str,
             "phone": _fake.phone_number()[:20],
             "zip_code": _fake.zipcode(),
             "created_date": date_str,
-            "digital_account_id": gid,  # 1:1 for simplicity
+            "digital_account_id": gid,
             "account_status": "active",
         })
     return rows

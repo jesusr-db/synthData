@@ -5,7 +5,7 @@ from typing import Iterator
 from src.generator.causal_context import build_context
 from src.generator.entity_registry import EntityRegistry
 from src.generator.domains.orders import generate_orders_for_tick
-from src.generator.domains.inventory import generate_inventory_events
+from src.generator.domains.inventory import generate_inventory_events, generate_daily_receiving
 from src.generator.domains.guest import generate_new_guest_profiles
 from src.generator.domains.loyalty import generate_loyalty_events
 from src.generator.domains.workforce import generate_shift_events
@@ -61,9 +61,11 @@ def backfill_ticks(
                         uid,
                         current.date().isoformat(),
                         projected_orders=base_orders_per_hour * 12,
+                        tick_ts=current,
                     )
                 )
-                batch.extend(generate_new_guest_profiles(uid, current.date().isoformat()))
+                batch.extend(generate_new_guest_profiles(uid, current.date().isoformat(), tick_ts=current))
+                batch.extend(generate_daily_receiving(uid, registry, current.date().isoformat(), tick_ts=current))
         yield batch
         current += timedelta(seconds=tick_seconds)
 

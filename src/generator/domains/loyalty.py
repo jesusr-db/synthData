@@ -34,15 +34,17 @@ def generate_loyalty_events(ctx: CausalContext, registry: EntityRegistry,
         if total <= 0:
             continue
 
-        # Estimate lifetime spend from member_id (hash-based for determinism)
         lifetime_spend = (mid * 47) % 4000
         tier = _tier_for_spend(lifetime_spend)
         multiplier = _points_multiplier(tier)
         points_earned = int(total * 10 * multiplier)
 
+        lt_id = _next_id()
         rows.append({
             "event_type": "loyalty_transaction",
-            "loyalty_transaction_id": _next_id(),
+            "event_id": lt_id,
+            "event_ts": ctx.timestamp,
+            "loyalty_transaction_id": lt_id,
             "member_id": mid,
             "guest_order_id": order["guest_order_id"],
             "unit_id": ctx.unit_id,
@@ -52,12 +54,14 @@ def generate_loyalty_events(ctx: CausalContext, registry: EntityRegistry,
             "tier": tier,
         })
 
-        # ~8% of members redeem a reward this visit
         if random.random() < 0.08:
             redeem_points = random.choice([100, 200, 500])
+            rr_id = _next_id()
             rows.append({
                 "event_type": "reward_redemption",
-                "reward_redemption_id": _next_id(),
+                "event_id": rr_id,
+                "event_ts": ctx.timestamp,
+                "reward_redemption_id": rr_id,
                 "member_id": mid,
                 "guest_order_id": order["guest_order_id"],
                 "unit_id": ctx.unit_id,
