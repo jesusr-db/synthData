@@ -117,6 +117,7 @@ spark.sql(f"""
         delivery_date               STRING,
         quality_inspection_result   STRING,
         temperature_check_pass      BOOLEAN,
+        order_type                  STRING,
         order_quantity              DOUBLE,
         order_status                STRING,
         ordered_at                  TIMESTAMP
