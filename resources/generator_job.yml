@@ -8,11 +8,20 @@ resources:
         quartz_cron_expression: "0 * * * * ?"
         timezone_id: "UTC"
         pause_status: PAUSED
+      environments:
+        - environment_key: generator
+          spec:
+            client: "1"
+            dependencies:
+              - faker>=20.0.0
       tasks:
         - task_key: generate
+          environment_key: generator
           notebook_task:
             notebook_path: ../src/generator/main.py
             base_parameters:
               catalog_name: ${var.catalog_name}
               num_units: ${var.num_units}
+              live_tick_seconds: ${var.live_tick_seconds}
+              base_orders_per_unit_per_hour: ${var.base_orders_per_unit_per_hour}
               mode: live

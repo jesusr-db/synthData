@@ -4,6 +4,12 @@ resources:
       name: "QSR Setup [${bundle.target}]"
       tags:
         project: qsr-synth-data-generator
+      environments:
+        - environment_key: generator
+          spec:
+            client: "1"
+            dependencies:
+              - faker>=20.0.0
       tasks:
         - task_key: setup
           notebook_task:
@@ -17,13 +23,18 @@ resources:
             - task_key: setup
           pipeline_task:
             pipeline_id: ${resources.pipelines.mvm_pipeline.id}
+            full_refresh: true
 
         - task_key: backfill
           depends_on:
             - task_key: setup
+          environment_key: generator
           notebook_task:
             notebook_path: ../src/generator/main.py
             base_parameters:
               catalog_name: ${var.catalog_name}
               num_units: ${var.num_units}
+              backfill_months: ${var.backfill_months}
+              live_tick_seconds: ${var.live_tick_seconds}
+              base_orders_per_unit_per_hour: ${var.base_orders_per_unit_per_hour}
               mode: backfill

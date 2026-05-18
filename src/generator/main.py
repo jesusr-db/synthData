@@ -1,10 +1,15 @@
 # Databricks notebook source
 # COMMAND ----------
 import sys
-import yaml
-from pathlib import Path
 
-# Load params — injected as widgets or read from conf/params.yml
+# Add bundle root to sys.path so `src.*` imports resolve when run as a job
+_nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+_bundle_root = "/Workspace" + "/".join(_nb_path.replace("/Workspace", "").split("/")[:-3])
+if _bundle_root not in sys.path:
+    sys.path.insert(0, _bundle_root)
+
+# COMMAND ----------
+# Load params — injected as job widgets (all params live in databricks.yml variables)
 try:
     catalog_name = dbutils.widgets.get("catalog_name")
     num_units = int(dbutils.widgets.get("num_units"))
@@ -13,12 +18,12 @@ try:
     base_orders = int(dbutils.widgets.get("base_orders_per_unit_per_hour"))
     mode = dbutils.widgets.get("mode")  # "backfill" or "live"
 except Exception:
-    params = yaml.safe_load(Path("/Workspace/conf/params.yml").read_text())
-    catalog_name = params["catalog_name"]
-    num_units = params["num_units"]
-    backfill_months = params["backfill_months"]
-    live_tick_seconds = params["live_tick_seconds"]
-    base_orders = params["base_orders_per_unit_per_hour"]
+    # Defaults for interactive execution — always use job parameters in deployment
+    catalog_name = "jmrdemo"
+    num_units = 250
+    backfill_months = 1
+    live_tick_seconds = 60
+    base_orders = 18
     mode = "live"
 
 # COMMAND ----------
@@ -57,21 +62,55 @@ DOMAIN_TABLE_MAP = {
 
 def write_batch(rows: list[dict]):
     """Route rows by event_type to the appropriate staging Delta table."""
-    by_table: dict[str, list[dict]] = defaultdict(list)
+    # Group by (table, event_type) — same event_type guarantees a uniform schema
+    # per createDataFrame call (mixed types produce AXIS_LENGTH_MISMATCH errors)
+    by_table_event: dict[tuple, list[dict]] = defaultdict(list)
     for row in rows:
         et = row.get("event_type")
         if et in DOMAIN_TABLE_MAP:
-            by_table[DOMAIN_TABLE_MAP[et]].append(row)
+            by_table_event[(DOMAIN_TABLE_MAP[et], et)].append(row)
         else:
             print(f"[WARN] Unknown event_type '{et}' — skipped")
-    for table, table_rows in by_table.items():
-        df = spark.createDataFrame([Row(**r) for r in table_rows])
-        df.write.format("delta").mode("append").saveAsTable(table)
+    for (table, _), event_rows in by_table_event.items():
+        # PySpark cannot infer type for columns that are None in every row;
+        # drop them here — mergeSchema fills the gap with NULL in Delta.
+        all_keys = {k for r in event_rows for k in r}
+        present_keys = {k for k in all_keys if any(r.get(k) is not None for r in event_rows)}
+        cleaned = [{k: r.get(k) for k in present_keys} for r in event_rows]
+        df = spark.createDataFrame(cleaned)
+        df.write.format("delta").mode("append").option("mergeSchema", "true").saveAsTable(table)
 
 
 # COMMAND ----------
+def _latest_staging_ts():
+    """Return the max event_ts across all staging tables, or None if tables are empty."""
+    from datetime import timedelta
+    STAGING_TABLES = [
+        f"{catalog_name}.staging.order_events",
+        f"{catalog_name}.staging.inventory_events",
+        f"{catalog_name}.staging.guest_events",
+        f"{catalog_name}.staging.loyalty_events",
+        f"{catalog_name}.staging.workforce_events",
+    ]
+    max_ts = None
+    for table in STAGING_TABLES:
+        row = spark.sql(f"SELECT MAX(event_ts) AS ts FROM {table}").collect()[0]
+        if row.ts is not None:
+            ts = row.ts.replace(tzinfo=None) if hasattr(row.ts, 'tzinfo') else row.ts
+            if max_ts is None or ts > max_ts:
+                max_ts = ts
+    if max_ts is None:
+        return None
+    # Advance to next full hour to avoid re-generating the last partial tick
+    return (max_ts.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
+
+
 if mode == "backfill":
-    print(f"[INFO] Starting backfill: {backfill_months} months, catalog={catalog_name}")
+    start_dt = _latest_staging_ts()
+    if start_dt is not None:
+        print(f"[INFO] Rehydrating from latest staging timestamp: {start_dt}")
+    else:
+        print(f"[INFO] No existing data — backfilling {backfill_months} month(s), catalog={catalog_name}")
     total_rows = 0
     for i, batch in enumerate(
         backfill_ticks(
@@ -79,6 +118,7 @@ if mode == "backfill":
             backfill_months,
             tick_seconds=3600,
             base_orders_per_hour=base_orders,
+            start_dt=start_dt,
         )
     ):
         write_batch(batch)

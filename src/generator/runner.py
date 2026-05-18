@@ -5,7 +5,7 @@ from typing import Iterator
 from src.generator.causal_context import build_context
 from src.generator.entity_registry import EntityRegistry
 from src.generator.domains.orders import generate_orders_for_tick
-from src.generator.domains.inventory import generate_inventory_events
+from src.generator.domains.inventory import generate_inventory_events, generate_daily_receiving
 from src.generator.domains.guest import generate_new_guest_profiles
 from src.generator.domains.loyalty import generate_loyalty_events
 from src.generator.domains.workforce import generate_shift_events
@@ -41,12 +41,13 @@ def backfill_ticks(
     backfill_months: int,
     tick_seconds: int = 3600,
     base_orders_per_hour: int = 18,
+    start_dt: datetime | None = None,
 ) -> Iterator[list[dict]]:
-    """Yield batches of rows for all units, one hour at a time, from N months ago to now."""
+    """Yield batches of rows for all units, one hour at a time, from start_dt (or N months ago) to now."""
     from dateutil.relativedelta import relativedelta
 
     now = datetime.now().replace(minute=0, second=0, microsecond=0)
-    start = now - relativedelta(months=backfill_months)
+    start = start_dt if start_dt is not None else now - relativedelta(months=backfill_months)
     current = start
     while current <= now:
         batch = []
@@ -60,9 +61,11 @@ def backfill_ticks(
                         uid,
                         current.date().isoformat(),
                         projected_orders=base_orders_per_hour * 12,
+                        tick_ts=current,
                     )
                 )
-                batch.extend(generate_new_guest_profiles(uid, current.date().isoformat()))
+                batch.extend(generate_new_guest_profiles(uid, current.date().isoformat(), tick_ts=current))
+                batch.extend(generate_daily_receiving(uid, registry, current.date().isoformat(), tick_ts=current))
         yield batch
         current += timedelta(seconds=tick_seconds)
 
