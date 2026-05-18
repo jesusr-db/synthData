@@ -1,0 +1,116 @@
+project: qsr-synth-data-generator
+description: >
+  Build a fully automated QSR synthetic data generator that streams realistic,
+  referentially consistent Domino's-style restaurant data into 153 MVM Unity
+  Catalog tables on Databricks. A Python SCM-driven generator job writes to
+  Bronze staging Delta tables; a Spark Declarative Pipeline (DLT) reads those
+  tables and writes all MVM Silver + Gold metric tables. Everything deploys via
+  databricks bundle deploy.
+
+plan: docs/superpowers/plans/2026-05-15-qsr-synthetic-data-generator.md
+
+agents:
+  - name: foundation-engineer
+    type: dynamic
+    registered_agent: .agent-team/agents/foundation-engineer.md
+    model: sonnet
+    phase: 1
+    parallel_group: foundation
+
+  - name: domain-orders-engineer
+    type: dynamic
+    registered_agent: .agent-team/agents/domain-orders-engineer.md
+    model: sonnet
+    phase: 2
+    parallel_group: domain-generators
+
+  - name: domain-inventory-engineer
+    type: dynamic
+    registered_agent: .agent-team/agents/domain-inventory-engineer.md
+    model: sonnet
+    phase: 2
+    parallel_group: domain-generators
+
+  - name: domain-glw-engineer
+    type: dynamic
+    registered_agent: .agent-team/agents/domain-glw-engineer.md
+    model: sonnet
+    phase: 2
+    parallel_group: domain-generators
+
+  - name: integration-engineer
+    type: dynamic
+    registered_agent: .agent-team/agents/integration-engineer.md
+    model: sonnet
+    phase: 3
+    parallel_group: integration-dlt
+
+  - name: dlt-pipeline-engineer
+    type: dynamic
+    registered_agent: .agent-team/agents/dlt-pipeline-engineer.md
+    model: sonnet
+    phase: 3
+    parallel_group: integration-dlt
+
+  - name: setup-engineer
+    type: dynamic
+    registered_agent: .agent-team/agents/setup-engineer.md
+    model: sonnet
+    phase: 4
+    parallel_group: setup
+
+  - name: qa-engineer
+    type: curated
+    registered_agent: agents/qa-engineer.md
+    model: sonnet
+    phase: 5
+    parallel_group: qa
+
+  - name: deploy-engineer
+    type: curated
+    registered_agent: agents/deploy-engineer.md
+    model: sonnet
+    phase: 6
+    parallel_group: deploy
+
+phases:
+  - id: 1
+    name: foundation
+    description: Project scaffold + core Python SCM modules (Tasks 1–7)
+    agents: [foundation-engineer]
+    parallel_groups: [[foundation-engineer]]
+
+  - id: 2
+    name: domain-generators
+    description: Order, Inventory, Guest/Loyalty/Workforce domain generators (Tasks 8–10)
+    agents: [domain-orders-engineer, domain-inventory-engineer, domain-glw-engineer]
+    parallel_groups: [[domain-orders-engineer, domain-inventory-engineer, domain-glw-engineer]]
+    depends_on: [1]
+
+  - id: 3
+    name: integration-and-dlt
+    description: Generator runner + Databricks main.py + DLT pipeline (Tasks 11–14)
+    agents: [integration-engineer, dlt-pipeline-engineer]
+    parallel_groups: [[integration-engineer, dlt-pipeline-engineer]]
+    depends_on: [2]
+
+  - id: 4
+    name: setup-and-resources
+    description: Setup/destroy notebooks, DAB resources, requirements, smoke tests (Tasks 15–17)
+    agents: [setup-engineer]
+    parallel_groups: [[setup-engineer]]
+    depends_on: [3]
+
+  - id: 5
+    name: qa
+    description: Full validation — pytest suite, contract compliance, DAB validate
+    agents: [qa-engineer]
+    parallel_groups: [[qa-engineer]]
+    depends_on: [4]
+
+  - id: 6
+    name: deploy
+    description: Finalize bundle manifest, run databricks bundle deploy --target dev
+    agents: [deploy-engineer]
+    parallel_groups: [[deploy-engineer]]
+    depends_on: [5]

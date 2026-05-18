@@ -1,9 +1,39 @@
-version: 1
+# INCREMENTAL FEATURE RUN: phase-25-and-phase-2-implementations (2026-05-18)
+# Previous build progress archived in team-manifest.previous.yaml
+version: 2
 project: qsr-synthetic-data-generator
-last_updated: "2026-05-15T15:35:00-04:00"
+last_updated: "2026-05-18T17:31:00-04:00"
 
 phases:
   - id: 1
+    name: feature-implementation
+    status: pending
+    agents:
+      - generator-realism-engineer
+      - catalog-enrichment-engineer
+    branches:
+      - feat/phase-25-generator-realism
+      - feat/phase-2-catalog-enrichment
+    steps:
+      dispatch_agents: pending
+      await_agents: pending
+    outputs: []
+    errors: []
+
+  - id: 2
+    name: qa
+    status: pending
+    depends_on: [1]
+    agents:
+      - qa-engineer
+    steps:
+      dispatch_agents: pending
+      await_agents: pending
+    outputs: []
+    errors: []
+
+# --- Original build history below (all phases completed) ---
+  - id: build-1
     name: foundation
     status: completed
     agents:
