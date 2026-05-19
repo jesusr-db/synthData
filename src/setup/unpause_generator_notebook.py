@@ -1,6 +1,10 @@
 # Databricks notebook source
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "../.."))
+import sys
+
+_notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+_bundle_root = "/Workspace" + "/".join(_notebook_path.replace("/Workspace", "").split("/")[:-3])
+if _bundle_root not in sys.path:
+    sys.path.insert(0, _bundle_root)
 
 # COMMAND ----------
 
