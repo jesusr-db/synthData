@@ -218,6 +218,46 @@ def test_hourly_window_timestamps_span_full_hour():
     assert len(distinct_minutes) >= 30, f"Only {len(distinct_minutes)} distinct minutes — timestamps not spread"
 
 
+def test_backfill_ticks_daily_events_fire_once_per_day_with_60s_ticks():
+    """Daily events (shifts, guest profiles) must fire exactly once in the 10am hour regardless of tick_seconds."""
+    from datetime import datetime
+    from src.generator.runner import backfill_ticks
+    from src.generator.entity_registry import EntityRegistry
+    from src.generator.reference.us_locations import generate_units
+    from src.generator.reference.menu_catalog import get_menu_items, get_recipe_ingredients
+    from src.generator.reference.seeder import build_financial_periods_data
+
+    reg = EntityRegistry(
+        units=generate_units(2),
+        menu_items=get_menu_items(),
+        bom=get_recipe_ingredients(),
+        financial_periods=build_financial_periods_data(1),
+    )
+    start = datetime(2025, 9, 19, 10, 0)   # 10am
+    end   = datetime(2025, 9, 19, 11, 0)   # 11am (exclusive)
+
+    all_rows = []
+    for batch in backfill_ticks(reg, backfill_months=1, tick_seconds=60,
+                                 base_orders_per_hour=18, start_dt=start, end_dt=end):
+        all_rows.extend(batch)
+
+    # Each unit should have exactly 1 shift generated (not 60)
+    shift_rows = [r for r in all_rows if r.get("event_type") == "shift"]
+    # 2 units × 1 shift per unit = 2 shifts (each unit gets some shifts per day)
+    # We just verify it's not 60x more than expected — compare to hourly tick output
+    all_rows_hourly = []
+    for batch in backfill_ticks(reg, backfill_months=1, tick_seconds=3600,
+                                 base_orders_per_hour=18, start_dt=start, end_dt=end):
+        all_rows_hourly.extend(batch)
+
+    shift_rows_hourly = [r for r in all_rows_hourly if r.get("event_type") == "shift"]
+    # 60-second ticks must produce the same number of shifts as 1-hour tick
+    assert len(shift_rows) == len(shift_rows_hourly), (
+        f"60s ticks produced {len(shift_rows)} shifts but 3600s ticks produced {len(shift_rows_hourly)} — "
+        f"daily event guard is firing multiple times"
+    )
+
+
 def test_live_tick_returns_list_of_dicts():
     from src.generator.runner import live_tick
     from src.generator.entity_registry import EntityRegistry

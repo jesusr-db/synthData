@@ -56,8 +56,8 @@ def backfill_ticks(
         for unit in registry.all_units():
             uid = unit["unit_id"]
             batch.extend(build_tick_rows(uid, current, registry, tick_seconds, base_orders_per_hour))
-            # Daily events on the first tick of each day (10:00 AM)
-            if current.hour == 10:
+            # Daily events on the first tick of each day (10:00 AM, minute==0 guards against sub-hour ticks firing multiple times)
+            if current.hour == 10 and current.minute == 0:
                 batch.extend(
                     generate_shift_events(
                         uid,
