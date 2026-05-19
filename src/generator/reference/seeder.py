@@ -76,7 +76,7 @@ def seed_all(spark, catalog: str, num_units: int = 250, backfill_months: int = 1
         if not data:
             return
         df = spark.createDataFrame([Row(**r) for r in data])
-        df.write.format("delta").mode("overwrite").saveAsTable(f"{catalog}.ref.{table}")
+        df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{catalog}.ref.{table}")
 
     write(build_units_df_data(num_units), "unit")
     write(build_franchisees_data(num_units), "franchisee")
