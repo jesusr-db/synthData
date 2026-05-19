@@ -2,204 +2,115 @@
 
 ## Current State (as of 2026-05-18)
 
-- Backfill complete: 1-month window (Apr 18 – May 18, 2026), ~12.6M rows across 5 staging tables
-- DLT pipeline: 19 silver tables populated, triggered per live generator run
-- Live generator: running every minute, Poisson demand model, ~2,600 rows/tick
-- Setup job: fully automated (setup → pipeline → backfill → unpause_generator)
-- Auto-rehydrate: backfill resumes from MAX(event_ts) on re-run
+- Backfill complete: 1-month window, ~12.6M rows across 5 staging tables
+- DLT pipeline: 14 silver + 4 gold tables, triggered per live generator run
+- Live generator: running every minute, Poisson demand model
+- Setup job: 7-task graph, fully automated end-to-end
+- **Phase 2.5 complete:** 7 generator realism fixes — discounts, item status, waste flags, loyalty redeem, waste categories, guest churn, AOV variance
+- **Phase 2 complete:** Catalog metadata (comments + PK/FK), 5 metric views, Genie Space
 
 ---
 
-## Phase 2 — Catalog Enrichment + Genie Space
+## ✅ Phase 2.5 — Generator Realism Fixes
 
-Source: [amralieg/vibe-business-data-models/restaurants/mvm_v1](https://github.com/amralieg/vibe-business-data-models/tree/main/restaurants/mvm_v1)
+> Branch: `feat/phase-25-generator-realism` — 8 commits, 71 tests
 
-### 2.1 Table & Column Descriptions
+All fixes are in `src/generator/domains/` and `src/generator/reference/`. No schema or DLT changes.
 
-**What:** Apply full-sentence descriptions to every silver table and column in Unity Catalog.
+### Fix 1 — Order Discounts (`orders.py`) ✅
 
-**How:** Parse the 14 DDL files from the data model repo. Each column has a `COMMENT` clause. Apply via:
-```sql
-COMMENT ON TABLE jmrdemo.silver.guest_order IS '...';
-ALTER TABLE jmrdemo.silver.guest_order ALTER COLUMN guest_order_id COMMENT '...';
-```
+~12% of fulfilled orders receive a discount (app promo, coupon, or loyalty promo). Discount distributed proportionally across line items. `line_net_amount` and `subtotal` recalculated correctly. Members get 20% discount rate vs 8% for non-members.
 
-**Automate:** New `apply_catalog_metadata` notebook task in setup_job. Runs after `start_pipeline`.
+### Fix 2 — Order Item Status (`orders.py`) ✅
 
----
+Cancelled orders emit all items with `item_status = "cancelled"`. ~1% of fulfilled-order items get `item_status = "refunded"`. Previously all items were `"fulfilled"` regardless of order outcome.
 
-### 2.2 PK/FK Constraints
+### Fix 3 — Waste Flags on Order Items (`orders.py`) ✅
 
-**What:** Register primary key and foreign key relationships on all silver tables so UC lineage and Genie can understand entity relationships.
+`waste_flag` now set on ~2% of items; ~15% of cancelled-order items; ~3% at late night (hour ≥ 20). Previously always `false`.
 
-**How:**
-- PKs: named `CONSTRAINT pk_<table> PRIMARY KEY(...)` inline — apply via `ALTER TABLE ... ADD CONSTRAINT`
-- FKs: 827 cross-domain constraints in `restaurants_cross_domain_foreign_keys_v1_mvm.sql` — apply via `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY (...) REFERENCES ...`
+### Fix 4 — Loyalty Redemption Transactions (`loyalty.py`) ✅
 
-**Automate:** Same `apply_catalog_metadata` notebook. Run after descriptions.
+Every `reward_redemption` event now emits a paired `loyalty_transaction` with `transaction_type = "redeem"` and `points_delta < 0`. Previously all loyalty transactions were earn-only.
 
----
+### Fix 5 — Waste Categories (`inventory.py`) ✅
 
-### 2.3 UC Metric Views
+`waste_category` sampled from weighted distribution: overproduction 50%, spoilage 25%, theft 10%, expired 10%, damaged 5%. Previously always `"overproduction"`.
 
-**What:** Create `metrics` schema views on top of gold tables for direct use in Genie and BI tools.
+### Fix 6 — Guest Account Status (`guest.py`, `runner.py`) ✅
 
-**Planned views (from design spec):**
-- `metrics.unit_daily_summary` — orders, revenue, SOS compliance per unit per day
-- `metrics.loyalty_tier_distribution` — member count and avg spend by tier
-- `metrics.inventory_waste_rate` — waste as % of usage by unit/week
-- `metrics.staff_utilization` — scheduled vs actual hours, no-show rate
-- `metrics.channel_mix_trend` — 3PD vs own delivery vs carryout share over time
+New registrations: ~3% `"inactive"`, ~0.5% `"suspended"`, remainder `"active"`. Daily churn: ~0.2% of guest pool per unit emits profile update to `"inactive"`. Previously 100% `"active"`.
 
-**Automate:** New `create_metric_views` notebook task in setup_job. Runs after `apply_catalog_metadata`.
+### Fix 7 — AOV Variance (`orders.py`, `entity_registry.py`, `us_locations.py`, `seeder.py`) ✅
+
+Three levers implemented:
+- **7a:** `market_price_index` (0.85–1.25) per unit applied to all item prices; 3PD markup raised to $1.25
+- **7b:** Catering orders multiply `num_items` by 3–8× for realistic bulk-order AOV
+- **7c:** `ref.item_price` table seeds per-(menu_item, period) price multiplier drifting ±3–6% per quarter
 
 ---
 
-### 2.4 Genie Space
+## ✅ Phase 2 — Catalog Enrichment + Genie Space
 
-**What:** A pre-configured Genie Space scoped to the QSR dataset with curated instructions, verified questions, and suggested queries.
+> Branch: `feat/phase-2-catalog-enrichment` — 5 commits
 
-**How:** Genie Spaces are not DAB-manageable — create via REST API:
-```
-POST /api/2.0/genie/spaces
-```
-Include:
-- Title and description
-- Table references (all silver + metrics views)
-- Curated instructions (domain context: Domino's-style QSR, channel mix, loyalty tiers)
-- Seed questions: "Which units have the highest SOS breach rate?", "Show me loyalty tier distribution this month", etc.
+### 2.1 Table & Column Descriptions ✅
 
-**Automate:** New `create_genie_space` notebook task in setup_job. Runs last (after metric views exist).
+`src/setup/apply_catalog_metadata.py` applies `COMMENT ON TABLE` and `ALTER COLUMN COMMENT` to all 14 silver tables. Subset of highest-value columns annotated with business-friendly descriptions sourced from the MVM v1 data model.
 
----
+### 2.2 PK/FK Constraints ✅
 
-## Updated Setup Job Task Order (Phase 2)
+Same notebook adds informational (NOT ENFORCED) primary key and foreign key constraints to all silver tables. Unity Catalog uses these for lineage and Genie relationship inference.
 
-```
-setup
-  └── start_pipeline (full_refresh=true)
-  └── backfill
-        └── apply_catalog_metadata   ← NEW: descriptions + PK/FK
-              └── create_metric_views  ← NEW: UC metric views on gold
-                    └── create_genie_space  ← NEW: Genie Space via REST API
-                          └── unpause_generator
-```
+### 2.3 UC Metric Views ✅
 
----
+`src/setup/create_metric_views.py` creates 5 views in `jmrdemo.metrics`:
 
-## Phase 2.5 — Data Quality Fixes (Generator Realism)
-
-Six data quality gaps identified via silver table analysis. All fixes are in the generator layer — no DLT or schema changes needed.
-
-### Fix 1 — Order Discounts (`orders.py`)
-
-**Gap:** `line_discount_amount` and `discount_amount` are 0.00 on 100% of records.
-
-**Fix:** ~12% of orders receive a discount (app promo, coupon, loyalty promo):
-- Pick discount type: app (10% off subtotal), coupon (flat $2–$5), loyalty promo (15% off for gold/platinum)
-- Apply proportionally to `line_discount_amount` on each item; set `discount_amount` on `guest_order`
-- Recalculate `line_net_amount = line_gross - line_discount`, `subtotal`, `total_amount`
-- Discount rate higher for loyalty members (20% vs 8% for non-members)
-
----
-
-### Fix 2 — Order Item Status (`orders.py`)
-
-**Gap:** `item_status` is "fulfilled" for 100% of records. Cancelled orders still emit items as fulfilled.
-
-**Fix:**
-- If parent order is cancelled → `item_status = "cancelled"` on all items
-- ~1% of fulfilled-order items get `item_status = "refunded"` (post-fulfillment refund)
-- Remaining fulfilled as before
-
----
-
-### Fix 3 — Waste Flags on Order Items (`orders.py`)
-
-**Gap:** `waste_flag = false` on all 4M+ items despite 35K waste_log events in inventory.
-
-**Fix:** ~2% of order items get `waste_flag = True`:
-- Higher rate on cancelled orders (~15% of cancelled items → waste)
-- Higher rate at end of day (hour >= 20): +1.5× multiplier (matches `should_waste` in entropy.py)
-- Correlates item-level waste with the existing inventory waste_log events
-
----
-
-### Fix 4 — Loyalty Redemption (Burn) Transactions (`loyalty.py`)
-
-**Gap:** `loyalty_transaction.transaction_type` is exclusively "earn". Reward redemptions exist in `reward_redemption` table but no corresponding debit in `loyalty_transaction`.
-
-**Fix:** When generating a `reward_redemption` event, also emit a `loyalty_transaction` with:
-- `transaction_type = "redeem"`
-- `points_delta = -redeem_points` (negative — points deducted)
-- Same `member_id`, `guest_order_id`, `transaction_at`
-
-Result: loyalty_transaction will have both earn and redeem records; burn rate ~8% of orders with members.
-
----
-
-### Fix 5 — Waste Categories (`inventory.py`)
-
-**Gap:** `waste_category` is "overproduction" for 100% of waste events.
-
-**Fix:** Sample from realistic category distribution:
-| Category | Weight |
+| View | Description |
 |---|---|
-| overproduction | 50% |
-| spoilage | 25% |
-| theft | 10% |
-| expired | 10% |
-| damaged | 5% |
+| `unit_daily_summary` | Orders, revenue, AOV, SOS breach % per unit per day |
+| `loyalty_tier_distribution` | Member counts, earn/redeem by tier and month |
+| `inventory_waste_rate` | Waste qty/cost as % of inventory usage by unit/week/SKU |
+| `staff_utilization` | Scheduled vs actual hours, no-show rate per unit per day |
+| `channel_mix_trend` | Order share and revenue share by channel per unit per week |
+
+All views use `CREATE OR REPLACE VIEW` — safe to re-run.
+
+### 2.4 Genie Space ✅
+
+`src/setup/create_genie_space.py` creates a Genie Space via `POST /api/2.0/genie/spaces`. Idempotent (skips if space with same title exists). Includes:
+- 14 silver tables + 5 metrics views as table references
+- Domain instructions (channel mix, loyalty tiers, SOS targets, price drift, waste patterns)
+- 10 seed questions covering SOS, loyalty, channel mix, waste, staffing, AOV
+
+### Updated Setup Job ✅
+
+```
+setup → start_pipeline → apply_catalog_metadata → create_metric_views → create_genie_space
+setup → backfill ──────────────────────────────────────────────────────────────────────────┐
+                                                                                            └── unpause_generator
+```
 
 ---
 
-### Fix 6 — Guest Account Status (`guest.py`)
+## Deployment Notes
 
-**Gap:** `account_status = "active"` for 100% of guest profiles.
+See `docs/handoff.md` for full deploy + test instructions. Summary:
 
-**Fix (two parts):**
-1. New guest registrations: ~3% created as `"inactive"` (email unverified), ~0.5% as `"suspended"` (fraud flag)
-2. Daily churn events: ~0.2% of existing guest pool per unit per day generates a profile update event with `account_status = "inactive"` — models natural churn/account deletion
-
----
-
-### Fix 7 — AOV Variance (`orders.py`, `entity_registry.py`, reference data)
-
-**Gap:** Average order value is ~$26.50 across all units, channels, and dates — no meaningful variation. Real QSR AOV varies 30–60% across these dimensions.
-
-**Root causes:**
-- Menu item prices are flat with no per-unit market adjustment
-- Item mix (num_items, category selection) doesn't vary by channel or daypart beyond minor weights
-- `unit_volume_bias` affects order *count* but not order *value*
-- Price drift (±3–6% quarterly, per design spec) is not implemented yet
-
-**Fix (three levers):**
-
-1. **Per-unit price index** (`ref.unit` seeded field): assign each unit a `market_price_index` between 0.85–1.25 at seed time (urban flagship vs suburban low-cost). Apply multiplier to `unit_price` in every order item. Expected AOV range: $22–$33.
-
-2. **Channel uplift**: catering orders should be 3–8× AOV (larger quantities, bulk items). 3PD already adds $0.75/item; increase to $1.25 and add a per-order 3PD platform fee (~$3.50) to `discount_amount` offset or a separate fee field.
-
-3. **Quarterly price drift** (per design spec, unimplemented): each `menu_item` gets a `price_multiplier` that drifts ±3–6% per quarter. Seed price history in `ref.item_price` and apply at order time based on `financial_period_id`.
-
-**Expected outcome:** AOV range $18–$85 depending on unit market index, channel, and quarter. Mean stays near $26 but with realistic std dev of ~$8.
+- **Phase 2.5 requires a full rebuild** — `ref.item_price` is a new table that `EntityRegistry.from_spark()` loads; the generator job will fail if it doesn't exist.
+- **Phase 2 is additive** — can be applied to a live workspace without destroying data.
+- **Both together:** merge → deploy → destroy_job → setup_job.
 
 ---
 
-### Implementation Notes
+## Phase 3 — External Signal Integration
 
-- All 6 fixes are isolated to `src/generator/domains/` — no schema, DLT, or job changes
-- Fixes 1–5 apply to both backfill and live modes (same code path)
-- Fix 6 applies to `generate_new_guest_profiles()` (new registrations) and a new `generate_guest_churn()` daily function in `runner.py`
-- After implementing: destroy existing data, run setup_job to regenerate clean 1-month backfill with correct distributions
+> Status: Not started
 
----
-
-## Phase 3 — External Signal Integration (from original design spec)
-
-- `ref.weather_conditions` — currently empty stub; populate with weather API
-- `ref.local_events` — currently empty stub; populate with events API
-- Causal model upgrade: weather + local events feed into `CausalContext` as real inputs
-- Marketing domain: campaigns, promotions, loyalty program config
+- `ref.weather_conditions` — empty stub; populate with NOAA or weather API
+- `ref.local_events` — empty stub; populate with events API or manual seeding
+- Causal model upgrade: weather + local events feed into `CausalContext` as real demand multipliers
+- Marketing domain: campaigns, promotions, loyalty program configuration
 
 ---
 
@@ -207,9 +118,10 @@ Result: loyalty_transaction will have both earn and redeem records; burn rate ~8
 
 | Issue | Status |
 |---|---|
-| `shift`/`time_punch` not generated in live ticks (only backfill daily @ 10:00) | Known — by design; workforce is daily |
-| `digital_account` events never generated | Gap — `guest.py` generates `guest_profile` but not `digital_account` |
-| `order_modifier` event type in DOMAIN_TABLE_MAP but never generated | Gap — no modifier generator implemented |
+| `digital_account` event type never generated | Gap — `guest.py` generates `guest_profile` but not `digital_account` |
+| `order_modifier` event type in DOMAIN_TABLE_MAP but never generated | Gap — no modifier generator |
 | `stock_transfer` and `adjustment` in DOMAIN_TABLE_MAP but never generated | Gap — inventory domain incomplete |
 | `receiving_order` only generated at 10:00 AM daily | By design — daily receiving window |
-| DLT pipeline in triggered mode (dev target forces non-continuous) | Known limitation — pipeline triggered per generator run |
+| `shift`/`time_punch` only generated in backfill daily ticks, not live | By design — workforce is daily |
+| DLT pipeline in triggered mode | Known — DAB dev target forces non-continuous; use prod target for continuous |
+| Genie Space API endpoint may require workspace preview flag | Verify before prod deploy |

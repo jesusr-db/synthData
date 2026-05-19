@@ -25,6 +25,30 @@ resources:
             pipeline_id: ${resources.pipelines.mvm_pipeline.id}
             full_refresh: true
 
+        - task_key: apply_catalog_metadata
+          depends_on:
+            - task_key: start_pipeline
+          notebook_task:
+            notebook_path: ../src/setup/apply_catalog_metadata.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
+
+        - task_key: create_metric_views
+          depends_on:
+            - task_key: apply_catalog_metadata
+          notebook_task:
+            notebook_path: ../src/setup/create_metric_views.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
+
+        - task_key: create_genie_space
+          depends_on:
+            - task_key: create_metric_views
+          notebook_task:
+            notebook_path: ../src/setup/create_genie_space.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
+
         - task_key: backfill
           depends_on:
             - task_key: setup
@@ -42,6 +66,7 @@ resources:
         - task_key: unpause_generator
           depends_on:
             - task_key: backfill
+            - task_key: create_genie_space
           notebook_task:
             notebook_path: ../src/setup/unpause_generator_notebook.py
             base_parameters:
