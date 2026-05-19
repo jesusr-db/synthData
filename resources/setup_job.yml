@@ -21,9 +21,10 @@ resources:
         - task_key: start_pipeline
           depends_on:
             - task_key: setup
-          pipeline_task:
-            pipeline_id: ${resources.pipelines.mvm_pipeline.id}
-            full_refresh: false
+          notebook_task:
+            notebook_path: ../src/setup/start_pipeline_notebook.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
 
         - task_key: apply_catalog_metadata
           depends_on:
