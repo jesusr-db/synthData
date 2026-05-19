@@ -15,10 +15,9 @@
 A fully automated QSR synthetic data generator (Domino's-style, 250 units):
 
 - **Staging layer:** Python generator writes to 5 Delta tables in `jmrdemo.staging`
-- **Silver layer:** DLT pipeline reads staging via `readStream`, produces 14 Silver tables in `jmrdemo.silver`
+- **Silver layer:** Lakeflow Declarative Pipeline reads staging via `readStream`, produces 14 Silver tables in `jmrdemo.silver` — table/column comments, PK, and FK constraints declared inline in `@dp.table` decorators so they survive every pipeline refresh
 - **Gold layer:** 4 Gold aggregate tables in `jmrdemo.silver` (co-located with silver in DLT)
 - **Metrics layer:** 4 Unity Catalog metric views in `jmrdemo.metrics` (WITH METRICS LANGUAGE YAML — reusable measures + dimensions)
-- **Catalog metadata:** UC table/column comments + informational PK/FK constraints on all silver tables
 - **Genie Space:** Pre-configured with domain instructions, 10 seed questions, all silver + metrics tables
 
 ---
@@ -28,7 +27,7 @@ A fully automated QSR synthetic data generator (Domino's-style, 250 units):
 | Resource | Type | Notes |
 |---|---|---|
 | QSR MVM Pipeline [dev] | DLT Pipeline (triggered) | Triggered per generator run |
-| QSR Setup [dev] | Job (7 tasks) | Run to rebuild from scratch |
+| QSR Setup [dev] | Job (6 tasks) | Run to rebuild from scratch |
 | QSR Generator Live [dev] | Job (every-minute cron) | UNPAUSED — running live |
 | QSR Destroy [dev] | Job (teardown) | Ready — tears down non-DAB objects |
 
@@ -41,10 +40,9 @@ All resources tagged: `project: qsr-synth-data-generator`
 ```
 setup (seeds ref tables incl. ref.item_price)
   ├── start_pipeline (full_refresh if checkpoint broken) → silver + gold tables
-  │     └── apply_catalog_metadata (UC comments + PK/FK)
-  │           └── create_metric_views (4 UC metric views in metrics schema)
-  │                 └── create_genie_space (REST API — requires warehouse_id)
-  │                       └── unpause_generator ←┐
+  │     └── create_metric_views (4 UC metric views in metrics schema)
+  │           └── create_genie_space (REST API — requires warehouse_id)
+  │                 └── unpause_generator ←┐
   └── backfill (1-month history, incremental from last staging ts) ──┘
 ```
 
@@ -71,10 +69,9 @@ src/generator/domains/guest.py              # guest profiles + churn events
 src/generator/reference/us_locations.py     # unit seeder (includes market_price_index)
 src/generator/reference/seeder.py           # seed_all() — overwriteSchema=true for ref.unit
 src/generator/entity_registry.py           # FK registry (unit_price_index, item_price_multiplier)
-src/pipeline/mvm_pipeline.py               # DLT pipeline (14 silver + 4 gold tables)
+src/pipeline/mvm_pipeline.py               # Lakeflow Declarative Pipeline (14 silver + 4 gold tables; all metadata inline)
 src/setup/setup_notebook.py                # schemas + staging tables (IF NOT EXISTS) + ref seed
 src/setup/start_pipeline_notebook.py       # idempotent pipeline start with full_refresh fallback
-src/setup/apply_catalog_metadata.py        # UC comments + PK/FK constraints
 src/setup/create_metric_views.py           # 4 UC metric views (WITH METRICS LANGUAGE YAML)
 src/setup/create_genie_space.py            # Genie Space via REST API
 src/setup/destroy_notebook.py             # teardown logic
@@ -136,7 +133,7 @@ databricks jobs run-now <setup_job_id> -p DEFAULT
 ```
 
 setup_job handles everything: catalog check → schemas → staging tables → ref seed →
-pipeline full_refresh (silver/gold) → catalog metadata → metric views → Genie Space →
+pipeline full_refresh (silver/gold) → metric views → Genie Space →
 backfill → unpause generator.
 
 ### Re-running after partial failure
@@ -205,6 +202,7 @@ pytest tests/ -v
 
 | Issue | Root Cause | Fix Applied |
 |---|---|---|
+| Column comments and PK/FK constraints lost on every pipeline refresh | DLT owns metadata for tables it materializes — externally-applied `COMMENT ON TABLE`, `ALTER COLUMN COMMENT`, and `ADD CONSTRAINT` are reset on each update | Declare `comment=` + `schema=` (with inline column `COMMENT` and `CONSTRAINT ... NOT ENFORCED`) directly in `@dp.table` decorators in `mvm_pipeline.py`; deleted `apply_catalog_metadata.py` |
 | DLT silver flows all fail after setup re-run | `CREATE OR REPLACE TABLE` on staging tables changes Delta table ID, breaking streaming checkpoints | Changed to `CREATE TABLE IF NOT EXISTS` in `setup_notebook.py` |
 | `start_pipeline` fails if generator triggers pipeline mid-run | Race condition — pipeline already has active update | `start_pipeline_notebook.py` waits for active update, falls back to `full_refresh` on failure |
 | `DELTA_METADATA_MISMATCH` on ref.unit | Phase 2.5 added `market_price_index` column; write lacked `overwriteSchema` | Added `.option("overwriteSchema", "true")` in `seeder.py` |

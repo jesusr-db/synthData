@@ -26,17 +26,9 @@ resources:
             base_parameters:
               catalog_name: ${var.catalog_name}
 
-        - task_key: apply_catalog_metadata
-          depends_on:
-            - task_key: start_pipeline
-          notebook_task:
-            notebook_path: ../src/setup/apply_catalog_metadata.py
-            base_parameters:
-              catalog_name: ${var.catalog_name}
-
         - task_key: create_metric_views
           depends_on:
-            - task_key: apply_catalog_metadata
+            - task_key: start_pipeline
           notebook_task:
             notebook_path: ../src/setup/create_metric_views.py
             base_parameters:

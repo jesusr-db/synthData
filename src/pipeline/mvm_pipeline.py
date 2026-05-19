@@ -1,6 +1,6 @@
 # Databricks notebook source
-# Spark Declarative Pipeline (DLT)
-import dlt
+# Spark Declarative Pipeline (Lakeflow Declarative Pipelines)
+from pyspark import pipelines as dp
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
     BooleanType,
@@ -17,9 +17,34 @@ catalog = spark.conf.get("pipeline.catalog", "qsr_synth")
 # --------------------------------------------------------------------------
 
 
-@dlt.table(name="guest_order", comment="MVM Silver: guest_order")
-@dlt.expect_or_drop("valid_total", "total_amount >= 0")
-@dlt.expect_or_drop("valid_unit", "unit_id IS NOT NULL")
+@dp.table(
+    name="guest_order",
+    comment="Each row is a completed or in-flight customer order placed at a QSR unit.",
+    schema="""
+        guest_order_id      BIGINT    COMMENT 'Surrogate primary key for the order.',
+        unit_id             BIGINT    COMMENT 'Restaurant unit where the order was placed.',
+        channel             STRING    COMMENT 'Order channel: carryout, own_delivery, 3pd_delivery, catering.',
+        order_type          STRING    COMMENT 'Broad order classification: dine_in, takeout, delivery.',
+        order_status        STRING    COMMENT 'Current order state: placed, in_progress, ready, fulfilled, cancelled.',
+        profile_id          BIGINT    COMMENT 'FK to guest_profile; null for anonymous orders.',
+        member_id           BIGINT,
+        subtotal            DOUBLE,
+        discount_amount     DOUBLE    COMMENT 'Dollar value of promotions or coupons applied.',
+        tax_amount          DOUBLE,
+        total_amount        DOUBLE    COMMENT 'Total order revenue including items, taxes, and fees.',
+        placed_at           TIMESTAMP COMMENT 'Timestamp when the order was submitted by the customer.',
+        ready_at            TIMESTAMP,
+        fulfilled_at        TIMESTAMP,
+        cancelled_at        TIMESTAMP,
+        financial_period_id BIGINT,
+        sos_breach          BOOLEAN   COMMENT 'True if the order exceeded the speed-of-service target for its channel.',
+        created_at          TIMESTAMP,
+        CONSTRAINT pk_guest_order PRIMARY KEY (guest_order_id) NOT ENFORCED,
+        CONSTRAINT fk_guest_order_profile FOREIGN KEY (profile_id) REFERENCES guest_profile(guest_profile_id) NOT ENFORCED
+    """,
+)
+@dp.expect_or_drop("valid_total", "total_amount >= 0")
+@dp.expect_or_drop("valid_unit", "unit_id IS NOT NULL")
 def guest_order():
     return (
         spark.readStream.table(f"{catalog}.staging.order_events")
@@ -47,8 +72,28 @@ def guest_order():
     )
 
 
-@dlt.table(name="order_item", comment="MVM Silver: order_item")
-@dlt.expect_or_drop("positive_price", "unit_price > 0")
+@dp.table(
+    name="order_item",
+    comment="Line items attached to a guest order, one row per menu item ordered.",
+    schema="""
+        order_item_id        BIGINT  COMMENT 'Surrogate primary key for the line item.',
+        guest_order_id       BIGINT  COMMENT 'FK to guest_order.',
+        unit_id              BIGINT,
+        menu_item_id         BIGINT,
+        quantity             INT     COMMENT 'Number of units of this item in the order.',
+        unit_price           DOUBLE  COMMENT 'Price charged per unit of this item.',
+        line_gross_amount    DOUBLE,
+        line_net_amount      DOUBLE,
+        line_discount_amount DOUBLE,
+        item_status          STRING,
+        waste_flag           BOOLEAN COMMENT 'True if this item was later flagged as waste.',
+        placed_at            TIMESTAMP,
+        created_at           TIMESTAMP,
+        CONSTRAINT pk_order_item PRIMARY KEY (order_item_id) NOT ENFORCED,
+        CONSTRAINT fk_order_item_guest_order FOREIGN KEY (guest_order_id) REFERENCES guest_order(guest_order_id) NOT ENFORCED
+    """,
+)
+@dp.expect_or_drop("positive_price", "unit_price > 0")
 def order_item():
     return (
         spark.readStream.table(f"{catalog}.staging.order_events")
@@ -71,7 +116,22 @@ def order_item():
     )
 
 
-@dlt.table(name="payment", comment="MVM Silver: payment")
+@dp.table(
+    name="payment",
+    comment="Payment transactions linked to guest orders, capturing tender type and amounts.",
+    schema="""
+        payment_id      BIGINT,
+        guest_order_id  BIGINT,
+        unit_id         BIGINT,
+        tender_type     STRING,
+        amount          DOUBLE,
+        settlement_date STRING,
+        paid_at         TIMESTAMP,
+        created_at      TIMESTAMP,
+        CONSTRAINT pk_payment PRIMARY KEY (payment_id) NOT ENFORCED,
+        CONSTRAINT fk_payment_guest_order FOREIGN KEY (guest_order_id) REFERENCES guest_order(guest_order_id) NOT ENFORCED
+    """,
+)
 def payment():
     return (
         spark.readStream.table(f"{catalog}.staging.order_events")
@@ -89,7 +149,24 @@ def payment():
     )
 
 
-@dlt.table(name="status_event", comment="MVM Silver: status_event")
+@dp.table(
+    name="status_event",
+    comment="Timestamped status transitions for guest orders (e.g., placed, in_progress, ready, delivered).",
+    schema="""
+        status_event_id                BIGINT,
+        guest_order_id                 BIGINT,
+        unit_id                        BIGINT,
+        prior_state                    STRING,
+        current_state                  STRING,
+        event_timestamp                TIMESTAMP,
+        elapsed_seconds_in_prior_state INT,
+        sos_target_seconds             INT,
+        is_sos_breach                  BOOLEAN,
+        created_at                     TIMESTAMP,
+        CONSTRAINT pk_status_event PRIMARY KEY (status_event_id) NOT ENFORCED,
+        CONSTRAINT fk_status_event_guest_order FOREIGN KEY (guest_order_id) REFERENCES guest_order(guest_order_id) NOT ENFORCED
+    """,
+)
 def status_event():
     return (
         spark.readStream.table(f"{catalog}.staging.order_events")
@@ -109,7 +186,22 @@ def status_event():
     )
 
 
-@dlt.table(name="delivery_order", comment="MVM Silver: delivery_order")
+@dp.table(
+    name="delivery_order",
+    comment="Delivery metadata for orders fulfilled via own or third-party delivery channels.",
+    schema="""
+        delivery_order_id          BIGINT,
+        guest_order_id             BIGINT,
+        unit_id                    BIGINT,
+        platform_order_reference   STRING,
+        estimated_delivery_seconds INT,
+        actual_delivery_seconds    INT,
+        delivery_status            STRING,
+        created_at                 TIMESTAMP,
+        CONSTRAINT pk_delivery_order PRIMARY KEY (delivery_order_id) NOT ENFORCED,
+        CONSTRAINT fk_delivery_order_guest_order FOREIGN KEY (guest_order_id) REFERENCES guest_order(guest_order_id) NOT ENFORCED
+    """,
+)
 def delivery_order():
     return (
         spark.readStream.table(f"{catalog}.staging.order_events")
@@ -132,8 +224,22 @@ def delivery_order():
 # --------------------------------------------------------------------------
 
 
-@dlt.table(name="on_hand_balance", comment="MVM Silver: on_hand_balance")
-@dlt.expect_or_drop("nonnegative_quantity", "quantity_on_hand >= 0")
+@dp.table(
+    name="on_hand_balance",
+    comment="Daily snapshot of on-hand inventory quantity and dollar value by SKU and unit.",
+    schema="""
+        on_hand_balance_id BIGINT,
+        unit_id            BIGINT,
+        stock_sku          STRING,
+        quantity_on_hand   DOUBLE,
+        quantity_reserved  DOUBLE,
+        par_level          DOUBLE,
+        snapshot_at        TIMESTAMP,
+        created_at         TIMESTAMP,
+        CONSTRAINT pk_on_hand_balance PRIMARY KEY (on_hand_balance_id) NOT ENFORCED
+    """,
+)
+@dp.expect_or_drop("nonnegative_quantity", "quantity_on_hand >= 0")
 def on_hand_balance():
     return (
         spark.readStream.table(f"{catalog}.staging.inventory_events")
@@ -151,7 +257,21 @@ def on_hand_balance():
     )
 
 
-@dlt.table(name="waste_log", comment="MVM Silver: waste_log")
+@dp.table(
+    name="waste_log",
+    comment="Recorded inventory waste events by SKU, unit, and waste category.",
+    schema="""
+        waste_log_id   BIGINT COMMENT 'Surrogate primary key for the waste event.',
+        unit_id        BIGINT COMMENT 'Restaurant unit where waste was recorded.',
+        stock_sku      STRING COMMENT 'Inventory SKU of the wasted item.',
+        waste_quantity DOUBLE,
+        waste_category STRING COMMENT 'Reason for waste: spoilage, over_prep, damage, expiry.',
+        waste_cost     DOUBLE,
+        logged_at      TIMESTAMP,
+        created_at     TIMESTAMP,
+        CONSTRAINT pk_waste_log PRIMARY KEY (waste_log_id) NOT ENFORCED
+    """,
+)
 def waste_log():
     return (
         spark.readStream.table(f"{catalog}.staging.inventory_events")
@@ -169,7 +289,21 @@ def waste_log():
     )
 
 
-@dlt.table(name="receiving_order", comment="MVM Silver: receiving_order")
+@dp.table(
+    name="receiving_order",
+    comment="Inbound inventory receiving records from suppliers to restaurant units.",
+    schema="""
+        receiving_order_id       BIGINT,
+        unit_id                  BIGINT,
+        stock_sku                STRING,
+        received_quantity        DOUBLE,
+        delivery_date            STRING,
+        quality_inspection_result STRING,
+        temperature_check_pass   BOOLEAN,
+        created_at               TIMESTAMP,
+        CONSTRAINT pk_receiving_order PRIMARY KEY (receiving_order_id) NOT ENFORCED
+    """,
+)
 def receiving_order():
     return (
         spark.readStream.table(f"{catalog}.staging.inventory_events")
@@ -187,7 +321,21 @@ def receiving_order():
     )
 
 
-@dlt.table(name="replenishment_order", comment="MVM Silver: replenishment_order")
+@dp.table(
+    name="replenishment_order",
+    comment="System-generated replenishment orders triggered when stock falls below par level.",
+    schema="""
+        replenishment_order_id BIGINT,
+        unit_id                BIGINT,
+        stock_sku              STRING,
+        order_type             STRING,
+        order_quantity         DOUBLE,
+        order_status           STRING,
+        ordered_at             TIMESTAMP,
+        created_at             TIMESTAMP,
+        CONSTRAINT pk_replenishment_order PRIMARY KEY (replenishment_order_id) NOT ENFORCED
+    """,
+)
 def replenishment_order():
     return (
         spark.readStream.table(f"{catalog}.staging.inventory_events")
@@ -210,7 +358,23 @@ def replenishment_order():
 # --------------------------------------------------------------------------
 
 
-@dlt.table(name="guest_profile", comment="MVM Silver: guest_profile")
+@dp.table(
+    name="guest_profile",
+    comment="Customer profile record created at loyalty enrollment or first online order.",
+    schema="""
+        guest_profile_id BIGINT  COMMENT 'Surrogate primary key for the guest profile.',
+        unit_id          BIGINT,
+        first_name       STRING,
+        last_name        STRING,
+        email            STRING,
+        phone            STRING,
+        zip_code         STRING,
+        created_date     STRING,
+        account_status   STRING  COMMENT 'Profile state: active, inactive, suspended.',
+        created_at       TIMESTAMP,
+        CONSTRAINT pk_guest_profile PRIMARY KEY (guest_profile_id) NOT ENFORCED
+    """,
+)
 def guest_profile():
     return (
         spark.readStream.table(f"{catalog}.staging.guest_events")
@@ -230,7 +394,18 @@ def guest_profile():
     )
 
 
-@dlt.table(name="digital_account", comment="MVM Silver: digital_account")
+@dp.table(
+    name="digital_account",
+    comment="Digital account and app credentials linked to a guest profile.",
+    schema="""
+        digital_account_id BIGINT,
+        guest_profile_id   BIGINT,
+        account_status     STRING,
+        created_date       STRING,
+        created_at         TIMESTAMP,
+        CONSTRAINT pk_digital_account PRIMARY KEY (digital_account_id) NOT ENFORCED
+    """,
+)
 def digital_account():
     return (
         spark.readStream.table(f"{catalog}.staging.guest_events")
@@ -250,7 +425,23 @@ def digital_account():
 # --------------------------------------------------------------------------
 
 
-@dlt.table(name="loyalty_transaction", comment="MVM Silver: loyalty_transaction")
+@dp.table(
+    name="loyalty_transaction",
+    comment="Points ledger for loyalty program earn and redeem events.",
+    schema="""
+        loyalty_transaction_id BIGINT    COMMENT 'Surrogate primary key for the loyalty event.',
+        member_id              BIGINT    COMMENT 'FK to guest_profile (loyalty member).',
+        guest_order_id         BIGINT,
+        unit_id                BIGINT,
+        transaction_type       STRING    COMMENT 'earn or redeem.',
+        points_delta           INT       COMMENT 'Points added (positive) or subtracted (negative) in this event.',
+        transaction_at         TIMESTAMP,
+        tier                   STRING    COMMENT 'Loyalty tier at the time of the transaction: bronze, silver, gold, platinum.',
+        created_at             TIMESTAMP,
+        CONSTRAINT pk_loyalty_transaction PRIMARY KEY (loyalty_transaction_id) NOT ENFORCED,
+        CONSTRAINT fk_loyalty_transaction_guest_order FOREIGN KEY (guest_order_id) REFERENCES guest_order(guest_order_id) NOT ENFORCED
+    """,
+)
 def loyalty_transaction():
     return (
         spark.readStream.table(f"{catalog}.staging.loyalty_events")
@@ -269,7 +460,22 @@ def loyalty_transaction():
     )
 
 
-@dlt.table(name="reward_redemption", comment="MVM Silver: reward_redemption")
+@dp.table(
+    name="reward_redemption",
+    comment="Records of loyalty reward redemptions applied to specific orders.",
+    schema="""
+        reward_redemption_id BIGINT,
+        member_id            BIGINT,
+        guest_order_id       BIGINT,
+        unit_id              BIGINT,
+        points_redeemed      INT,
+        reward_value         DOUBLE,
+        redeemed_at          TIMESTAMP,
+        created_at           TIMESTAMP,
+        CONSTRAINT pk_reward_redemption PRIMARY KEY (reward_redemption_id) NOT ENFORCED,
+        CONSTRAINT fk_reward_redemption_guest_order FOREIGN KEY (guest_order_id) REFERENCES guest_order(guest_order_id) NOT ENFORCED
+    """,
+)
 def reward_redemption():
     return (
         spark.readStream.table(f"{catalog}.staging.loyalty_events")
@@ -292,7 +498,22 @@ def reward_redemption():
 # --------------------------------------------------------------------------
 
 
-@dlt.table(name="shift", comment="MVM Silver: shift")
+@dp.table(
+    name="shift",
+    comment="Scheduled employee shifts at a unit, with planned start/end times.",
+    schema="""
+        shift_id    BIGINT,
+        unit_id     BIGINT,
+        employee_id BIGINT,
+        shift_label STRING,
+        shift_start TIMESTAMP,
+        shift_end   TIMESTAMP,
+        status      STRING,
+        date        STRING,
+        created_at  TIMESTAMP,
+        CONSTRAINT pk_shift PRIMARY KEY (shift_id) NOT ENFORCED
+    """,
+)
 def shift():
     return (
         spark.readStream.table(f"{catalog}.staging.workforce_events")
@@ -311,7 +532,20 @@ def shift():
     )
 
 
-@dlt.table(name="time_punch", comment="MVM Silver: time_punch")
+@dp.table(
+    name="time_punch",
+    comment="Actual clock-in/clock-out records for employees within a shift.",
+    schema="""
+        time_punch_id BIGINT,
+        employee_id   BIGINT,
+        unit_id       BIGINT,
+        punch_in      TIMESTAMP,
+        punch_out     TIMESTAMP,
+        hours_worked  DOUBLE,
+        created_at    TIMESTAMP,
+        CONSTRAINT pk_time_punch PRIMARY KEY (time_punch_id) NOT ENFORCED
+    """,
+)
 def time_punch():
     return (
         spark.readStream.table(f"{catalog}.staging.workforce_events")
@@ -333,10 +567,10 @@ def time_punch():
 # --------------------------------------------------------------------------
 
 
-@dlt.table(name="unit_performance_daily", comment="Gold: daily unit performance")
+@dp.table(name="unit_performance_daily", comment="Daily rollup of order volume, revenue, and SOS metrics per restaurant unit.")
 def unit_performance_daily():
     return (
-        dlt.read("guest_order")
+        dp.read("guest_order")
         .groupBy(
             F.col("unit_id"),
             F.to_date("placed_at").alias("date"),
@@ -352,13 +586,13 @@ def unit_performance_daily():
     )
 
 
-@dlt.table(name="sos_compliance_summary", comment="Gold: SOS compliance by unit/channel/date")
+@dp.table(name="sos_compliance_summary", comment="Speed-of-service compliance summary by unit, channel, and order type.")
 def sos_compliance_summary():
     return (
-        dlt.read("status_event")
+        dp.read("status_event")
         .filter(F.col("current_state") == "ready")
         .join(
-            dlt.read("guest_order").select("guest_order_id", "channel", "placed_at"),
+            dp.read("guest_order").select("guest_order_id", "channel", "placed_at"),
             "guest_order_id",
         )
         .groupBy(
@@ -378,10 +612,10 @@ def sos_compliance_summary():
     )
 
 
-@dlt.table(name="loyalty_cohort_metrics", comment="Gold: loyalty cohort metrics by tier/date")
+@dp.table(name="loyalty_cohort_metrics", comment="Monthly loyalty program cohort metrics: active members, points earned and redeemed.")
 def loyalty_cohort_metrics():
     return (
-        dlt.read("loyalty_transaction")
+        dp.read("loyalty_transaction")
         .groupBy(
             F.col("unit_id"),
             F.col("tier"),
@@ -395,10 +629,10 @@ def loyalty_cohort_metrics():
     )
 
 
-@dlt.table(name="inventory_waste_summary", comment="Gold: inventory waste by unit/date")
+@dp.table(name="inventory_waste_summary", comment="Monthly inventory waste summary by unit and stock SKU.")
 def inventory_waste_summary():
     return (
-        dlt.read("waste_log")
+        dp.read("waste_log")
         .groupBy(
             F.col("unit_id"),
             F.to_date("logged_at").alias("date"),
