@@ -1,6 +1,7 @@
 # Databricks notebook source
 # COMMAND ----------
 import sys, json, requests
+from databricks.sdk import WorkspaceClient
 
 _notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
 _bundle_root = "/Workspace" + "/".join(_notebook_path.replace("/Workspace", "").split("/")[:-3])
@@ -12,10 +13,10 @@ try:
 except Exception:
     catalog_name = "jmrdemo"
 
-# Resolve workspace URL and token from notebook context
-ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
-workspace_url = "https://" + ctx.browserHostName().get()
-token = ctx.apiToken().get()
+# Resolve workspace URL and token via SDK (browserHostName() unavailable on serverless)
+w = WorkspaceClient()
+workspace_url = w.config.host.rstrip("/")
+token = w.config.token
 headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 print(f"[INFO] create_genie_space: catalog={catalog_name}, workspace={workspace_url}")
