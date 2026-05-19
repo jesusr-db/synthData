@@ -8,41 +8,55 @@
 **Bundle root:** `/Users/jesus.rodriguez/Documents/ItsAVibe/gitrepos_FY27/synthData`  
 **GitHub:** `https://github.com/jesusr-db/synthData`
 
+---
+
 ## What's Built
 
 A fully automated QSR synthetic data generator (Domino's-style, 250 units):
 
-- **Bronze layer:** Python generator writes to 5 staging Delta tables in `jmrdemo.staging`
-- **Silver layer:** DLT pipeline reads staging via `readStream` and produces 14 Silver tables in `jmrdemo.silver`
+- **Staging layer:** Python generator writes to 5 Delta tables in `jmrdemo.staging`
+- **Silver layer:** DLT pipeline reads staging via `readStream`, produces 14 Silver tables in `jmrdemo.silver`
 - **Gold layer:** 4 Gold aggregate tables in `jmrdemo.silver` (co-located with silver in DLT)
-- **Metrics layer:** 5 UC metric views in `jmrdemo.metrics` (created by setup_job after pipeline first run)
+- **Metrics layer:** 4 Unity Catalog metric views in `jmrdemo.metrics` (WITH METRICS LANGUAGE YAML — reusable measures + dimensions)
 - **Catalog metadata:** UC table/column comments + informational PK/FK constraints on all silver tables
 - **Genie Space:** Pre-configured with domain instructions, 10 seed questions, all silver + metrics tables
 
+---
+
 ## Deployed Resources
 
-| Resource | Type | Status |
+| Resource | Type | Notes |
 |---|---|---|
 | QSR MVM Pipeline [dev] | DLT Pipeline (triggered) | Triggered per generator run |
 | QSR Setup [dev] | Job (7 tasks) | Run to rebuild from scratch |
-| QSR Generator Live [dev] | Job (every-minute cron) | UNPAUSED — running |
-| QSR Destroy [dev] | Job (teardown) | Ready |
+| QSR Generator Live [dev] | Job (every-minute cron) | UNPAUSED — running live |
+| QSR Destroy [dev] | Job (teardown) | Ready — tears down non-DAB objects |
 
 All resources tagged: `project: qsr-synth-data-generator`
+
+---
 
 ## Setup Job Task Graph
 
 ```
 setup (seeds ref tables incl. ref.item_price)
-  ├── start_pipeline (full_refresh=true) → silver + gold tables
-  │     └── apply_catalog_metadata (comments + PK/FK)
-  │           └── create_metric_views (5 views in metrics schema)
-  │                 └── create_genie_space (REST API)
+  ├── start_pipeline (full_refresh if checkpoint broken) → silver + gold tables
+  │     └── apply_catalog_metadata (UC comments + PK/FK)
+  │           └── create_metric_views (4 UC metric views in metrics schema)
+  │                 └── create_genie_space (REST API — requires warehouse_id)
   │                       └── unpause_generator ←┐
-  └── backfill (1-month history, all fixes applied) ──────────┘
+  └── backfill (1-month history, incremental from last staging ts) ──┘
 ```
 
 `unpause_generator` waits for both `backfill` AND `create_genie_space`.
+
+### Important behaviors
+
+- **`setup_notebook.py`** uses `CREATE TABLE IF NOT EXISTS` for all 5 staging tables — never drops them. This preserves Delta table IDs so DLT streaming checkpoints survive re-runs.
+- **`start_pipeline_notebook.py`** waits for any active pipeline update; falls back to `full_refresh=True` if the update fails (clears broken streaming checkpoint state).
+- **`backfill`** is incremental — reads `MAX(event_ts)` across staging tables and resumes from the next full hour. Safe to re-run.
+
+---
 
 ## Key Files
 
@@ -50,161 +64,118 @@ setup (seeds ref tables incl. ref.item_price)
 databricks.yml                              # bundle config, catalog_name=jmrdemo
 src/generator/main.py                       # notebook entrypoint (backfill + live modes)
 src/generator/runner.py                     # GeneratorConfig, backfill_ticks, live_tick
-src/generator/domains/orders.py             # order + item + payment generation (all fixes applied)
+src/generator/domains/orders.py             # order + item + payment generation
 src/generator/domains/inventory.py          # inventory events (weighted waste categories)
 src/generator/domains/loyalty.py            # loyalty earn + redeem transactions
 src/generator/domains/guest.py              # guest profiles + churn events
 src/generator/reference/us_locations.py     # unit seeder (includes market_price_index)
-src/generator/reference/seeder.py           # seed_all() including ref.item_price
+src/generator/reference/seeder.py           # seed_all() — overwriteSchema=true for ref.unit
 src/generator/entity_registry.py           # FK registry (unit_price_index, item_price_multiplier)
 src/pipeline/mvm_pipeline.py               # DLT pipeline (14 silver + 4 gold tables)
-src/setup/setup_notebook.py                # Steps 1-4: schemas + staging tables + ref seed
+src/setup/setup_notebook.py                # schemas + staging tables (IF NOT EXISTS) + ref seed
+src/setup/start_pipeline_notebook.py       # idempotent pipeline start with full_refresh fallback
 src/setup/apply_catalog_metadata.py        # UC comments + PK/FK constraints
-src/setup/create_metric_views.py           # 5 metric views over silver tables
+src/setup/create_metric_views.py           # 4 UC metric views (WITH METRICS LANGUAGE YAML)
 src/setup/create_genie_space.py            # Genie Space via REST API
 src/setup/destroy_notebook.py             # teardown logic
-src/setup/unpause_generator_notebook.py    # unpauses generator job after setup
+src/setup/unpause_generator_notebook.py   # unpauses generator job after setup
 resources/pipeline.yml                    # DLT pipeline DAB resource
 resources/setup_job.yml                   # 7-task setup job
-resources/generator_job.yml               # live generator job (UNPAUSED)
-resources/destroy_job.yml                 # destroy job
+resources/generator_job.yml              # live generator job (UNPAUSED)
+resources/destroy_job.yml               # destroy job
 ```
-
-## Staging Tables
-
-| Table | Event types written |
-|---|---|
-| `jmrdemo.staging.order_events` | guest_order, order_item, payment, status_event, delivery_order |
-| `jmrdemo.staging.inventory_events` | on_hand_balance, waste_log, replenishment_order, receiving_order |
-| `jmrdemo.staging.guest_events` | guest_profile |
-| `jmrdemo.staging.loyalty_events` | loyalty_transaction, reward_redemption |
-| `jmrdemo.staging.workforce_events` | shift, time_punch |
-
-## Reference Tables
-
-| Table | Contents |
-|---|---|
-| `jmrdemo.ref.unit` | 250 units with `unit_volume_bias`, `market_price_index` |
-| `jmrdemo.ref.menu_item` | Menu catalog by daypart |
-| `jmrdemo.ref.recipe_ingredient` | Bill of materials per menu item |
-| `jmrdemo.ref.financial_period` | Monthly periods with fiscal quarter |
-| `jmrdemo.ref.item_price` | Per (menu_item, period) price multiplier — quarterly drift ±3-6% |
-| `jmrdemo.ref.franchisee` | Franchisee entities |
-| `jmrdemo.ref.supplier` | 6 suppliers |
-
-## Metric Views
-
-| View | Description |
-|---|---|
-| `jmrdemo.metrics.unit_daily_summary` | Orders, revenue, AOV, SOS breach % per unit per day |
-| `jmrdemo.metrics.loyalty_tier_distribution` | Member counts, earn/redeem transactions by tier and month |
-| `jmrdemo.metrics.inventory_waste_rate` | Waste qty/cost as % of usage by unit/week/SKU |
-| `jmrdemo.metrics.staff_utilization` | Scheduled vs actual hours, no-show rate per unit per day |
-| `jmrdemo.metrics.channel_mix_trend` | Order share and revenue share by channel per unit per week |
 
 ---
 
-## Deploying Both Feature Branches
+## Data Layers
 
-### Feature branches
+### Staging Tables (`jmrdemo.staging`)
 
-| Branch | Status | Contents |
+| Table | Event types |
+|---|---|
+| `order_events` | guest_order, order_item, payment, status_event, delivery_order |
+| `inventory_events` | on_hand_balance, waste_log, replenishment_order, receiving_order |
+| `guest_events` | guest_profile |
+| `loyalty_events` | loyalty_transaction, reward_redemption |
+| `workforce_events` | shift, time_punch |
+
+### Reference Tables (`jmrdemo.ref`)
+
+| Table | Contents |
+|---|---|
+| `unit` | 250 units with `unit_volume_bias`, `market_price_index` |
+| `menu_item` | Menu catalog by daypart |
+| `recipe_ingredient` | Bill of materials per menu item |
+| `financial_period` | Monthly periods with fiscal quarter |
+| `item_price` | Per (menu_item, period) price multiplier — quarterly drift ±3-6% |
+| `franchisee` | Franchisee entities |
+| `supplier` | 6 suppliers |
+
+### Metric Views (`jmrdemo.metrics`)
+
+These are Unity Catalog metric views (`WITH METRICS LANGUAGE YAML`), not plain SQL views.
+They define named measures and dimensions that can be sliced ad-hoc without rewriting SQL.
+
+| View | Source | Key Measures |
 |---|---|---|
-| `feat/phase-25-generator-realism` | Ready to merge | 7 generator data quality fixes (71 tests) |
-| `feat/phase-2-catalog-enrichment` | Ready to merge | Metadata + metric views + Genie Space |
+| `order_performance` | `silver.guest_order` | Total Orders, Total Revenue, AOV, Fulfilled/Cancelled Orders, SOS Breach Rate |
+| `loyalty_performance` | `silver.loyalty_transaction` | Unique Members, Points Earned, Points Redeemed, Redemption Value |
+| `inventory_waste` | `silver.waste_log` | Total Waste Qty, Total Waste Cost, Waste Events |
+| `staff_hours` | `silver.time_punch` | Total Hours Worked, Total Shifts, Unique Employees, Avg Hours/Shift |
 
-### Deploy and rebuild (recommended — do both together)
+---
 
-Phase 2.5 adds `ref.item_price` to the workspace reference tables and `market_price_index`
-to `ref.unit`. The generator's `EntityRegistry.from_spark()` now loads `ref.item_price` at
-startup — if this table doesn't exist the generator job will crash. A full rebuild is required.
-
-```bash
-# 1. Merge both branches
-git checkout main
-git merge feat/phase-25-generator-realism
-git merge feat/phase-2-catalog-enrichment
-
-# 2. Deploy bundle
-databricks bundle deploy --target dev
-
-# 3. Destroy existing silver data (drops staging + silver + gold rows)
-databricks jobs run-now --job-id <destroy_job_id>
-# Wait for completion (~2 min)
-
-# 4. Run setup_job — seeds ref tables (including ref.item_price),
-#    starts pipeline, applies metadata, creates metric views + Genie Space,
-#    runs full backfill, then unpauses generator
-databricks jobs run-now --job-id <setup_job_id>
-# Takes ~15-25 min (backfill is the long pole)
-```
-
-### Phase 2 only (if skipping Phase 2.5)
-
-Phase 2 is fully additive — no rebuild needed. Run only the new tasks:
+## Full Rebuild from Scratch
 
 ```bash
-git checkout main && git merge feat/phase-2-catalog-enrichment
-databricks bundle deploy --target dev
+# 1. Deploy bundle
+databricks bundle deploy --target dev -p DEFAULT
 
-# Run individual tasks (silver tables must already exist)
-databricks jobs run-now --job-id <setup_job_id> \
-  --only apply_catalog_metadata,create_metric_views,create_genie_space
+# 2. Run setup_job (fully automated, ~15-25 min)
+databricks jobs run-now <setup_job_id> -p DEFAULT
 ```
 
-Or just run the full setup_job — it is idempotent.
+setup_job handles everything: catalog check → schemas → staging tables → ref seed →
+pipeline full_refresh (silver/gold) → catalog metadata → metric views → Genie Space →
+backfill → unpause generator.
+
+### Re-running after partial failure
+
+The job is designed to be re-run safely:
+- Staging tables are `IF NOT EXISTS` — no data loss
+- Backfill is incremental — picks up from last staging timestamp
+- `create_genie_space` checks for existing space and skips if found
+- `start_pipeline` waits for active updates before starting new ones
 
 ---
 
 ## Verifying After Deployment
 
 ```sql
--- Phase 2.5: check generator distributions are fixed
+-- Check silver data exists
+SELECT COUNT(*) FROM jmrdemo.silver.guest_order;
+SELECT COUNT(*) FROM jmrdemo.silver.waste_log;
+
+-- Check metric views (UC metric views — slice by any dimension)
+SELECT * FROM jmrdemo.metrics.order_performance LIMIT 5;
+SELECT * FROM jmrdemo.metrics.loyalty_performance LIMIT 5;
+SELECT * FROM jmrdemo.metrics.inventory_waste LIMIT 5;
+SELECT * FROM jmrdemo.metrics.staff_hours LIMIT 5;
+
+-- Check generator distributions
 SELECT waste_category, COUNT(*) FROM jmrdemo.silver.waste_log GROUP BY 1 ORDER BY 2 DESC;
 -- Expected: overproduction ~50%, spoilage ~25%, theft/expired ~10% each, damaged ~5%
 
 SELECT item_status, COUNT(*) FROM jmrdemo.silver.order_item GROUP BY 1;
 -- Expected: fulfilled ~87%, cancelled ~12%, refunded ~1%
 
-SELECT COUNT(*) FROM jmrdemo.ref.item_price;
--- Expected: > 0 (menu_items × financial_periods)
-
-SELECT MIN(unit_price), MAX(unit_price), AVG(unit_price)
-FROM jmrdemo.silver.order_item;
--- Expected: meaningful spread, not a single flat value
-
--- Phase 2: check metadata
+-- Check catalog metadata
 DESCRIBE TABLE EXTENDED jmrdemo.silver.guest_order;
--- Expected: Comment column shows descriptions on guest_order_id, channel, etc.
+-- Expected: Comment column shows descriptions on columns
 
-SELECT * FROM jmrdemo.metrics.unit_daily_summary LIMIT 5;
-SELECT * FROM jmrdemo.metrics.channel_mix_trend LIMIT 5;
-SELECT * FROM jmrdemo.metrics.loyalty_tier_distribution LIMIT 5;
-SELECT * FROM jmrdemo.metrics.inventory_waste_rate LIMIT 5;
-SELECT * FROM jmrdemo.metrics.staff_utilization LIMIT 5;
--- Expected: all 5 return rows
-
--- Genie Space: verify via UI at workspace /genie/spaces
--- or query via REST:
--- GET /api/2.0/genie/spaces  (look for "QSR Synthetic Data — jmrdemo")
+-- Genie Space: verify via UI at /genie/spaces
+-- or: GET /api/2.0/genie/spaces  (look for "QSR Synthetic Data — jmrdemo")
 ```
-
----
-
-## Full Rebuild from Scratch (zero state)
-
-If starting from a fresh workspace or after a full teardown:
-
-```bash
-# 1. Deploy bundle (creates all DAB resources)
-databricks bundle deploy --target dev
-
-# 2. Run setup_job — fully automated end-to-end
-databricks jobs run-now --job-id <setup_job_id>
-```
-
-setup_job handles: catalog verification → schemas → staging tables → ref seed →
-pipeline (silver/gold) → catalog metadata → metric views → Genie Space → backfill → unpause.
 
 ---
 
@@ -213,17 +184,31 @@ pipeline (silver/gold) → catalog metadata → metric views → Genie Space →
 71 tests, all passing:
 
 ```bash
-cd /Users/jesus.rodriguez/Documents/ItsAVibe/gitrepos_FY27/synthData
+cd /path/to/synthData
 pytest tests/ -v
 ```
 
-| File | Tests |
-|---|---|
-| `tests/test_orders.py` | 15 — orders, items, discounts, waste flags, AOV variance |
-| `tests/test_guest_loyalty_workforce.py` | 8 — churn, loyalty redeem txns, shifts |
-| `tests/test_inventory.py` | 4 — inventory events, waste categories |
-| `tests/test_runner.py` | 8 — runner/tick integration |
-| `tests/test_seeder.py` | 5 — seeder functions incl. item_price_data |
-| `tests/test_smoke.py` | 5 — end-to-end smoke |
-| `tests/test_menu_catalog.py` | 4 — menu catalog |
-| `tests/test_us_locations.py` | 4 — unit generation incl. market_price_index |
+| File | Tests | Coverage |
+|---|---|---|
+| `tests/test_orders.py` | 15 | Orders, items, discounts, waste flags, AOV variance |
+| `tests/test_guest_loyalty_workforce.py` | 8 | Churn, loyalty redeem txns, shifts |
+| `tests/test_inventory.py` | 4 | Inventory events, waste categories |
+| `tests/test_runner.py` | 8 | Runner/tick integration |
+| `tests/test_seeder.py` | 5 | Seeder functions incl. item_price_data |
+| `tests/test_smoke.py` | 5 | End-to-end smoke (24 ticks) |
+| `tests/test_menu_catalog.py` | 4 | Menu catalog |
+| `tests/test_us_locations.py` | 4 | Unit generation incl. market_price_index |
+
+---
+
+## Known Gotchas
+
+| Issue | Root Cause | Fix Applied |
+|---|---|---|
+| DLT silver flows all fail after setup re-run | `CREATE OR REPLACE TABLE` on staging tables changes Delta table ID, breaking streaming checkpoints | Changed to `CREATE TABLE IF NOT EXISTS` in `setup_notebook.py` |
+| `start_pipeline` fails if generator triggers pipeline mid-run | Race condition — pipeline already has active update | `start_pipeline_notebook.py` waits for active update, falls back to `full_refresh` on failure |
+| `DELTA_METADATA_MISMATCH` on ref.unit | Phase 2.5 added `market_price_index` column; write lacked `overwriteSchema` | Added `.option("overwriteSchema", "true")` in `seeder.py` |
+| `COUNTIF` not available | Runtime doesn't support `COUNTIF` | Replaced with `COUNT(CASE WHEN ... THEN 1 END)` throughout |
+| `browserHostName()` throws `None.get` on serverless | Unavailable in serverless cluster context | Use `WorkspaceClient().config.host` instead |
+| Genie Space API returns 401 | `w.config.token` is `None` on serverless (OAuth credentials) | Use `ctx.apiToken().get()` for bearer token |
+| Genie Space API returns 400 missing `warehouse_id` | Field required by API | Look up warehouse via SDK and add to payload |
