@@ -5,7 +5,7 @@ resources:
       tags:
         project: qsr-synth-data-generator
       schedule:
-        quartz_cron_expression: "0 * * * * ?"
+        quartz_cron_expression: "0 0 * * * ?"
         timezone_id: "UTC"
         pause_status: UNPAUSED
       environments:
