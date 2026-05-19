@@ -135,6 +135,51 @@ def test_backfill_ticks_yields_batches_of_dicts():
     assert all(isinstance(r, dict) for r in batch)
 
 
+def test_backfill_ticks_respects_end_dt():
+    """backfill_ticks must not yield batches at or after end_dt."""
+    from datetime import datetime, timedelta
+    from src.generator.runner import backfill_ticks
+    from src.generator.entity_registry import EntityRegistry
+    from src.generator.reference.us_locations import generate_units
+    from src.generator.reference.menu_catalog import get_menu_items, get_recipe_ingredients
+    from src.generator.reference.seeder import build_financial_periods_data
+
+    reg = EntityRegistry(
+        units=generate_units(2),
+        menu_items=get_menu_items(),
+        bom=get_recipe_ingredients(),
+        financial_periods=build_financial_periods_data(1),
+    )
+    start = datetime(2025, 9, 19, 12, 0)   # noon
+    end   = datetime(2025, 9, 19, 13, 0)   # 1pm — exclusive
+    batches = list(backfill_ticks(reg, backfill_months=1, tick_seconds=3600,
+                                  base_orders_per_hour=18, start_dt=start, end_dt=end))
+    # With tick_seconds=3600, only one tick (12:00) should be yielded; 13:00 is end_dt (exclusive)
+    assert len(batches) == 1
+
+
+def test_backfill_ticks_end_dt_60s_ticks_yields_60_batches():
+    """60 one-minute ticks from 12:00 to 13:00 (exclusive) yields exactly 60 batches."""
+    from datetime import datetime, timedelta
+    from src.generator.runner import backfill_ticks
+    from src.generator.entity_registry import EntityRegistry
+    from src.generator.reference.us_locations import generate_units
+    from src.generator.reference.menu_catalog import get_menu_items, get_recipe_ingredients
+    from src.generator.reference.seeder import build_financial_periods_data
+
+    reg = EntityRegistry(
+        units=generate_units(1),
+        menu_items=get_menu_items(),
+        bom=get_recipe_ingredients(),
+        financial_periods=build_financial_periods_data(1),
+    )
+    start = datetime(2025, 9, 19, 12, 0)
+    end   = datetime(2025, 9, 19, 13, 0)
+    batches = list(backfill_ticks(reg, backfill_months=1, tick_seconds=60,
+                                  base_orders_per_hour=18, start_dt=start, end_dt=end))
+    assert len(batches) == 60
+
+
 def test_live_tick_returns_list_of_dicts():
     from src.generator.runner import live_tick
     from src.generator.entity_registry import EntityRegistry

@@ -42,14 +42,16 @@ def backfill_ticks(
     tick_seconds: int = 3600,
     base_orders_per_hour: int = 18,
     start_dt: datetime | None = None,
+    end_dt: datetime | None = None,
 ) -> Iterator[list[dict]]:
-    """Yield batches of rows for all units, one hour at a time, from start_dt (or N months ago) to now."""
+    """Yield batches of rows for all units, one tick at a time, from start_dt up to (but not including) end_dt."""
     from dateutil.relativedelta import relativedelta
 
     now = datetime.now().replace(minute=0, second=0, microsecond=0)
     start = start_dt if start_dt is not None else now - relativedelta(months=backfill_months)
+    end   = end_dt   if end_dt   is not None else now
     current = start
-    while current <= now:
+    while current < end:
         batch = []
         for unit in registry.all_units():
             uid = unit["unit_id"]
