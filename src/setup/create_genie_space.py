@@ -1,6 +1,6 @@
 # Databricks notebook source
 # COMMAND ----------
-import sys, json, uuid, requests
+import sys, json, uuid
 
 _notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
 _bundle_root = "/Workspace" + "/".join(_notebook_path.replace("/Workspace", "").split("/")[:-3])
@@ -16,9 +16,6 @@ except Exception:
 
 w = WorkspaceClient()
 workspace_url = w.config.host.rstrip("/")
-ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
-token = ctx.apiToken().get()
-headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 SPACE_TITLE = f"QSR Synthetic Data — {catalog_name}"
 
@@ -26,13 +23,12 @@ print(f"[INFO] create_genie_space: catalog={catalog_name}, workspace={workspace_
 
 # COMMAND ----------
 # Check if space already exists
-resp = requests.get(f"{workspace_url}/api/2.0/genie/spaces", headers=headers, timeout=30)
-if resp.status_code == 200:
-    existing = [s for s in resp.json().get("spaces", []) if s.get("title") == SPACE_TITLE]
-    if existing:
-        space_id = existing[0]["space_id"]
-        print(f"[SKIP] Genie Space '{SPACE_TITLE}' already exists (id={space_id})")
-        dbutils.notebook.exit(space_id)
+existing_resp = w.genie.list_spaces()
+existing = [s for s in (existing_resp.spaces or []) if s.title == SPACE_TITLE]
+if existing:
+    space_id = existing[0].space_id
+    print(f"[SKIP] Genie Space '{SPACE_TITLE}' already exists (id={space_id})")
+    dbutils.notebook.exit(space_id)
 
 # COMMAND ----------
 # Resolve warehouse
@@ -91,6 +87,7 @@ serialized = {
         ]
     },
     "data_sources": {
+        # API requires tables sorted alphabetically by identifier
         "tables": [
             {"identifier": f"{catalog_name}.silver.{t}"} for t in sorted(SILVER_TABLES)
         ],
@@ -110,25 +107,14 @@ serialized = {
 }
 
 # COMMAND ----------
-payload = {
-    "title": SPACE_TITLE,
-    "description": "Pre-configured Genie Space for the QSR synthetic dataset (250 units, 1-month backfill + live stream).",
-    "warehouse_id": warehouse_id,
-    "serialized_space": json.dumps(serialized),
-}
-
-resp = requests.post(
-    f"{workspace_url}/api/2.0/genie/spaces",
-    headers=headers,
-    json=payload,
-    timeout=60,
+space = w.genie.create_space(
+    warehouse_id=warehouse_id,
+    serialized_space=json.dumps(serialized),
+    title=SPACE_TITLE,
+    description="Pre-configured Genie Space for the QSR synthetic dataset (250 units, 1-month backfill + live stream).",
 )
 
-if resp.status_code not in (200, 201):
-    raise RuntimeError(f"Failed to create Genie Space: {resp.status_code} {resp.text}")
-
-space = resp.json()
-space_id = space.get("space_id", space.get("id", "unknown"))
+space_id = space.space_id
 print(f"[OK] Genie Space created: '{SPACE_TITLE}' (id={space_id})")
 print(f"[INFO] URL: {workspace_url}/genie/spaces/{space_id}")
 dbutils.notebook.exit(space_id)
