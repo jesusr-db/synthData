@@ -29,8 +29,8 @@ spark.sql(f"""
         unit_id,
         CAST(placed_at AS DATE)                                         AS order_date,
         COUNT(*)                                                        AS total_orders,
-        COUNTIF(order_status = 'fulfilled')                             AS fulfilled_orders,
-        COUNTIF(order_status = 'cancelled')                             AS cancelled_orders,
+        COUNT(CASE WHEN order_status = 'fulfilled' THEN 1 END)          AS fulfilled_orders,
+        COUNT(CASE WHEN order_status = 'cancelled' THEN 1 END)          AS cancelled_orders,
         ROUND(SUM(total_amount), 2)                                     AS total_revenue,
         ROUND(AVG(total_amount) FILTER (WHERE order_status='fulfilled'), 2) AS avg_order_value,
         ROUND(AVG(CAST(sos_breach AS INT)) * 100, 2)                    AS sos_breach_pct,
@@ -50,8 +50,8 @@ spark.sql(f"""
         tier,
         DATE_TRUNC('month', transaction_at)                AS month,
         COUNT(DISTINCT member_id)                          AS active_members,
-        COUNTIF(transaction_type = 'earn')                 AS earn_transactions,
-        COUNTIF(transaction_type = 'redeem')               AS redeem_transactions,
+        COUNT(CASE WHEN transaction_type = 'earn' THEN 1 END)   AS earn_transactions,
+        COUNT(CASE WHEN transaction_type = 'redeem' THEN 1 END) AS redeem_transactions,
         SUM(points_delta) FILTER (WHERE transaction_type = 'earn')   AS total_points_earned,
         SUM(-points_delta) FILTER (WHERE transaction_type = 'redeem') AS total_points_redeemed
     FROM {c}.silver.loyalty_transaction
