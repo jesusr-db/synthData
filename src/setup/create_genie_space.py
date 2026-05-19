@@ -92,10 +92,10 @@ serialized = {
     },
     "data_sources": {
         "tables": [
-            {"identifier": f"{catalog_name}.silver.{t}"} for t in SILVER_TABLES
+            {"identifier": f"{catalog_name}.silver.{t}"} for t in sorted(SILVER_TABLES)
         ],
         "metric_views": [
-            {"identifier": f"{catalog_name}.metrics.{v}"} for v in METRIC_VIEWS
+            {"identifier": f"{catalog_name}.metrics.{v}"} for v in sorted(METRIC_VIEWS)
         ],
     },
     "instructions": {
