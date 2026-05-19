@@ -13,10 +13,11 @@ try:
 except Exception:
     catalog_name = "jmrdemo"
 
-# Resolve workspace URL and token via SDK (browserHostName() unavailable on serverless)
+# SDK for host (browserHostName() unavailable on serverless); ctx.apiToken() for job token
 w = WorkspaceClient()
 workspace_url = w.config.host.rstrip("/")
-token = w.config.token
+ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+token = ctx.apiToken().get()
 headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 print(f"[INFO] create_genie_space: catalog={catalog_name}, workspace={workspace_url}")

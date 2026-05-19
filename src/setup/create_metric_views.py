@@ -16,145 +16,154 @@ print(f"[INFO] create_metric_views: catalog={catalog_name}")
 c = catalog_name
 
 # COMMAND ----------
-# Ensure metrics schema exists
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {c}.metrics")
 
 # COMMAND ----------
-# 1. unit_daily_summary — orders, revenue, SOS per unit per day
+# 1. Order Performance — volume, revenue, SOS compliance per unit/channel
 spark.sql(f"""
-    CREATE OR REPLACE VIEW {c}.metrics.unit_daily_summary
-    COMMENT 'Daily order volume, revenue, and SOS compliance per unit.'
-    AS
-    SELECT
-        unit_id,
-        CAST(placed_at AS DATE)                                         AS order_date,
-        COUNT(*)                                                        AS total_orders,
-        COUNT(CASE WHEN order_status = 'fulfilled' THEN 1 END)          AS fulfilled_orders,
-        COUNT(CASE WHEN order_status = 'cancelled' THEN 1 END)          AS cancelled_orders,
-        ROUND(SUM(total_amount), 2)                                     AS total_revenue,
-        ROUND(AVG(total_amount) FILTER (WHERE order_status='fulfilled'), 2) AS avg_order_value,
-        ROUND(AVG(CAST(sos_breach AS INT)) * 100, 2)                    AS sos_breach_pct,
-        ROUND(AVG(discount_amount) FILTER (WHERE discount_amount > 0), 2) AS avg_discount_when_applied
-    FROM {c}.silver.guest_order
-    GROUP BY unit_id, CAST(placed_at AS DATE)
+    CREATE OR REPLACE VIEW {c}.metrics.order_performance
+    WITH METRICS LANGUAGE YAML AS$$
+version: 1.1
+comment: "QSR order volume, revenue, and speed-of-service compliance by unit and channel"
+source: {c}.silver.guest_order
+dimensions:
+  - name: Unit ID
+    expr: unit_id
+  - name: Channel
+    expr: channel
+  - name: Order Type
+    expr: order_type
+  - name: Order Status
+    expr: order_status
+  - name: Order Date
+    expr: CAST(placed_at AS DATE)
+  - name: Order Month
+    expr: DATE_TRUNC('MONTH', placed_at)
+measures:
+  - name: Total Orders
+    expr: COUNT(1)
+    comment: "Total orders placed"
+  - name: Total Revenue
+    expr: SUM(total_amount)
+    comment: "Gross revenue across all orders"
+  - name: Average Order Value
+    expr: SUM(total_amount) / COUNT(1)
+    comment: "Revenue per order"
+  - name: Fulfilled Orders
+    expr: COUNT(CASE WHEN order_status = 'fulfilled' THEN 1 END)
+    comment: "Orders successfully completed"
+  - name: Cancelled Orders
+    expr: COUNT(CASE WHEN order_status = 'cancelled' THEN 1 END)
+  - name: Total Discount
+    expr: SUM(discount_amount)
+    comment: "Total discount dollars applied"
+  - name: SOS Breach Rate
+    expr: SUM(CAST(sos_breach AS INT)) / COUNT(1)
+    comment: "Fraction of orders breaching speed-of-service target"
+$$
 """)
-print("[OK] metrics.unit_daily_summary")
+print("[OK] metrics.order_performance")
 
 # COMMAND ----------
-# 2. loyalty_tier_distribution — member count and avg spend by tier
+# 2. Loyalty Performance — points activity and member engagement by tier
 spark.sql(f"""
-    CREATE OR REPLACE VIEW {c}.metrics.loyalty_tier_distribution
-    COMMENT 'Loyalty member transaction counts and average spend by tier and month.'
-    AS
-    SELECT
-        tier,
-        DATE_TRUNC('month', transaction_at)                AS month,
-        COUNT(DISTINCT member_id)                          AS active_members,
-        COUNT(CASE WHEN transaction_type = 'earn' THEN 1 END)   AS earn_transactions,
-        COUNT(CASE WHEN transaction_type = 'redeem' THEN 1 END) AS redeem_transactions,
-        SUM(points_delta) FILTER (WHERE transaction_type = 'earn')   AS total_points_earned,
-        SUM(-points_delta) FILTER (WHERE transaction_type = 'redeem') AS total_points_redeemed
-    FROM {c}.silver.loyalty_transaction
-    GROUP BY tier, DATE_TRUNC('month', transaction_at)
+    CREATE OR REPLACE VIEW {c}.metrics.loyalty_performance
+    WITH METRICS LANGUAGE YAML AS$$
+version: 1.1
+comment: "Loyalty program points activity and member engagement by tier and unit"
+source: {c}.silver.loyalty_transaction
+dimensions:
+  - name: Tier
+    expr: tier
+  - name: Transaction Type
+    expr: transaction_type
+  - name: Unit ID
+    expr: unit_id
+  - name: Transaction Month
+    expr: DATE_TRUNC('MONTH', transaction_at)
+measures:
+  - name: Unique Members
+    expr: COUNT(DISTINCT member_id)
+    comment: "Active loyalty members"
+  - name: Total Transactions
+    expr: COUNT(1)
+  - name: Points Earned
+    expr: SUM(CASE WHEN transaction_type = 'earn' THEN points_delta ELSE 0 END)
+    comment: "Total loyalty points earned"
+  - name: Points Redeemed
+    expr: SUM(CASE WHEN transaction_type = 'redeem' THEN ABS(points_delta) ELSE 0 END)
+    comment: "Total loyalty points redeemed"
+  - name: Redemption Value
+    expr: SUM(CASE WHEN transaction_type = 'redeem' THEN reward_value ELSE 0 END)
+    comment: "Dollar value of redeemed rewards"
+$$
 """)
-print("[OK] metrics.loyalty_tier_distribution")
+print("[OK] metrics.loyalty_performance")
 
 # COMMAND ----------
-# 3. inventory_waste_rate — waste as % of total usage by unit and week
+# 3. Inventory Waste — waste quantity and cost by unit, SKU, and category
 spark.sql(f"""
-    CREATE OR REPLACE VIEW {c}.metrics.inventory_waste_rate
-    COMMENT 'Weekly waste quantity and cost as a percentage of total inventory usage per unit.'
-    AS
-    WITH usage AS (
-        SELECT
-            unit_id,
-            DATE_TRUNC('week', snapshot_at)  AS week,
-            stock_sku,
-            SUM(quantity_reserved)           AS total_used
-        FROM {c}.silver.on_hand_balance
-        GROUP BY unit_id, DATE_TRUNC('week', snapshot_at), stock_sku
-    ),
-    waste AS (
-        SELECT
-            unit_id,
-            DATE_TRUNC('week', logged_at)    AS week,
-            stock_sku,
-            waste_category,
-            SUM(waste_quantity)              AS total_waste,
-            SUM(waste_cost)                  AS total_waste_cost
-        FROM {c}.silver.waste_log
-        GROUP BY unit_id, DATE_TRUNC('week', logged_at), stock_sku, waste_category
-    )
-    SELECT
-        w.unit_id,
-        w.week,
-        w.stock_sku,
-        w.waste_category,
-        ROUND(w.total_waste, 3)                                       AS waste_qty,
-        ROUND(w.total_waste_cost, 2)                                  AS waste_cost,
-        ROUND(w.total_waste / NULLIF(u.total_used, 0) * 100, 2)      AS waste_pct_of_usage
-    FROM waste w
-    LEFT JOIN usage u USING (unit_id, week, stock_sku)
+    CREATE OR REPLACE VIEW {c}.metrics.inventory_waste
+    WITH METRICS LANGUAGE YAML AS$$
+version: 1.1
+comment: "Inventory waste quantity and cost by unit, SKU, and waste category"
+source: {c}.silver.waste_log
+dimensions:
+  - name: Unit ID
+    expr: unit_id
+  - name: Stock SKU
+    expr: stock_sku
+  - name: Waste Category
+    expr: waste_category
+  - name: Waste Week
+    expr: DATE_TRUNC('WEEK', logged_at)
+  - name: Waste Month
+    expr: DATE_TRUNC('MONTH', logged_at)
+measures:
+  - name: Total Waste Quantity
+    expr: SUM(waste_quantity)
+    comment: "Total units of product wasted"
+  - name: Total Waste Cost
+    expr: SUM(waste_cost)
+    comment: "Dollar cost of wasted inventory"
+  - name: Waste Events
+    expr: COUNT(1)
+    comment: "Number of waste log entries"
+  - name: Average Waste Cost per Event
+    expr: SUM(waste_cost) / COUNT(1)
+$$
 """)
-print("[OK] metrics.inventory_waste_rate")
+print("[OK] metrics.inventory_waste")
 
 # COMMAND ----------
-# 4. staff_utilization — scheduled vs actual hours, no-show rate
+# 4. Staff Hours — actual hours worked and shift counts per unit
 spark.sql(f"""
-    CREATE OR REPLACE VIEW {c}.metrics.staff_utilization
-    COMMENT 'Scheduled vs actual hours worked and no-show rate per unit per day.'
-    AS
-    WITH scheduled AS (
-        SELECT
-            unit_id,
-            CAST(shift_start AS DATE)                                     AS shift_date,
-            COUNT(*)                                                       AS scheduled_shifts,
-            ROUND(SUM(DATEDIFF(HOUR, shift_start, shift_end)), 2)         AS scheduled_hours
-        FROM {c}.silver.shift
-        GROUP BY unit_id, CAST(shift_start AS DATE)
-    ),
-    actual AS (
-        SELECT
-            unit_id,
-            CAST(punch_in AS DATE)      AS shift_date,
-            COUNT(*)                    AS punched_shifts,
-            ROUND(SUM(hours_worked), 2) AS actual_hours
-        FROM {c}.silver.time_punch
-        GROUP BY unit_id, CAST(punch_in AS DATE)
-    )
-    SELECT
-        s.unit_id,
-        s.shift_date,
-        s.scheduled_shifts,
-        s.scheduled_hours,
-        COALESCE(a.punched_shifts, 0)                                              AS punched_shifts,
-        COALESCE(a.actual_hours, 0)                                                AS actual_hours,
-        ROUND((s.scheduled_shifts - COALESCE(a.punched_shifts, 0))
-              / NULLIF(s.scheduled_shifts, 0) * 100, 2)                            AS no_show_pct
-    FROM scheduled s
-    LEFT JOIN actual a USING (unit_id, shift_date)
+    CREATE OR REPLACE VIEW {c}.metrics.staff_hours
+    WITH METRICS LANGUAGE YAML AS$$
+version: 1.1
+comment: "Actual hours worked and shift counts per unit and date"
+source: {c}.silver.time_punch
+dimensions:
+  - name: Unit ID
+    expr: unit_id
+  - name: Shift Date
+    expr: CAST(punch_in AS DATE)
+  - name: Shift Month
+    expr: DATE_TRUNC('MONTH', punch_in)
+measures:
+  - name: Total Hours Worked
+    expr: SUM(hours_worked)
+    comment: "Actual hours worked across all punches"
+  - name: Total Shifts
+    expr: COUNT(1)
+    comment: "Number of time punches recorded"
+  - name: Unique Employees
+    expr: COUNT(DISTINCT employee_id)
+  - name: Average Hours per Shift
+    expr: SUM(hours_worked) / COUNT(1)
+$$
 """)
-print("[OK] metrics.staff_utilization")
+print("[OK] metrics.staff_hours")
 
 # COMMAND ----------
-# 5. channel_mix_trend — 3PD vs own delivery vs carryout share over time
-spark.sql(f"""
-    CREATE OR REPLACE VIEW {c}.metrics.channel_mix_trend
-    COMMENT 'Weekly channel mix (order count share and revenue share) per unit.'
-    AS
-    SELECT
-        unit_id,
-        DATE_TRUNC('week', placed_at)                                   AS week,
-        channel,
-        COUNT(*)                                                        AS orders,
-        ROUND(SUM(total_amount), 2)                                     AS revenue,
-        ROUND(COUNT(*) / SUM(COUNT(*)) OVER (PARTITION BY unit_id, DATE_TRUNC('week', placed_at)) * 100, 2) AS order_share_pct,
-        ROUND(SUM(total_amount) / NULLIF(SUM(SUM(total_amount)) OVER (PARTITION BY unit_id, DATE_TRUNC('week', placed_at)), 0) * 100, 2) AS revenue_share_pct
-    FROM {c}.silver.guest_order
-    WHERE order_status = 'fulfilled'
-    GROUP BY unit_id, DATE_TRUNC('week', placed_at), channel
-""")
-print("[OK] metrics.channel_mix_trend")
-
-# COMMAND ----------
-print("[INFO] create_metric_views complete — 5 views created in metrics schema")
+print("[INFO] create_metric_views complete — 4 metric views created in metrics schema")
