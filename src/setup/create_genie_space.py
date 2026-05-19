@@ -20,6 +20,14 @@ ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
 token = ctx.apiToken().get()
 headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
+# Resolve a running or stopped warehouse to attach to the Genie Space
+warehouses = list(w.warehouses.list())
+warehouse = next((wh for wh in warehouses if wh.state.value in ("RUNNING", "STOPPED")), warehouses[0] if warehouses else None)
+if warehouse is None:
+    raise ValueError("No SQL warehouse found — create one before running setup.")
+warehouse_id = warehouse.id
+print(f"[INFO] Using warehouse: {warehouse.name} ({warehouse_id})")
+
 print(f"[INFO] create_genie_space: catalog={catalog_name}, workspace={workspace_url}")
 
 # COMMAND ----------
@@ -83,6 +91,7 @@ SEED_QUESTIONS = [
 payload = {
     "title": SPACE_TITLE,
     "description": "Pre-configured Genie Space for exploring the QSR synthetic dataset (250 units, 1-month backfill + live stream).",
+    "warehouse_id": warehouse_id,
     "table_identifiers": [t["table_name"] for t in table_refs],
     "instructions": INSTRUCTIONS,
     "sample_questions": SEED_QUESTIONS,
