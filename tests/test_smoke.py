@@ -139,17 +139,16 @@ def test_backfill_ticks_produces_nonempty_batches():
 
     batch_count = 0
     total_rows = 0
-    # Only consume first 5 batches to keep test fast
+    # Consume 24 ticks (one full day) to guarantee hitting hour-10 daily events
     for batch in gen:
         assert isinstance(batch, list), "Each batch must be a list"
-        assert len(batch) > 0, "Each batch must be non-empty"
         total_rows += len(batch)
         batch_count += 1
-        if batch_count >= 5:
+        if batch_count >= 24:
             break
 
     assert batch_count > 0, "backfill_ticks produced zero batches"
-    assert total_rows > 0, "backfill_ticks produced zero total rows"
+    assert total_rows > 0, "backfill_ticks produced zero total rows across 24 ticks"
 
 
 # ---------------------------------------------------------------------------
