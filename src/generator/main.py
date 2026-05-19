@@ -24,8 +24,10 @@ base_orders        = int(_widget("base_orders_per_unit_per_hour", "18"))
 mode               = _widget("mode", "live")
 
 # COMMAND ----------
+from datetime import datetime, timedelta
+
 from src.generator.entity_registry import EntityRegistry
-from src.generator.runner import backfill_ticks, live_tick, GeneratorConfig
+from src.generator.runner import backfill_ticks
 from src.generator.reference.seeder import seed_all
 
 # Load registry from ref tables
@@ -127,7 +129,6 @@ if mode == "backfill":
 else:
     # Live mode: generate the previous hour as 60 sub-ticks with correct per-minute timestamps.
     # Runs once per hour (scheduled via cron). live_tick_seconds controls sub-tick granularity.
-    from datetime import datetime, timedelta
     end_dt   = datetime.now().replace(minute=0, second=0, microsecond=0)
     start_dt = end_dt - timedelta(hours=1)
     print(f"[INFO] Live tick: window=[{start_dt}, {end_dt}), sub_tick_seconds={live_tick_seconds}, catalog={catalog_name}")
