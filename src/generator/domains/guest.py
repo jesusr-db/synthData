@@ -1,14 +1,9 @@
 import random
 from datetime import datetime
 from faker import Faker
+from src.generator.id_utils import make_id
 
 _fake = Faker()
-_guest_counter = 0
-
-def _next_guest_id() -> int:
-    global _guest_counter
-    _guest_counter += 1
-    return _guest_counter
 
 def generate_new_guest_profiles(unit_id: int, date_str: str,
                                  growth_rate: float = 0.008,
@@ -17,8 +12,8 @@ def generate_new_guest_profiles(unit_id: int, date_str: str,
     """~0.8% of base_pool guests are new per day per unit."""
     n = max(0, round(base_pool * growth_rate * random.gauss(1.0, 0.3)))
     rows = []
-    for _ in range(n):
-        gid = _next_guest_id()
+    for i in range(n):
+        gid = make_id("gp_new", unit_id, date_str, i)
         rows.append({
             "event_type": "guest_profile",
             "event_id": gid,
@@ -51,7 +46,7 @@ def generate_guest_churn(unit_id: int, registry, date_str: str,
     for gid in random.sample(pool, min(n, len(pool))):
         rows.append({
             "event_type": "guest_profile",
-            "event_id": _next_guest_id(),
+            "event_id": make_id("gp_churn", unit_id, date_str, gid),
             "event_ts": tick_ts,
             "guest_profile_id": gid,
             "unit_id": unit_id,

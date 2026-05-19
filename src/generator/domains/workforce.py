@@ -1,5 +1,6 @@
 import random
 from datetime import datetime, timedelta
+from src.generator.id_utils import make_id
 
 _SHIFT_WINDOWS = [
     ("open",    "10:00", "16:00"),
@@ -19,8 +20,8 @@ def generate_shift_events(unit_id: int, date_str: str,
     n_staff = _staff_count(projected_orders)
     shifts = (_SHIFT_WINDOWS * 4)[:n_staff]
     for i, (label, start_str, end_str) in enumerate(shifts):
-        shift_id = unit_id * 10000 + i
-        emp_id = unit_id * 1000 + i + 1
+        shift_id = make_id("shift", unit_id, date_str, i)
+        emp_id = make_id("emp", unit_id, i)
         shift_start = datetime.strptime(f"{date_str} {start_str}", "%Y-%m-%d %H:%M")
         shift_end = datetime.strptime(f"{date_str} {end_str}", "%Y-%m-%d %H:%M")
 
@@ -41,7 +42,7 @@ def generate_shift_events(unit_id: int, date_str: str,
         if not no_show:
             punch_in = shift_start + timedelta(minutes=random.randint(-2, 8))
             punch_out = shift_end + timedelta(minutes=random.randint(-5, 15))
-            punch_id = unit_id * 20000 + i
+            punch_id = make_id("punch", unit_id, date_str, i)
             rows.append({
                 "event_type": "time_punch",
                 "event_id": punch_id,

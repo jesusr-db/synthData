@@ -1,13 +1,7 @@
 import random
 from src.generator.causal_context import CausalContext
 from src.generator.entity_registry import EntityRegistry
-
-_loyalty_counter = 0
-
-def _next_id() -> int:
-    global _loyalty_counter
-    _loyalty_counter += 1
-    return _loyalty_counter
+from src.generator.id_utils import make_id
 
 _TIER_THRESHOLDS = {"bronze": 0, "silver": 500, "gold": 1500, "platinum": 3500}
 
@@ -39,7 +33,7 @@ def generate_loyalty_events(ctx: CausalContext, registry: EntityRegistry,
         multiplier = _points_multiplier(tier)
         points_earned = int(total * 10 * multiplier)
 
-        lt_id = _next_id()
+        lt_id = make_id("lt_earn", order["guest_order_id"], mid)
         rows.append({
             "event_type": "loyalty_transaction",
             "event_id": lt_id,
@@ -56,7 +50,7 @@ def generate_loyalty_events(ctx: CausalContext, registry: EntityRegistry,
 
         if random.random() < 0.08:
             redeem_points = random.choice([100, 200, 500])
-            rr_id = _next_id()
+            rr_id = make_id("rr", order["guest_order_id"], mid)
             rows.append({
                 "event_type": "reward_redemption",
                 "event_id": rr_id,
@@ -69,7 +63,7 @@ def generate_loyalty_events(ctx: CausalContext, registry: EntityRegistry,
                 "reward_value": round(redeem_points / 100, 2),
                 "redeemed_at": order["placed_at"],
             })
-            dt_id = _next_id()
+            dt_id = make_id("lt_redeem", order["guest_order_id"], mid)
             rows.append({
                 "event_type": "loyalty_transaction",
                 "event_id": dt_id,

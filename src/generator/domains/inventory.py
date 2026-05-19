@@ -7,12 +7,7 @@ from src.generator.entropy import should_waste
 _WASTE_CATS = ["overproduction", "spoilage", "theft", "expired", "damaged"]
 _WASTE_WEIGHTS = [50, 25, 10, 10, 5]
 
-_inv_counter = 0
-
-def _next_inv_id() -> int:
-    global _inv_counter
-    _inv_counter += 1
-    return _inv_counter
+from src.generator.id_utils import make_id
 
 def generate_inventory_events(ctx: CausalContext, registry: EntityRegistry,
                                order_rows: list[dict]) -> list[dict]:
@@ -29,7 +24,7 @@ def generate_inventory_events(ctx: CausalContext, registry: EntityRegistry,
     for sku, qty_used in depleted.items():
         par_level = 20.0
         on_hand = max(0.0, par_level - qty_used + random.uniform(0, 5))
-        ohb_id = _next_inv_id()
+        ohb_id = make_id("ohb", ctx.unit_id, ctx.timestamp.isoformat(), sku)
         rows.append({
             "event_type": "on_hand_balance",
             "event_id": ohb_id,
@@ -44,7 +39,7 @@ def generate_inventory_events(ctx: CausalContext, registry: EntityRegistry,
         })
         if should_waste(ctx.waste_probability, ctx.hour_of_day):
             waste_qty = round(qty_used * random.uniform(0.02, 0.06), 3)
-            wl_id = _next_inv_id()
+            wl_id = make_id("wl", ctx.unit_id, ctx.timestamp.isoformat(), sku)
             rows.append({
                 "event_type": "waste_log",
                 "event_id": wl_id,
@@ -58,7 +53,7 @@ def generate_inventory_events(ctx: CausalContext, registry: EntityRegistry,
                 "logged_at": ctx.timestamp,
             })
         if on_hand < par_level * 0.25:
-            rpl_id = _next_inv_id()
+            rpl_id = make_id("rep", ctx.unit_id, ctx.timestamp.isoformat(), sku)
             rows.append({
                 "event_type": "replenishment_order",
                 "event_id": rpl_id,
@@ -80,7 +75,7 @@ def generate_daily_receiving(unit_id: int, reg: EntityRegistry,
     """Simulate daily supplier delivery restocking PAR levels."""
     rows = []
     for sku in _all_skus(reg):
-        rcv_id = _next_inv_id()
+        rcv_id = make_id("rcv", unit_id, order_date, sku)
         rows.append({
             "event_type": "receiving_order",
             "event_id": rcv_id,

@@ -7,8 +7,9 @@ from src.generator.entity_registry import EntityRegistry
 from src.generator.demand_model import orders_for_tick, channel_for_order, tender_for_order
 from src.generator.entropy import prep_time_seconds, should_breach_sos, should_cancel
 
+from src.generator.id_utils import make_id
+
 _TAX_RATE = 0.085
-_order_counter = 0
 
 
 def _member_tier(member_id: int) -> str:
@@ -21,10 +22,6 @@ def _member_tier(member_id: int) -> str:
         return "silver"
     return "bronze"
 
-def _next_order_id() -> int:
-    global _order_counter
-    _order_counter += 1
-    return _order_counter
 
 def _build_order(ctx: CausalContext, registry: EntityRegistry,
                  order_id: int, channel: str) -> list[dict]:
@@ -197,8 +194,8 @@ def generate_orders_for_tick(ctx: CausalContext, registry: EntityRegistry,
     """Generate all order-domain rows for one unit, one tick."""
     n = orders_for_tick(ctx, tick_seconds)
     rows = []
-    for _ in range(n):
-        order_id = _next_order_id()
+    for i in range(n):
+        order_id = make_id("o", ctx.unit_id, ctx.timestamp.isoformat(), i)
         channel = channel_for_order(ctx)
         rows.extend(_build_order(ctx, registry, order_id, channel))
     return rows
