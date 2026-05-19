@@ -22,6 +22,8 @@ backfill_months    = int(_widget("backfill_months", "1"))
 live_tick_seconds  = int(_widget("live_tick_seconds", "3600"))
 base_orders        = int(_widget("base_orders_per_unit_per_hour", "18"))
 mode               = _widget("mode", "live")
+start_dt_override  = _widget("start_dt_override", "")
+end_dt_override    = _widget("end_dt_override", "")
 
 # COMMAND ----------
 from datetime import datetime, timedelta
@@ -105,11 +107,18 @@ def _latest_staging_ts():
 
 
 if mode == "backfill":
-    start_dt = _latest_staging_ts()
-    if start_dt is not None:
-        print(f"[INFO] Rehydrating from latest staging timestamp: {start_dt}")
+    if start_dt_override:
+        start_dt = datetime.fromisoformat(start_dt_override)
+        print(f"[INFO] Backfill start override: {start_dt}")
     else:
-        print(f"[INFO] No existing data — backfilling {backfill_months} month(s), catalog={catalog_name}")
+        start_dt = _latest_staging_ts()
+        if start_dt is not None:
+            print(f"[INFO] Rehydrating from latest staging timestamp: {start_dt}")
+        else:
+            print(f"[INFO] No existing data — backfilling {backfill_months} month(s), catalog={catalog_name}")
+    end_dt = datetime.fromisoformat(end_dt_override) if end_dt_override else None
+    if end_dt:
+        print(f"[INFO] Backfill end override: {end_dt}")
     total_rows = 0
     for i, batch in enumerate(
         backfill_ticks(
@@ -118,6 +127,7 @@ if mode == "backfill":
             tick_seconds=3600,
             base_orders_per_hour=base_orders,
             start_dt=start_dt,
+            end_dt=end_dt,
         )
     ):
         write_batch(batch)
