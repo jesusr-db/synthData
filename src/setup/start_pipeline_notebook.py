@@ -1,8 +1,9 @@
 # Databricks notebook source
 # COMMAND ----------
 # Start or wait for the DLT pipeline. If an update is already in progress,
-# wait for it to finish rather than failing. Handles the race with the live
-# generator job which triggers a pipeline update every minute.
+# wait for it. If it fails (broken checkpoint state), do a full_refresh to
+# clear streaming state and re-process from staging. Handles the race with the
+# live generator job which triggers a pipeline update every minute.
 
 import time
 from databricks.sdk import WorkspaceClient
@@ -18,7 +19,6 @@ pipelines = list(w.pipelines.list_pipelines())
 pipeline = next((p for p in pipelines if p.name == pipeline_name), None)
 
 if pipeline is None:
-    # Fallback: find by catalog tag
     pipeline = next(
         (p for p in pipelines if "QSR MVM Pipeline" in (p.name or "")),
         None
@@ -30,43 +30,56 @@ if pipeline is None:
 pipeline_id = pipeline.pipeline_id
 print(f"[INFO] Found pipeline: {pipeline.name} ({pipeline_id})")
 
+
+def wait_for_update(update_id: str) -> UpdateInfoState:
+    """Poll until update reaches a terminal state. Returns the final state."""
+    while True:
+        update = w.pipelines.get_update(pipeline_id, update_id)
+        state = update.update.state
+        print(f"[INFO] Update {update_id[:8]} state: {state}")
+        if state in (UpdateInfoState.COMPLETED, UpdateInfoState.CANCELED, UpdateInfoState.FAILED):
+            return state
+        time.sleep(15)
+
+
+def run_full_refresh() -> None:
+    """Start a full_refresh update and wait for it to complete."""
+    print("[INFO] Starting full_refresh to clear streaming checkpoint state...")
+    result = w.pipelines.start_update(pipeline_id, full_refresh=True)
+    update_id = result.update_id
+    final = wait_for_update(update_id)
+    if final == UpdateInfoState.FAILED:
+        raise RuntimeError(f"Pipeline full_refresh failed: {update_id}")
+    print(f"[INFO] full_refresh finished: {final}")
+
+
 # COMMAND ----------
-# Check current state — if RUNNING, wait for current update to complete
+# If a pipeline update is already running, wait for it.
+# If it fails, fall through to full_refresh to recover checkpoint state.
 status = w.pipelines.get(pipeline_id)
 current_state = status.state.value if status.state else "UNKNOWN"
 print(f"[INFO] Pipeline state: {current_state}")
 
-if current_state in ("RUNNING", "STARTING"):
-    # Find the active update and wait for it
-    updates = list(w.pipelines.list_updates(pipeline_id, max_results=1))
-    if updates:
-        active_update_id = updates[0].update_id
-        print(f"[INFO] Update already in progress ({active_update_id}), waiting for completion...")
-        while True:
-            update = w.pipelines.get_update(pipeline_id, active_update_id)
-            state = update.update.state
-            print(f"[INFO] Update state: {state}")
-            if state in (UpdateInfoState.COMPLETED, UpdateInfoState.CANCELED, UpdateInfoState.FAILED):
-                if state == UpdateInfoState.FAILED:
-                    raise RuntimeError(f"Existing pipeline update failed: {active_update_id}")
-                print(f"[INFO] Existing update finished with state: {state}")
-                break
-            time.sleep(15)
-else:
-    # Start a new incremental update
-    print("[INFO] Starting new pipeline update...")
-    result = w.pipelines.start_update(pipeline_id, full_refresh=False)
-    update_id = result.update_id
-    print(f"[INFO] Started update: {update_id}")
-    while True:
-        update = w.pipelines.get_update(pipeline_id, update_id)
-        state = update.update.state
-        print(f"[INFO] Update state: {state}")
-        if state in (UpdateInfoState.COMPLETED, UpdateInfoState.CANCELED, UpdateInfoState.FAILED):
-            if state == UpdateInfoState.FAILED:
-                raise RuntimeError(f"Pipeline update failed: {update_id}")
-            print(f"[INFO] Update finished with state: {state}")
-            break
-        time.sleep(15)
+needs_refresh = False
 
-print("[INFO] Pipeline start_pipeline task complete.")
+if current_state in ("RUNNING", "STARTING"):
+    resp = w.pipelines.list_updates(pipeline_id, max_results=1)
+    active_updates = resp.updates if resp.updates else []
+    if active_updates:
+        active_update_id = active_updates[0].update_id
+        print(f"[INFO] Active update {active_update_id[:8]}, waiting...")
+        final = wait_for_update(active_update_id)
+        if final == UpdateInfoState.COMPLETED:
+            print("[INFO] Active update completed successfully.")
+        else:
+            print(f"[WARN] Active update ended with {final} — will full_refresh to clear checkpoint.")
+            needs_refresh = True
+    else:
+        needs_refresh = True
+else:
+    needs_refresh = True
+
+if needs_refresh:
+    run_full_refresh()
+
+print("[INFO] start_pipeline task complete.")
