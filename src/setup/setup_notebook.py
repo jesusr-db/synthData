@@ -35,9 +35,9 @@ print(f"[INFO] Schemas ready: staging, ref, metrics")
 
 # COMMAND ----------
 # Step 3: Create staging tables with full schemas so DLT can analyze flows at startup.
-# CREATE OR REPLACE TABLE ensures schema is always current even on re-runs.
+# IF NOT EXISTS preserves existing data and Delta table IDs — required for DLT streaming checkpoints.
 spark.sql(f"""
-    CREATE OR REPLACE TABLE {catalog_name}.staging.order_events (
+    CREATE TABLE IF NOT EXISTS {catalog_name}.staging.order_events (
         event_type                      STRING,
         event_id                        BIGINT,
         unit_id                         BIGINT,
@@ -95,7 +95,7 @@ spark.sql(f"""
 print(f"[INFO] Staging table ready: {catalog_name}.staging.order_events")
 
 spark.sql(f"""
-    CREATE OR REPLACE TABLE {catalog_name}.staging.inventory_events (
+    CREATE TABLE IF NOT EXISTS {catalog_name}.staging.inventory_events (
         event_type                  STRING,
         event_id                    BIGINT,
         unit_id                     BIGINT,
@@ -132,7 +132,7 @@ spark.sql(f"""
 print(f"[INFO] Staging table ready: {catalog_name}.staging.inventory_events")
 
 spark.sql(f"""
-    CREATE OR REPLACE TABLE {catalog_name}.staging.guest_events (
+    CREATE TABLE IF NOT EXISTS {catalog_name}.staging.guest_events (
         event_type          STRING,
         event_id            BIGINT,
         unit_id             BIGINT,
@@ -157,7 +157,7 @@ spark.sql(f"""
 print(f"[INFO] Staging table ready: {catalog_name}.staging.guest_events")
 
 spark.sql(f"""
-    CREATE OR REPLACE TABLE {catalog_name}.staging.loyalty_events (
+    CREATE TABLE IF NOT EXISTS {catalog_name}.staging.loyalty_events (
         event_type              STRING,
         event_id                BIGINT,
         unit_id                 BIGINT,
@@ -184,7 +184,7 @@ spark.sql(f"""
 print(f"[INFO] Staging table ready: {catalog_name}.staging.loyalty_events")
 
 spark.sql(f"""
-    CREATE OR REPLACE TABLE {catalog_name}.staging.workforce_events (
+    CREATE TABLE IF NOT EXISTS {catalog_name}.staging.workforce_events (
         event_type      STRING,
         event_id        BIGINT,
         unit_id         BIGINT,
