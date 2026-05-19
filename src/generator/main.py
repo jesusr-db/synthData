@@ -10,21 +10,18 @@ if _bundle_root not in sys.path:
 
 # COMMAND ----------
 # Load params — injected as job widgets (all params live in databricks.yml variables)
-try:
-    catalog_name = dbutils.widgets.get("catalog_name")
-    num_units = int(dbutils.widgets.get("num_units"))
-    backfill_months = int(dbutils.widgets.get("backfill_months"))
-    live_tick_seconds = int(dbutils.widgets.get("live_tick_seconds"))
-    base_orders = int(dbutils.widgets.get("base_orders_per_unit_per_hour"))
-    mode = dbutils.widgets.get("mode")  # "backfill" or "live"
-except Exception:
-    # Defaults for interactive execution — always use job parameters in deployment
-    catalog_name = "jmrdemo"
-    num_units = 250
-    backfill_months = 1
-    live_tick_seconds = 60
-    base_orders = 18
-    mode = "live"
+def _widget(name, default):
+    try:
+        return dbutils.widgets.get(name)
+    except Exception:
+        return default
+
+catalog_name       = _widget("catalog_name", "jmrdemo")
+num_units          = int(_widget("num_units", "250"))
+backfill_months    = int(_widget("backfill_months", "1"))
+live_tick_seconds  = int(_widget("live_tick_seconds", "3600"))
+base_orders        = int(_widget("base_orders_per_unit_per_hour", "18"))
+mode               = _widget("mode", "live")
 
 # COMMAND ----------
 from src.generator.entity_registry import EntityRegistry
