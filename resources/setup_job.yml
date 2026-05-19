@@ -23,7 +23,7 @@ resources:
             - task_key: setup
           pipeline_task:
             pipeline_id: ${resources.pipelines.mvm_pipeline.id}
-            full_refresh: true
+            full_refresh: false
 
         - task_key: apply_catalog_metadata
           depends_on:
