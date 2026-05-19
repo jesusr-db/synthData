@@ -9,7 +9,7 @@ variables:
   backfill_months:
     default: "1"
   live_tick_seconds:
-    default: "60"
+    default: "3600"
   base_orders_per_unit_per_hour:
     default: "18"
 
