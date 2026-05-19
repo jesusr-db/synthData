@@ -93,9 +93,6 @@ measures:
   - name: Points Redeemed
     expr: SUM(CASE WHEN transaction_type = 'redeem' THEN ABS(points_delta) ELSE 0 END)
     comment: "Total loyalty points redeemed"
-  - name: Redemption Value
-    expr: SUM(CASE WHEN transaction_type = 'redeem' THEN reward_value ELSE 0 END)
-    comment: "Dollar value of redeemed rewards"
 $$
 """)
 print("[OK] metrics.loyalty_performance")
