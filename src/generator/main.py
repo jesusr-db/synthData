@@ -125,8 +125,15 @@ if mode == "backfill":
     print(f"[INFO] Backfill complete: {total_rows} total rows written")
 
 else:
-    # Live mode: run once (invoked every live_tick_seconds by the job schedule)
-    print(f"[INFO] Live tick: tick_seconds={live_tick_seconds}, catalog={catalog_name}")
-    rows = live_tick(registry, live_tick_seconds, base_orders)
-    write_batch(rows)
-    print(f"[INFO] Live tick complete: {len(rows)} rows written")
+    # Live mode: generate the previous hour as 60 sub-ticks with correct per-minute timestamps.
+    # Runs once per hour (scheduled via cron). live_tick_seconds controls sub-tick granularity.
+    from datetime import datetime, timedelta
+    end_dt   = datetime.now().replace(minute=0, second=0, microsecond=0)
+    start_dt = end_dt - timedelta(hours=1)
+    print(f"[INFO] Live tick: window=[{start_dt}, {end_dt}), sub_tick_seconds={live_tick_seconds}, catalog={catalog_name}")
+    total_rows = 0
+    for batch in backfill_ticks(registry, backfill_months=1, tick_seconds=live_tick_seconds,
+                                 base_orders_per_hour=base_orders, start_dt=start_dt, end_dt=end_dt):
+        write_batch(batch)
+        total_rows += len(batch)
+    print(f"[INFO] Live tick complete: {total_rows} rows written for window [{start_dt}, {end_dt})")

@@ -180,6 +180,44 @@ def test_backfill_ticks_end_dt_60s_ticks_yields_60_batches():
     assert len(batches) == 60
 
 
+def test_hourly_window_timestamps_span_full_hour():
+    """60 sub-ticks over [start, start+1h) should produce events at 60 distinct minute marks."""
+    from datetime import datetime, timedelta
+    from src.generator.runner import backfill_ticks
+    from src.generator.entity_registry import EntityRegistry
+    from src.generator.reference.us_locations import generate_units
+    from src.generator.reference.menu_catalog import get_menu_items, get_recipe_ingredients
+    from src.generator.reference.seeder import build_financial_periods_data
+
+    reg = EntityRegistry(
+        units=generate_units(3),
+        menu_items=get_menu_items(),
+        bom=get_recipe_ingredients(),
+        financial_periods=build_financial_periods_data(1),
+    )
+    # Use dinner hour for reliable order volume
+    start = datetime(2025, 9, 19, 19, 0)
+    end   = datetime(2025, 9, 19, 20, 0)
+    all_rows = []
+    for batch in backfill_ticks(reg, backfill_months=1, tick_seconds=60,
+                                 base_orders_per_hour=18, start_dt=start, end_dt=end):
+        all_rows.extend(batch)
+
+    # All event timestamps must fall within [start, end)
+    order_rows = [r for r in all_rows if r.get("event_type") == "guest_order"]
+    assert len(order_rows) > 0, "Expected orders in a busy dinner hour"
+
+    timestamps = {r["placed_at"] for r in order_rows if r.get("placed_at") is not None}
+    min_ts = min(timestamps)
+    max_ts = max(timestamps)
+    assert min_ts >= start, f"Event before window start: {min_ts}"
+    assert max_ts < end,    f"Event at or after window end: {max_ts}"
+
+    # Events should span at least 30 distinct minutes (probabilistic — dinner hour, 3 units)
+    distinct_minutes = {ts.replace(second=0, microsecond=0) for ts in timestamps}
+    assert len(distinct_minutes) >= 30, f"Only {len(distinct_minutes)} distinct minutes — timestamps not spread"
+
+
 def test_live_tick_returns_list_of_dicts():
     from src.generator.runner import live_tick
     from src.generator.entity_registry import EntityRegistry
