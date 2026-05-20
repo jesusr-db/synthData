@@ -210,3 +210,15 @@ pytest tests/ -v
 | `browserHostName()` throws `None.get` on serverless | Unavailable in serverless cluster context | Use `WorkspaceClient().config.host` instead |
 | Genie Space API returns 401 | `w.config.token` is `None` on serverless (OAuth credentials) | Use `ctx.apiToken().get()` for bearer token |
 | Genie Space API returns 400 missing `warehouse_id` | Field required by API | Look up warehouse via SDK and add to payload |
+| PK duplication 83–87% across all order-domain tables | Module-level global counters (`_order_counter`, `_inv_counter`, etc.) reset to 0 on every Databricks serverless notebook execution (fresh Python process per job run) | Replaced all counters with `make_id(*parts)` in `src/generator/id_utils.py` — deterministic SHA-256 hash keyed on `(domain_prefix, unit_id, tick_ts, seq/sku)`, produces a stable 56-bit int that is idempotent across re-runs |
+| `silver.guest_profile` has ~19 duplicate `guest_profile_id` rows | `generate_guest_churn()` in `guest.py` emits a `guest_profile` event reusing the original guest's `guest_profile_id` as a churn/deactivation record. The same guest can be sampled on multiple days, creating 2 rows per guest in silver | **Not yet fixed.** Proper fix: migrate `silver.guest_profile` in `mvm_pipeline.py` from `@dp.table` (append streaming) to `dlt.apply_changes()` (CDC merge), keying on `guest_profile_id` with `sequence_by="event_ts"`. This collapses per-guest events into one row (latest wins), eliminating the dupe while preserving churn state. See [DLT CDC docs](https://docs.databricks.com/en/delta-live-tables/cdc.html). |
+
+---
+
+## Destroy / Data Survival
+
+**`databricks bundle destroy`** removes DAB-managed *resources* (job definitions, pipeline definition) but does **not** drop Unity Catalog tables. The Delta data in `jmrdemo.staging.*`, `jmrdemo.silver.*`, and `jmrdemo.ref.*` survives.
+
+**The QSR Destroy job** tears down non-DAB objects (Genie Space, metric views, schemas) but is not written to DROP the data tables themselves.
+
+**To fully wipe data**, you must explicitly run `DROP TABLE` (or `DROP SCHEMA ... CASCADE`) on the catalog objects after running the destroy job and `bundle destroy`.
