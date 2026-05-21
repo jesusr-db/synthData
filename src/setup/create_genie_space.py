@@ -27,7 +27,7 @@ headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json
 
 SPACE_TITLE = f"QSR Synthetic Data — {catalog_name}"
 
-print(f"[INFO] create_genie_space: catalog={catalog_name}, workspace={workspace_url}")
+print(f"[INFO] create_genie_space: catalog={catalog_name}, schema_prefix={schema_prefix}, workspace={workspace_url}")
 
 # COMMAND ----------
 # Check if space already exists
