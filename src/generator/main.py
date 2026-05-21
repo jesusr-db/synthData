@@ -24,6 +24,7 @@ base_orders        = int(_widget("base_orders_per_unit_per_hour", "18"))
 mode               = _widget("mode", "live")
 start_dt_override  = _widget("start_dt_override", "")
 end_dt_override    = _widget("end_dt_override", "")
+schema_prefix       = _widget("schema_prefix", "synth_")
 
 # COMMAND ----------
 from datetime import datetime, timedelta
@@ -40,24 +41,24 @@ from collections import defaultdict
 from pyspark.sql import Row
 
 DOMAIN_TABLE_MAP = {
-    "guest_order":         f"{catalog_name}.staging.order_events",
-    "order_item":          f"{catalog_name}.staging.order_events",
-    "order_modifier":      f"{catalog_name}.staging.order_events",
-    "payment":             f"{catalog_name}.staging.order_events",
-    "status_event":        f"{catalog_name}.staging.order_events",
-    "delivery_order":      f"{catalog_name}.staging.order_events",
-    "on_hand_balance":     f"{catalog_name}.staging.inventory_events",
-    "waste_log":           f"{catalog_name}.staging.inventory_events",
-    "receiving_order":     f"{catalog_name}.staging.inventory_events",
-    "replenishment_order": f"{catalog_name}.staging.inventory_events",
-    "stock_transfer":      f"{catalog_name}.staging.inventory_events",
-    "adjustment":          f"{catalog_name}.staging.inventory_events",
-    "guest_profile":       f"{catalog_name}.staging.guest_events",
-    "digital_account":     f"{catalog_name}.staging.guest_events",
-    "loyalty_transaction": f"{catalog_name}.staging.loyalty_events",
-    "reward_redemption":   f"{catalog_name}.staging.loyalty_events",
-    "shift":               f"{catalog_name}.staging.workforce_events",
-    "time_punch":          f"{catalog_name}.staging.workforce_events",
+    "guest_order":         f"{catalog_name}.{schema_prefix}staging.order_events",
+    "order_item":          f"{catalog_name}.{schema_prefix}staging.order_events",
+    "order_modifier":      f"{catalog_name}.{schema_prefix}staging.order_events",
+    "payment":             f"{catalog_name}.{schema_prefix}staging.order_events",
+    "status_event":        f"{catalog_name}.{schema_prefix}staging.order_events",
+    "delivery_order":      f"{catalog_name}.{schema_prefix}staging.order_events",
+    "on_hand_balance":     f"{catalog_name}.{schema_prefix}staging.inventory_events",
+    "waste_log":           f"{catalog_name}.{schema_prefix}staging.inventory_events",
+    "receiving_order":     f"{catalog_name}.{schema_prefix}staging.inventory_events",
+    "replenishment_order": f"{catalog_name}.{schema_prefix}staging.inventory_events",
+    "stock_transfer":      f"{catalog_name}.{schema_prefix}staging.inventory_events",
+    "adjustment":          f"{catalog_name}.{schema_prefix}staging.inventory_events",
+    "guest_profile":       f"{catalog_name}.{schema_prefix}staging.guest_events",
+    "digital_account":     f"{catalog_name}.{schema_prefix}staging.guest_events",
+    "loyalty_transaction": f"{catalog_name}.{schema_prefix}staging.loyalty_events",
+    "reward_redemption":   f"{catalog_name}.{schema_prefix}staging.loyalty_events",
+    "shift":               f"{catalog_name}.{schema_prefix}staging.workforce_events",
+    "time_punch":          f"{catalog_name}.{schema_prefix}staging.workforce_events",
 }
 
 
@@ -87,11 +88,11 @@ def _latest_staging_ts():
     """Return the max event_ts across all staging tables, or None if tables are empty."""
     from datetime import timedelta
     STAGING_TABLES = [
-        f"{catalog_name}.staging.order_events",
-        f"{catalog_name}.staging.inventory_events",
-        f"{catalog_name}.staging.guest_events",
-        f"{catalog_name}.staging.loyalty_events",
-        f"{catalog_name}.staging.workforce_events",
+        f"{catalog_name}.{schema_prefix}staging.order_events",
+        f"{catalog_name}.{schema_prefix}staging.inventory_events",
+        f"{catalog_name}.{schema_prefix}staging.guest_events",
+        f"{catalog_name}.{schema_prefix}staging.loyalty_events",
+        f"{catalog_name}.{schema_prefix}staging.workforce_events",
     ]
     max_ts = None
     for table in STAGING_TABLES:
@@ -141,7 +142,7 @@ else:
     # Runs once per hour (scheduled via cron). live_tick_seconds controls sub-tick granularity.
     end_dt   = datetime.now().replace(minute=0, second=0, microsecond=0)
     start_dt = end_dt - timedelta(hours=1)
-    print(f"[INFO] Live tick: window=[{start_dt}, {end_dt}), sub_tick_seconds={live_tick_seconds}, catalog={catalog_name}")
+    print(f"[INFO] Live tick: window=[{start_dt}, {end_dt}), sub_tick_seconds={live_tick_seconds}, catalog={catalog_name}, schema_prefix={schema_prefix}")
     total_rows = 0
     for batch in backfill_ticks(registry, backfill_months=1, tick_seconds=live_tick_seconds,
                                  base_orders_per_hour=base_orders, start_dt=start_dt, end_dt=end_dt):

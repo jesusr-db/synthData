@@ -68,15 +68,15 @@ def build_suppliers_data() -> list[dict]:
         {"supplier_id": 6, "supplier_name": "Domino's Supply Chain", "category": "dough_sauce", "status": "active"},
     ]
 
-def seed_all(spark, catalog: str, num_units: int = 250, backfill_months: int = 12):
-    """Write all reference tables to {catalog}.ref.*"""
+def seed_all(spark, catalog: str, num_units: int = 250, backfill_months: int = 12, schema_prefix: str = "synth_"):
+    """Write all reference tables to {catalog}.{schema_prefix}ref.*"""
     from pyspark.sql import Row
 
     def write(data: list[dict], table: str):
         if not data:
             return
         df = spark.createDataFrame([Row(**r) for r in data])
-        df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{catalog}.ref.{table}")
+        df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{catalog}.{schema_prefix}ref.{table}")
 
     write(build_units_df_data(num_units), "unit")
     write(build_franchisees_data(num_units), "franchisee")
@@ -89,7 +89,7 @@ def seed_all(spark, catalog: str, num_units: int = 250, backfill_months: int = 1
     # Phase 2 stubs — empty tables
     for stub_table in ("weather_conditions", "local_events"):
         spark.sql(f"""
-            CREATE TABLE IF NOT EXISTS {catalog}.ref.{stub_table}
+            CREATE TABLE IF NOT EXISTS {catalog}.{schema_prefix}ref.{stub_table}
             (stub_id BIGINT, placeholder STRING)
             USING DELTA
         """)
