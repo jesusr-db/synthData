@@ -19,7 +19,7 @@ A fully automated QSR synthetic data generator (Domino's-style, 250 units):
 - **Gold layer:** 4 Gold aggregate tables co-located in `jmrdemo.synth_silver` (DLT managed)
 - **Metrics layer:** 4 Unity Catalog metric views in `jmrdemo.synth_metrics` (WITH METRICS LANGUAGE YAML — reusable measures + dimensions)
 - **Genie Space:** Pre-configured with domain instructions, 10 seed questions, all silver + metrics tables
-- **Governance Pack:** UC column tags (`class.*` for PII, `financial`, `supply_chain`), column masks (email/phone via per-table `SET MASK`), row filter by franchisee on 6 silver/ref tables, 3 UC scalar functions, UC Volume with sample files. 4 Lakehouse Monitors active (3 snapshot + 1 timeseries on `silver.guest_order`) with 12h auto-refresh schedule.
+- **Governance Pack:** UC column tags (`class.*` for PII, `financial`, `supply_chain`), column masks (email/phone via catalog-level ABAC policies — `CREATE POLICY ... MATCH COLUMNS (has_tag(...))`), row filter by franchisee on 6 silver/ref tables, 3 UC scalar functions, UC Volume with sample files. 4 Lakehouse Monitors active (3 snapshot + 1 timeseries on `silver.guest_order`) with 12h auto-refresh schedule.
 
 ---
 
@@ -54,7 +54,7 @@ setup ──→ backfill ──→ start_pipeline ──→ create_metric_views 
 - **`setup_notebook.py`** uses `CREATE TABLE IF NOT EXISTS` for all 5 staging tables — never drops them. This preserves Delta table IDs so DLT streaming checkpoints survive re-runs.
 - **`start_pipeline_notebook.py`** waits for any active pipeline update; falls back to `full_refresh=True` if the update fails (clears broken streaming checkpoint state). Retry logic: `max_attempts=2`.
 - **`backfill`** is incremental — reads `MAX(event_ts)` across staging tables and resumes from the next full hour. Safe to re-run.
-- **`apply_governance`** is fully idempotent — uses `CREATE OR REPLACE` / `IF NOT EXISTS` throughout. Per-table `SET MASK` (not ABAC) — see Known Gotchas.
+- **`apply_governance`** is fully idempotent — Step 5 uses ABAC `CREATE POLICY` (SHOW POLICIES → DROP if exists → CREATE). **`start_pipeline`** drops ABAC policies before `full_refresh` to avoid `ABAC_POLICIES_NOT_SUPPORTED`.
 - **`configure_monitoring`** creates/updates 4 Lakehouse Monitors. GET-before-CREATE pattern updates existing monitors (schedule + classification config) rather than skipping them.
 
 ---
@@ -230,12 +230,6 @@ pytest tests/ -v
 
 ## Open Issues
 
-### ABAC masking not yet wired (DLT compatibility workaround pending)
-
-`apply_governance.py` currently uses per-table `SET MASK` (Step 5). The intended architecture is tag-driven ABAC (`CREATE POLICY ... MATCH COLUMNS (has_tag('class.email_address'))`), but Databricks rejects ABAC catalog-level policies on DLT-managed tables during `full_refresh` with `ABAC_POLICIES_NOT_SUPPORTED`.
-
-**Workaround path (not yet implemented):** Drop ABAC policies in `start_pipeline_notebook.py` before triggering the full_refresh, then `apply_governance` recreates them after. This allows ABAC to work end-to-end while keeping the pipeline compatible. See branch `feat/abac-data-discovery` for the ABAC implementation — it just needs the drop-before-refresh step in `start_pipeline_notebook.py`.
-
 ### Data classification auto-tagging not active
 
 `configure_monitoring.py` passes `MonitorDataClassificationConfig(enabled=True)` to all 4 monitors, but the workspace returns `enabled=False` — this workspace tier does not support the Data Classification feature. The `class.*` tags on PII columns are applied deterministically by `apply_governance.py` Step 3 (hardcoded DDL), not by any automated scanner. If the workspace is upgraded, the monitors will start writing `class.*` tags automatically on each 12h refresh.
@@ -258,7 +252,7 @@ pytest tests/ -v
 | `silver.guest_profile` had ~19 duplicate `guest_profile_id` rows | `generate_guest_churn()` emits a `guest_profile` event reusing the original guest's ID as a churn/deactivation record | **Fixed.** Migrated to CDC via `dp.create_streaming_table` + `dp.create_auto_cdc_flow` (SCD Type 1, keyed on `guest_profile_id`). |
 | `configure_monitoring` fails with `TABLE SELECT required` | The `[WARN]` about table-level SELECT was a red herring. The real gap was the compute service principal lacking USE CATALOG and USE SCHEMA privileges — table-level grants are ignored when the principal can't even see the catalog/schema. Fix: grant USE CATALOG and USE SCHEMA to the service principal (or `account users`) at the catalog and schema level, not just the table. | Permissions granted at catalog and schema level; monitors now create successfully with status MONITOR_STATUS_ACTIVE. |
 | `start_pipeline` fails with "FAILED unexpectedly" even though all flows completed | Transient platform-level DLT update coordinator error — all 19 flows completed but the update status reported FAILED | Added `max_attempts=2` retry loop to `run_full_refresh()` in `start_pipeline_notebook.py`. |
-| Catalog-level ABAC policies (`CREATE POLICY ON CATALOG`) cause DLT full_refresh to fail | DLT rejects `full_refresh` on tables that have catalog-level ABAC policies bound: `ABAC_POLICIES_NOT_SUPPORTED`. Both staging and silver tables are DLT-managed, so `ON CATALOG` ABAC covers them. | Reverted Step 5 of `apply_governance.py` to per-table `SET MASK`. ABAC is the intended end state — drop-before-refresh pattern in `start_pipeline_notebook.py` is the remaining work. See Open Issues. |
+| Catalog-level ABAC policies cause DLT full_refresh to fail with `ABAC_POLICIES_NOT_SUPPORTED` | DLT pipeline-owned tables cannot have catalog ABAC policies active during `full_refresh`. | `start_pipeline_notebook.py` drops ABAC policies before triggering `full_refresh`; `apply_governance` recreates them after. |
 | `class.*` UC tag values must be empty string, not `'true'` | The `jmrdemo` workspace has a UC tag policy governing the `class.*` namespace with an empty allowed-values list. Writing `SET TAGS ('class.email_address' = 'true')` fails. | All `class.*` tag values in `apply_governance.py` Step 3 use `''` (empty string). `financial` and `supply_chain` tags keep `'true'` — different policy. |
 | `CREATE POLICY IF NOT EXISTS` / `DROP POLICY IF EXISTS` not supported | Syntax not available in this UC version. | Guard existence with `SHOW POLICIES ON CATALOG {c}` → `.filter(...)` → `.count()` before issuing `CREATE POLICY` or `DROP POLICY`. |
 
