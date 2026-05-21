@@ -11,6 +11,31 @@ from databricks.sdk.service.pipelines import UpdateInfoState
 
 catalog_name = dbutils.widgets.get("catalog_name")
 
+# COMMAND ----------
+# Drop ABAC catalog policies before full_refresh.
+# DLT rejects full_refresh with ABAC_POLICIES_NOT_SUPPORTED when catalog-level policies are bound.
+# apply_governance (which runs after this task) will recreate them.
+ABAC_POLICY_NAMES = ["mask_email_policy", "mask_phone_policy"]
+
+def drop_abac_policies_before_refresh(catalog: str) -> None:
+    try:
+        existing = {row["Policy Name"] for row in spark.sql(f"SHOW POLICIES ON CATALOG {catalog}").collect()}
+    except Exception as e:
+        print(f"[WARN] Could not check ABAC policies, skipping drop: {e}")
+        return
+    for policy_name in ABAC_POLICY_NAMES:
+        if policy_name in existing:
+            try:
+                spark.sql(f"DROP POLICY {policy_name} ON CATALOG {catalog}")
+                print(f"[INFO] Dropped ABAC policy: {policy_name} (apply_governance will recreate)")
+            except Exception as e:
+                print(f"[WARN] Drop ABAC policy {policy_name} failed: {e}")
+        else:
+            print(f"[INFO] ABAC policy {policy_name} not present — nothing to drop")
+
+drop_abac_policies_before_refresh(catalog_name)
+
+# COMMAND ----------
 w = WorkspaceClient()
 
 # Find the pipeline by name
