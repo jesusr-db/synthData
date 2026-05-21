@@ -44,7 +44,7 @@ databricks bundle run setup_job --target dev
 databricks jobs run-now <setup_job_id>
 ```
 
-The setup job handles everything in order: catalog check → schemas → staging tables → ref seed → (parallel) backfill + pipeline start → metric views → Genie Space → governance → monitoring → unpause generator.
+The setup job handles everything in order: catalog check → schemas → staging tables → ref seed → backfill → pipeline start → (parallel) metric views + governance → Genie Space + monitoring → unpause generator.
 
 ## Common Commands
 
@@ -112,13 +112,14 @@ ORDER BY table_name, column_name;
 -- Expected: ~10 rows covering email, phone, first_name, last_name, zip_code
 -- on both synth_staging.guest_events and synth_silver.guest_profile
 
--- Verify ABAC catalog-level mask policies exist
-SELECT policy_name, catalog_name, mask_function_name
-FROM system.information_schema.column_mask_policies
-WHERE catalog_name = 'jmrdemo';
--- Expected: rows for mask_email_policy and mask_phone_policy
+-- Verify per-table column masks are active
+SELECT table_name, column_name, mask_function_name
+FROM system.information_schema.column_masks
+WHERE catalog_name = 'jmrdemo'
+  AND schema_name IN ('synth_staging', 'synth_silver');
+-- Expected: rows for email and phone on guest_events and guest_profile
 
--- Verify PII masking is active (ABAC policy applies automatically via class.* tags)
+-- Verify PII masking is active (per-table SET MASK on email/phone columns)
 SELECT email, phone FROM jmrdemo.synth_silver.guest_profile LIMIT 5;
 -- email shows as j***@example.com, phone as *******1234
 ```

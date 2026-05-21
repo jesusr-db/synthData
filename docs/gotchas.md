@@ -37,6 +37,9 @@ The real gap is not table-level SELECT but catalog and schema visibility. The La
 **Gold tables live in the silver schema, not their own schema.**
 The DLT pipeline's `target` is `{prefix}silver`. Gold aggregate tables (`unit_performance_daily`, `sos_compliance_summary`, `loyalty_cohort_metrics`, `inventory_waste_summary`) are co-located in `{prefix}silver` — not in a separate `{prefix}gold` schema. DAB destroys the entire pipeline-managed schema on `bundle destroy`.
 
+**ABAC catalog-level `CREATE POLICY` is not supported on DLT-managed tables.**
+Unity Catalog ABAC policies at the catalog level apply to non-DLT tables. When a DLT pipeline owns silver or staging tables, attempting to create a catalog-level ABAC mask policy causes DLT pipeline failures. Use per-table `ALTER COLUMN SET MASK` DDL instead — this works correctly on DLT-managed tables. This is why `apply_governance.py` uses per-table `SET MASK` for `email` and `phone` rather than `CREATE POLICY`.
+
 ---
 
 ## Destroy Job
@@ -50,13 +53,12 @@ The METRIC_VIEWS list in `destroy_notebook.py` (`unit_performance_daily`, `sos_c
 ```
 Step 0a: DROP MASK (column masks on staging.guest_events and silver.guest_profile)
 Step 0d: DELETE Lakehouse Monitors (no function dependency — safe to remove first)
-Step 0e: DROP POLICY (ABAC policies reference mask functions — must precede function drops)
 Step 0b: DROP FUNCTION (mask_email, mask_phone, tier_to_multiplier, filter_by_franchisee)
 Step 0c: DROP VOLUME (ref.assets)
 Steps 1+: DROP schemas
 ```
 
-SDK calls to delete monitors or drop functions fail if the parent table or catalog has already been dropped by a preceding schema cascade. Do not re-order these steps.
+Column masks (Step 0a) must precede function drops (Step 0b): if the mask functions are dropped while column masks still reference them, any query on `guest_events` or `guest_profile` fails with `UC_DEPENDENCY_DOES_NOT_EXIST` — including DLT streaming reads. SDK calls to delete monitors or drop functions fail if the parent table or catalog has already been dropped by a preceding schema cascade. Do not re-order these steps.
 
 **`staging` schema is intentionally preserved by the destroy job.**
 The destroy job does not drop `{prefix}staging`. This allows historical data to survive destroy/redeploy cycles so backfill doesn't need to regenerate from scratch. To fully wipe staging, manually run `DROP SCHEMA {catalog}.{prefix}staging CASCADE` after the destroy job completes.
@@ -90,14 +92,8 @@ Some serverless and older DBR versions do not support `COUNTIF`. Use `COUNT(CASE
 **`overwriteSchema=true` is required when adding columns to ref tables written with `mode("overwrite")`.**
 When Phase 2.5 added `market_price_index` to the `ref.unit` schema, the seeder's `df.write.format("delta").mode("overwrite")` call failed with `DELTA_METADATA_MISMATCH` because the new column wasn't in the existing schema. Fix: add `.option("overwriteSchema", "true")` to the seeder write. The current `seeder.py` includes this option.
 
-**ABAC `CREATE POLICY` does not support `IF NOT EXISTS` — exceptions must be caught explicitly.**
-Unlike most UC DDL, `CREATE POLICY` has no `IF NOT EXISTS` guard. Calling it a second time raises an error. `apply_governance.py` wraps all policy creates in `try/except` so re-runs are safe. Similarly, `DROP POLICY` does support `IF EXISTS` and should always be used in teardown.
-
-**ABAC policies must be dropped before the mask functions they reference.**
-`DROP FUNCTION` fails if any active ABAC policy still references that function. The destroy job's Step 0e drops ABAC policies before Step 0b drops functions. Column mask DDL (`DROP MASK`) must also precede function drops for the same reason (Step 0a before Step 0b).
-
-**`class.*` tags are the Data Classification namespace — use them consistently for ABAC integration.**
-Lakehouse Monitors configured with `MonitorDataClassificationConfig(enabled=True)` write detected PII using `class.*` tag keys (e.g., `class.email_address`, `class.phone_number`). An ABAC policy predicate of `has_tag('class.email_address')` covers both monitor-written tags and the deterministic tags applied by `apply_governance.py`. Mixing namespaces (e.g., keeping `pii=true` tags alongside `class.*`) requires multiple ABAC policies and creates confusion about which is authoritative.
+**`class.*` tags are the Data Classification namespace — use them consistently for monitor integration.**
+Lakehouse Monitors configured with `MonitorDataClassificationConfig(enabled=True)` write detected PII using `class.*` tag keys (e.g., `class.email_address`, `class.phone_number`). The `apply_governance.py` notebook sets deterministic `class.*` tags as a fallback so PII columns are properly classified before the first monitor refresh runs. Mixing namespaces (e.g., keeping `pii=true` tags alongside `class.*`) creates confusion about which is authoritative and is incompatible with the Data Classification integration.
 
 ---
 

@@ -45,19 +45,20 @@
 │                                                                             │
 │  ┌─────────────────────────────────────────┐                               │
 │  │  setup_job  (one-time or on-demand)      │                               │
-│  │  9 tasks: setup → backfill,              │                               │
-│  │           start_pipeline →              │                               │
+│  │  8 tasks: setup → backfill →             │                               │
+│  │           start_pipeline →               │                               │
 │  │             create_metric_views →        │                               │
-│  │               create_genie_space         │                               │
-│  │             apply_governance →           │                               │
-│  │               configure_monitoring       │                               │
-│  │           → unpause_generator            │                               │
+│  │               create_genie_space ────────┐                              │
+│  │             apply_governance →           │                              │
+│  │               configure_monitoring ──────┤                              │
+│  │           backfill + create_genie_space  │                              │
+│  │           + configure_monitoring ────────┴→ unpause_generator           │
 │  └─────────────────────────────────────────┘                               │
 │                                                                             │
 │  ┌─────────────────────┐   ┌────────────────────────────────────────────┐  │
 │  │  metrics schema      │   │  governance (applied by apply_governance)  │  │
 │  │  4 UC Metric Views   │   │  ├── UC column tags (class.*/financial/sc) │  │
-│  │  (WITH METRICS YAML) │   │  ├── ABAC mask policies (catalog-level)    │  │
+│  │  (WITH METRICS YAML) │   │  ├── Per-table column masks (SET MASK)     │  │
 │  └─────────────────────┘   │  ├── Row filters  (filter_by_franchisee)   │  │
 │                             │  ├── UC Volume  (ref.assets)               │  │
 │  ┌─────────────────────┐   │  └── Lakehouse Monitors (3 snap + 1 ts)    │  │
@@ -72,9 +73,9 @@
 
 | Name | Type | Purpose | Status |
 |---|---|---|---|
-| `QSR Setup [dev]` | Job (9 tasks) | Full one-time setup: schemas, staging tables, ref seed, pipeline start, metric views, Genie Space, governance, monitoring, backfill, unpause | Not deployed (run `bundle deploy` first) |
+| `QSR Setup [dev]` | Job (8 tasks) | Full one-time setup: schemas, staging tables, ref seed, backfill, pipeline start, metric views, Genie Space, governance, monitoring, unpause | Not deployed (run `bundle deploy` first) |
 | `QSR Generator Live [dev]` | Job (hourly cron) | Generates previous hour of events across all 5 domains; triggers pipeline | Not deployed |
-| `QSR Destroy [dev]` | Job (on-demand) | Tears down all non-DAB objects: ABAC policies, UC functions, volume, monitors, metric views, ref schema, metrics schema | Not deployed |
+| `QSR Destroy [dev]` | Job (on-demand) | Tears down all non-DAB objects: column masks, UC functions, volume, monitors, metric views, ref schema, metrics schema | Not deployed |
 | `QSR MVM Pipeline [dev]` | Lakeflow Declarative Pipeline | Streaming promotion of staging → silver → gold; serverless, triggered mode | Not deployed |
 
 All resources are tagged `project: qsr-synth-data-generator`.
@@ -96,8 +97,11 @@ DLT re-materializes silver table metadata on every update. Comments applied exte
 ### Why `dp.create_auto_cdc_flow` for `guest_profile` but `@dp.table` for everything else
 `guest_profile` can receive update events (churn/deactivation) that share the same `guest_profile_id`. Using CDC (SCD Type 1) ensures later events overwrite earlier ones rather than creating duplicate rows. All other event types are append-only and don't need CDC semantics.
 
-### Why ABAC catalog-level policies instead of per-table `SET MASK`
-A single `CREATE POLICY` statement at the catalog level covers every current and future table automatically. Per-table `ALTER COLUMN SET MASK` requires re-running DDL each time a new table with PII columns is added. The ABAC approach also composes naturally with `MonitorDataClassificationConfig(enabled=True)`: monitors write `class.*` tags on each refresh, and the ABAC policy picks them up without any additional DDL. `apply_governance.py` sets deterministic `class.*` tags as a fallback so the policy is effective before the first monitor refresh.
+### Why per-table `SET MASK` instead of ABAC catalog-level policies
+Unity Catalog ABAC catalog-level `CREATE POLICY` is not supported on tables owned by a DLT pipeline. Silver and staging tables are DLT-managed, so attempting to attach an ABAC policy causes DLT pipeline failures with a `catalog-level ABAC` error. Per-table `ALTER COLUMN SET MASK` DDL works correctly on DLT-managed tables and is the required approach. `apply_governance.py` applies masks directly on the four PII columns (`email`, `phone` on `staging.guest_events` and `silver.guest_profile`) with explicit try/except so re-runs are safe.
 
 ### Why `class.*` column tags instead of `pii=true`
-`class.*` is the namespace written by Databricks Data Classification. Using the same namespace for both the deterministic tags (set by `apply_governance.py`) and the auto-detected tags (set by Lakehouse Monitor refreshes) means a single ABAC policy predicate (`has_tag('class.email_address')`) covers both sources. The prior `pii=true` approach required a separate tag namespace and was incompatible with the Data Classification integration.
+`class.*` is the namespace written by Databricks Data Classification. Using the same namespace for both the deterministic tags (set by `apply_governance.py`) and the auto-detected tags (set by Lakehouse Monitor refreshes with `MonitorDataClassificationConfig(enabled=True)`) keeps a consistent tagging standard. The prior `pii=true` approach used a custom namespace incompatible with the Data Classification integration. `class.*` tags also make PII columns discoverable in Catalog Explorer's tag-based search without any additional configuration.
+
+### Why `start_pipeline` depends on `backfill`, not `setup`
+The DLT pipeline reads from staging tables. If `start_pipeline` ran immediately after `setup` (before `backfill`), the pipeline would process an empty staging layer and produce zero silver rows. Depending on `backfill` ensures the pipeline has data to process on its first full refresh. `apply_governance` also depends on `start_pipeline` so silver tables exist before column masks and row filters are attached.
