@@ -34,7 +34,7 @@ from src.generator.runner import backfill_ticks
 from src.generator.reference.seeder import seed_all
 
 # Load registry from ref tables
-registry = EntityRegistry.from_spark(spark, catalog_name)
+registry = EntityRegistry.from_spark(spark, catalog_name, schema_prefix=schema_prefix)
 
 # COMMAND ----------
 from collections import defaultdict
@@ -116,7 +116,7 @@ if mode == "backfill":
         if start_dt is not None:
             print(f"[INFO] Rehydrating from latest staging timestamp: {start_dt}")
         else:
-            print(f"[INFO] No existing data — backfilling {backfill_months} month(s), catalog={catalog_name}")
+            print(f"[INFO] No existing data — backfilling {backfill_months} month(s), catalog={catalog_name}, schema_prefix={schema_prefix}")
     end_dt = datetime.fromisoformat(end_dt_override) if end_dt_override else None
     if end_dt:
         print(f"[INFO] Backfill end override: {end_dt}")

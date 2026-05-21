@@ -90,12 +90,12 @@ class EntityRegistry:
         return self._periods[-1]["financial_period_id"] if self._periods else None
 
     @classmethod
-    def from_spark(cls, spark, catalog: str, backfill_months: int = 12):
+    def from_spark(cls, spark, catalog: str, backfill_months: int = 12, schema_prefix: str = "synth_"):
         """Load entity registry from live ref.* Delta tables."""
-        units = [r.asDict() for r in spark.table(f"{catalog}.ref.unit").collect()]
-        menu = [r.asDict() for r in spark.table(f"{catalog}.ref.menu_item").collect()]
-        bom = [r.asDict() for r in spark.table(f"{catalog}.ref.recipe_ingredient").collect()]
-        periods = [r.asDict() for r in spark.table(f"{catalog}.ref.financial_period").collect()]
-        item_prices = [r.asDict() for r in spark.table(f"{catalog}.ref.item_price").collect()]
+        units       = [r.asDict() for r in spark.table(f"{catalog}.{schema_prefix}ref.unit").collect()]
+        menu        = [r.asDict() for r in spark.table(f"{catalog}.{schema_prefix}ref.menu_item").collect()]
+        bom         = [r.asDict() for r in spark.table(f"{catalog}.{schema_prefix}ref.recipe_ingredient").collect()]
+        periods     = [r.asDict() for r in spark.table(f"{catalog}.{schema_prefix}ref.financial_period").collect()]
+        item_prices = [r.asDict() for r in spark.table(f"{catalog}.{schema_prefix}ref.item_price").collect()]
         return cls(units=units, menu_items=menu, bom=bom, financial_periods=periods,
                    item_prices=item_prices)
