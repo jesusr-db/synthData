@@ -238,20 +238,39 @@ END
 print(f"[OK] function {c}.{p}ref.tier_to_multiplier")
 
 # COMMAND ----------
-# Step 5: Column masks on PII email/phone
-COLUMN_MASKS = [
-    (f"{c}.{p}staging.guest_events", "email", f"{c}.{p}ref.mask_email"),
-    (f"{c}.{p}staging.guest_events", "phone", f"{c}.{p}ref.mask_phone"),
-    (f"{c}.{p}silver.guest_profile", "email", f"{c}.{p}ref.mask_email"),
-    (f"{c}.{p}silver.guest_profile", "phone", f"{c}.{p}ref.mask_phone"),
+# Step 5: ABAC column mask policies — catalog-level, tag-driven
+# One policy per masking function; any column tagged class.email_address is masked automatically.
+ABAC_POLICIES = [
+    (
+        "mask_email_policy",
+        f"{c}.{p}ref.mask_email",
+        "has_tag('class.email_address')",
+    ),
+    (
+        "mask_phone_policy",
+        f"{c}.{p}ref.mask_phone",
+        "has_tag('class.phone_number')",
+    ),
 ]
 
-for table, column, mask_fn in COLUMN_MASKS:
+for policy_name, mask_fn, tag_predicate in ABAC_POLICIES:
     try:
-        spark.sql(f"ALTER TABLE {table} ALTER COLUMN {column} SET MASK {mask_fn}")
-        print(f"[OK] mask {table}.{column} -> {mask_fn}")
+        existing = spark.sql(f"SHOW POLICIES ON CATALOG {c}").filter(f"policy_name = '{policy_name}'").count()
+        if existing == 0:
+            spark.sql(f"""
+                CREATE POLICY {policy_name}
+                  ON CATALOG {c}
+                  COLUMN MASK {mask_fn}
+                  TO `account users`
+                  FOR TABLES
+                    MATCH COLUMNS ({tag_predicate}) AS m
+                  ON COLUMN m
+            """)
+            print(f"[OK] ABAC policy {policy_name} -> {mask_fn} for columns where {tag_predicate}")
+        else:
+            print(f"[INFO] ABAC policy {policy_name} already exists, skipping")
     except Exception as e:
-        print(f"[WARN] mask {table}.{column} skipped: {e}")
+        print(f"[WARN] ABAC policy {policy_name} skipped: {e}")
 
 # COMMAND ----------
 # Step 6: Row filter function + attach
@@ -280,52 +299,11 @@ for table in ROW_FILTER_TABLES:
         print(f"[WARN] row filter on {table} skipped: {e}")
 
 # COMMAND ----------
-# Step 7: Databricks system classification tags (databricks:auto_classification:pii)
-AUTO_CLASS_PII = [
-    (f"{c}.{p}staging.guest_events", "email"),
-    (f"{c}.{p}staging.guest_events", "phone"),
-    (f"{c}.{p}staging.guest_events", "first_name"),
-    (f"{c}.{p}staging.guest_events", "last_name"),
-    (f"{c}.{p}staging.guest_events", "zip_code"),
-    (f"{c}.{p}silver.guest_profile", "email"),
-    (f"{c}.{p}silver.guest_profile", "phone"),
-    (f"{c}.{p}silver.guest_profile", "first_name"),
-    (f"{c}.{p}silver.guest_profile", "last_name"),
-    (f"{c}.{p}silver.guest_profile", "zip_code"),
-]
-
-for table, column in AUTO_CLASS_PII:
-    try:
-        spark.sql(
-            f"ALTER TABLE {table} ALTER COLUMN {column} "
-            f"SET TAGS ('databricks:auto_classification:pii' = 'true')"
-        )
-        print(f"[OK] auto_classification:pii on {table}.{column}")
-    except Exception as e:
-        print(f"[WARN] auto_classification on {table}.{column} skipped: {e}")
+# Data classification is now handled by Lakehouse Monitors (configure_monitoring.py).
+# Each monitor refresh runs MonitorDataClassificationConfig(enabled=True), which writes
+# class.* tags automatically. The class.* tags applied in Step 3 above serve as the
+# deterministic fallback so ABAC policies work before the first monitor refresh.
+print("[INFO] Data classification driven by monitors — see configure_monitoring task")
 
 # COMMAND ----------
-# Step 8: Trigger UC automated data classification scan (best-effort)
-try:
-    import requests
-    host = spark.conf.get("spark.databricks.workspaceUrl")
-    token = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
-
-    for table_name in ["guest_profile", "guest_order", "waste_log", "loyalty_transaction"]:
-        full_name = f"{c}.{p}silver.{table_name}"
-        try:
-            resp = requests.post(
-                f"https://{host}/api/2.1/unity-catalog/data-classification-tasks",
-                headers={"Authorization": f"Bearer {token}"},
-                json={"table_name": full_name},
-                timeout=30,
-            )
-            resp.raise_for_status()
-            print(f"[INFO] Classification task submitted: {full_name}")
-        except Exception as e:
-            print(f"[WARN] Classification task skipped for {full_name}: {e}")
-except Exception as e:
-    print(f"[WARN] Classification scan step skipped entirely: {e}")
-
-# COMMAND ----------
-print("[INFO] apply_governance complete — volume, descriptions, tags, masks, row filter, classification applied")
+print("[INFO] apply_governance complete — volume, comments, class.* tags, functions, ABAC policies, row filters applied")
