@@ -16,6 +16,9 @@ variables:
   start_dt_override:
     default: ""
     description: "Backfill window start (ISO datetime, e.g. 2026-05-19T00:00:00). Empty string = use staging MAX(event_ts) or backfill_months default."
+  schema_prefix:
+    default: "synth_"
+    description: "Prefix for all Unity Catalog schemas (e.g. 'synth_' → synth_staging, synth_silver, synth_ref, synth_metrics). Use empty string for no prefix."
 
 workspace:
   profile: DEFAULT

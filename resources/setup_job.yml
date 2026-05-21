@@ -17,6 +17,7 @@ resources:
             base_parameters:
               catalog_name: ${var.catalog_name}
               num_units: ${var.num_units}
+              schema_prefix: ${var.schema_prefix}
 
         - task_key: start_pipeline
           depends_on:
@@ -25,6 +26,7 @@ resources:
             notebook_path: ../src/setup/start_pipeline_notebook.py
             base_parameters:
               catalog_name: ${var.catalog_name}
+              schema_prefix: ${var.schema_prefix}
 
         - task_key: create_metric_views
           depends_on:
@@ -33,6 +35,7 @@ resources:
             notebook_path: ../src/setup/create_metric_views.py
             base_parameters:
               catalog_name: ${var.catalog_name}
+              schema_prefix: ${var.schema_prefix}
 
         - task_key: create_genie_space
           depends_on:
@@ -41,6 +44,7 @@ resources:
             notebook_path: ../src/setup/create_genie_space.py
             base_parameters:
               catalog_name: ${var.catalog_name}
+              schema_prefix: ${var.schema_prefix}
 
         - task_key: backfill
           depends_on:
@@ -55,6 +59,7 @@ resources:
               live_tick_seconds: ${var.live_tick_seconds}
               base_orders_per_unit_per_hour: ${var.base_orders_per_unit_per_hour}
               start_dt_override: ${var.start_dt_override}
+              schema_prefix: ${var.schema_prefix}
               mode: backfill
 
         - task_key: unpause_generator

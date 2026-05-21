@@ -5,12 +5,13 @@ resources:
       channel: PREVIEW
       continuous: false
       catalog: ${var.catalog_name}
-      target: silver
+      target: ${var.schema_prefix}silver
       libraries:
         - notebook:
             path: ../src/pipeline/mvm_pipeline.py
       serverless: true
       configuration:
         pipeline.catalog: ${var.catalog_name}
+        pipeline.schema_prefix: ${var.schema_prefix}
       tags:
         project: qsr-synth-data-generator
