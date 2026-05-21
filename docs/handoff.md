@@ -14,11 +14,12 @@
 
 A fully automated QSR synthetic data generator (Domino's-style, 250 units):
 
-- **Staging layer:** Python generator writes to 5 Delta tables in `jmrdemo.staging`
-- **Silver layer:** Lakeflow Declarative Pipeline reads staging via `readStream`, produces 14 Silver tables in `jmrdemo.silver` — table/column comments, PK, and FK constraints declared inline in `@dp.table` decorators so they survive every pipeline refresh
-- **Gold layer:** 4 Gold aggregate tables in `jmrdemo.silver` (co-located with silver in DLT)
-- **Metrics layer:** 4 Unity Catalog metric views in `jmrdemo.metrics` (WITH METRICS LANGUAGE YAML — reusable measures + dimensions)
+- **Staging layer:** Python generator writes to 5 Delta tables in `jmrdemo.synth_staging`
+- **Silver layer:** Lakeflow Declarative Pipeline reads staging via `readStream`, produces 14 Silver tables in `jmrdemo.synth_silver` — table/column comments, PK, and FK constraints declared inline in `@dp.table` decorators so they survive every pipeline refresh. `guest_profile` uses CDC (`dp.create_auto_cdc_flow`, SCD Type 1). All silver tables include `franchisee_id` (left-joined from `ref.unit`).
+- **Gold layer:** 4 Gold aggregate tables co-located in `jmrdemo.synth_silver` (DLT managed)
+- **Metrics layer:** 4 Unity Catalog metric views in `jmrdemo.synth_metrics` (WITH METRICS LANGUAGE YAML — reusable measures + dimensions)
 - **Genie Space:** Pre-configured with domain instructions, 10 seed questions, all silver + metrics tables
+- **Governance Pack:** UC column tags (pii/financial/supply_chain), column masks (email/phone), row filter by franchisee on 6 silver/ref tables, 3 UC scalar functions, UC Volume with sample files, automated data classification scan. ⚠️ Lakehouse Monitoring **not yet working** — see Open Issues below.
 
 ---
 
@@ -27,7 +28,7 @@ A fully automated QSR synthetic data generator (Domino's-style, 250 units):
 | Resource | Type | Notes |
 |---|---|---|
 | QSR MVM Pipeline [dev] | DLT Pipeline (triggered) | Triggered per generator run |
-| QSR Setup [dev] | Job (6 tasks) | Run to rebuild from scratch |
+| QSR Setup [dev] | Job (9 tasks) | Run to rebuild from scratch |
 | QSR Generator Live [dev] | Job (every-minute cron) | UNPAUSED — running live |
 | QSR Destroy [dev] | Job (teardown) | Ready — tears down non-DAB objects |
 
@@ -38,46 +39,49 @@ All resources tagged: `project: qsr-synth-data-generator`
 ## Setup Job Task Graph
 
 ```
-setup (seeds ref tables incl. ref.item_price)
-  ├── start_pipeline (full_refresh if checkpoint broken) → silver + gold tables
-  │     └── create_metric_views (4 UC metric views in metrics schema)
-  │           └── create_genie_space (REST API — requires warehouse_id)
-  │                 └── unpause_generator ←┐
-  └── backfill (1-month history, incremental from last staging ts) ──┘
+setup ──→ backfill ──────────────────────────────────────────────────────────┐
+      └─→ start_pipeline ──→ create_metric_views ──→ create_genie_space ─────┤
+                         └──→ apply_governance ──→ configure_monitoring ──────┤
+                                                                               ↓
+                                                                   unpause_generator
 ```
 
-`unpause_generator` waits for both `backfill` AND `create_genie_space`.
+`unpause_generator` waits for `backfill` + `create_genie_space` + `configure_monitoring`.
 
 ### Important behaviors
 
 - **`setup_notebook.py`** uses `CREATE TABLE IF NOT EXISTS` for all 5 staging tables — never drops them. This preserves Delta table IDs so DLT streaming checkpoints survive re-runs.
 - **`start_pipeline_notebook.py`** waits for any active pipeline update; falls back to `full_refresh=True` if the update fails (clears broken streaming checkpoint state).
 - **`backfill`** is incremental — reads `MAX(event_ts)` across staging tables and resumes from the next full hour. Safe to re-run.
+- **`apply_governance`** is fully idempotent — uses `CREATE OR REPLACE` / `IF NOT EXISTS` throughout.
+- **`configure_monitoring`** ⚠️ currently silently skips — see Open Issues below.
 
 ---
 
 ## Key Files
 
 ```
-databricks.yml                              # bundle config, catalog_name=jmrdemo
+databricks.yml                              # bundle config, catalog_name=jmrdemo, schema_prefix=synth_
 src/generator/main.py                       # notebook entrypoint (backfill + live modes)
 src/generator/runner.py                     # GeneratorConfig, backfill_ticks, live_tick
 src/generator/domains/orders.py             # order + item + payment generation
 src/generator/domains/inventory.py          # inventory events (weighted waste categories)
 src/generator/domains/loyalty.py            # loyalty earn + redeem transactions
 src/generator/domains/guest.py              # guest profiles + churn events
-src/generator/reference/us_locations.py     # unit seeder (includes market_price_index)
+src/generator/reference/us_locations.py     # unit seeder (seed=42, deterministic)
 src/generator/reference/seeder.py           # seed_all() — overwriteSchema=true for ref.unit
 src/generator/entity_registry.py           # FK registry (unit_price_index, item_price_multiplier)
-src/pipeline/mvm_pipeline.py               # Lakeflow Declarative Pipeline (14 silver + 4 gold tables; all metadata inline)
+src/pipeline/mvm_pipeline.py               # Lakeflow Declarative Pipeline (14 silver + 4 gold; franchisee_id on 5 tables)
 src/setup/setup_notebook.py                # schemas + staging tables (IF NOT EXISTS) + ref seed
 src/setup/start_pipeline_notebook.py       # idempotent pipeline start with full_refresh fallback
 src/setup/create_metric_views.py           # 4 UC metric views (WITH METRICS LANGUAGE YAML)
 src/setup/create_genie_space.py            # Genie Space via REST API
-src/setup/destroy_notebook.py             # teardown logic
+src/setup/apply_governance.py             # UC tags, masks, functions, row filter, volume, classification
+src/setup/configure_monitoring.py         # ⚠️ Lakehouse Monitoring (currently broken — see Open Issues)
+src/setup/destroy_notebook.py             # teardown logic (includes governance cleanup)
 src/setup/unpause_generator_notebook.py   # unpauses generator job after setup
 resources/pipeline.yml                    # DLT pipeline DAB resource
-resources/setup_job.yml                   # 7-task setup job
+resources/setup_job.yml                   # 9-task setup job
 resources/generator_job.yml              # live generator job (UNPAUSED)
 resources/destroy_job.yml               # destroy job
 ```
@@ -198,6 +202,24 @@ pytest tests/ -v
 
 ---
 
+## Open Issues
+
+### ⚠️ Lakehouse Monitoring — switched to staging tables (unverified)
+
+**File:** `src/setup/configure_monitoring.py`  
+**Background:** Monitors on DLT-managed silver tables (`guest_order`, `waste_log`, `loyalty_transaction`) failed with `'TABLE SELECT' permission required` across all auth approaches tried (auto-detected runtime, `GRANT SELECT`, explicit token). Root cause: Lakeflow streaming tables are owned by the pipeline identity, not the setup job user.
+
+**Change made:** Switched to monitoring staging tables instead — `order_events`, `inventory_events`, `loyalty_events`. These are plain Delta tables created by `setup_notebook.py` (owned by the setup job user) and should not have the same ownership issue.
+
+**Not yet verified** — `configure_monitoring` has not been re-run after this change. Next agent should:
+1. Deploy and run setup job (or repair-run just `configure_monitoring`)
+2. Check notebook cell output for `[INFO] Monitor created` vs `[WARN] Monitor skipped`
+3. Verify monitors appear in UC Data Explorer under `synth_staging.order_events` Quality tab
+
+**If staging tables also fail:** Check `DESCRIBE EXTENDED jmrdemo.synth_staging.order_events` for the `Owner` field. If not owned by the running user, add `ALTER TABLE ... OWNER TO` before monitor creation.
+
+---
+
 ## Known Gotchas
 
 | Issue | Root Cause | Fix Applied |
@@ -211,7 +233,9 @@ pytest tests/ -v
 | Genie Space API returns 401 | `w.config.token` is `None` on serverless (OAuth credentials) | Use `ctx.apiToken().get()` for bearer token |
 | Genie Space API returns 400 missing `warehouse_id` | Field required by API | Look up warehouse via SDK and add to payload |
 | PK duplication 83–87% across all order-domain tables | Module-level global counters (`_order_counter`, `_inv_counter`, etc.) reset to 0 on every Databricks serverless notebook execution (fresh Python process per job run) | Replaced all counters with `make_id(*parts)` in `src/generator/id_utils.py` — deterministic SHA-256 hash keyed on `(domain_prefix, unit_id, tick_ts, seq/sku)`, produces a stable 56-bit int that is idempotent across re-runs |
-| `silver.guest_profile` has ~19 duplicate `guest_profile_id` rows | `generate_guest_churn()` in `guest.py` emits a `guest_profile` event reusing the original guest's `guest_profile_id` as a churn/deactivation record. The same guest can be sampled on multiple days, creating 2 rows per guest in silver | **Not yet fixed.** Proper fix: migrate `silver.guest_profile` in `mvm_pipeline.py` from `@dp.table` (append streaming) to `dlt.apply_changes()` (CDC merge), keying on `guest_profile_id` with `sequence_by="event_ts"`. This collapses per-guest events into one row (latest wins), eliminating the dupe while preserving churn state. See [DLT CDC docs](https://docs.databricks.com/en/delta-live-tables/cdc.html). |
+| `silver.guest_profile` had ~19 duplicate `guest_profile_id` rows | `generate_guest_churn()` emits a `guest_profile` event reusing the original guest's ID as a churn/deactivation record | **Fixed.** Migrated to CDC via `dp.create_streaming_table` + `dp.create_auto_cdc_flow` (SCD Type 1, keyed on `guest_profile_id`). |
+| `configure_monitoring` silently skipped monitors on DLT silver tables | Lakehouse Monitoring API requires table ownership; DLT streaming tables owned by pipeline identity. `GRANT SELECT` + explicit SDK token both tried — permission error persisted. | Switched to monitoring staging tables (`order_events`, `inventory_events`, `loyalty_events`) which are owned by the setup job user. **Unverified** — see Open Issues. |
+| `start_pipeline` fails with "FAILED unexpectedly" even though all flows completed | Transient platform-level DLT update coordinator error — all 19 flows completed but the update status reported FAILED | Repair run resolves it. Consider adding retry logic to `start_pipeline_notebook.py`. |
 
 ---
 
