@@ -358,7 +358,27 @@ def replenishment_order():
 # --------------------------------------------------------------------------
 
 
-@dp.table(
+@dp.view(name="guest_profile_changes")
+def guest_profile_changes_view():
+    return (
+        spark.readStream.table(f"{catalog}.staging.guest_events")
+        .filter(F.col("event_type") == "guest_profile")
+        .select(
+            F.col("guest_profile_id").cast(LongType()),
+            F.col("unit_id").cast(LongType()),
+            F.col("first_name"),
+            F.col("last_name"),
+            F.col("email"),
+            F.col("phone"),
+            F.col("zip_code"),
+            F.col("created_date"),
+            F.col("account_status"),
+            F.col("event_ts").alias("created_at"),
+        )
+    )
+
+
+dp.create_streaming_table(
     name="guest_profile",
     comment="Customer profile record created at loyalty enrollment or first online order.",
     schema="""
@@ -375,23 +395,14 @@ def replenishment_order():
         CONSTRAINT pk_guest_profile PRIMARY KEY (guest_profile_id) NOT ENFORCED
     """,
 )
-def guest_profile():
-    return (
-        spark.readStream.table(f"{catalog}.staging.guest_events")
-        .filter(F.col("event_type") == "guest_profile")
-        .select(
-            F.col("guest_profile_id").cast(LongType()),
-            F.col("unit_id").cast(LongType()),
-            F.col("first_name"),
-            F.col("last_name"),
-            F.col("email"),
-            F.col("phone"),
-            F.col("zip_code"),
-            F.col("created_date"),
-            F.col("account_status"),
-            F.current_timestamp().alias("created_at"),
-        )
-    )
+
+dp.create_auto_cdc_flow(
+    target="guest_profile",
+    source="guest_profile_changes",
+    keys=["guest_profile_id"],
+    sequence_by=F.col("created_at"),
+    stored_as_scd_type=1,
+)
 
 
 @dp.table(
