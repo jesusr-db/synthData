@@ -103,8 +103,23 @@ SELECT item_status, COUNT(*) FROM jmrdemo.synth_silver.order_item GROUP BY 1;
 -- Verify column comments and constraints survived pipeline refresh
 DESCRIBE TABLE EXTENDED jmrdemo.synth_silver.guest_order;
 
--- Verify PII masking is active
-SELECT email, phone FROM jmrdemo.synth_silver.guest_profile LIMIT 3;
+-- Verify class.* tags were applied by apply_governance
+SELECT table_name, column_name, tag_name, tag_value
+FROM system.information_schema.column_tags
+WHERE catalog_name = 'jmrdemo'
+  AND tag_name LIKE 'class.%'
+ORDER BY table_name, column_name;
+-- Expected: ~10 rows covering email, phone, first_name, last_name, zip_code
+-- on both synth_staging.guest_events and synth_silver.guest_profile
+
+-- Verify ABAC catalog-level mask policies exist
+SELECT policy_name, catalog_name, mask_function_name
+FROM system.information_schema.column_mask_policies
+WHERE catalog_name = 'jmrdemo';
+-- Expected: rows for mask_email_policy and mask_phone_policy
+
+-- Verify PII masking is active (ABAC policy applies automatically via class.* tags)
+SELECT email, phone FROM jmrdemo.synth_silver.guest_profile LIMIT 5;
 -- email shows as j***@example.com, phone as *******1234
 ```
 

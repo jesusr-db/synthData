@@ -31,8 +31,8 @@ Streaming tables maintain internal state keyed on the Delta table ID. If `setup_
 **`broadcast` is a separate import from `functions as F`.**
 The pipeline uses `from pyspark.sql import functions as F`. Adding a broadcast join requires either a second import `from pyspark.sql.functions import broadcast` or calling `F.broadcast(...)`. Both work; the explicit import is clearer at call sites.
 
-**Lakehouse Monitoring cannot be applied to DLT-managed streaming tables by a setup job user.**
-The Lakehouse Monitoring API requires `TABLE SELECT` privilege. DLT streaming tables are owned by the pipeline identity, not the setup job user. `GRANT SELECT` workarounds do not resolve the underlying permission model. The fix in this project: `configure_monitoring.py` creates monitors on staging tables (`order_events`, `inventory_events`, `loyalty_events`) which are owned by the setup job user. Monitor output tables land in `{prefix}metrics`.
+**Lakehouse Monitoring on DLT silver tables requires USE CATALOG + USE SCHEMA on the compute service principal — TABLE SELECT alone is not enough.**
+The real gap is not table-level SELECT but catalog and schema visibility. The Lakehouse Monitoring API silently fails or reports permission errors when the setup job's service principal lacks `USE CATALOG` and `USE SCHEMA` at the catalog and schema level; table-level grants are ignored when the principal cannot see the parent scope. Fix: grant `USE CATALOG` and `USE SCHEMA` to `account users` (or the specific SP) before running `configure_monitoring.py`. The current setup task includes these grants before each monitor create.
 
 **Gold tables live in the silver schema, not their own schema.**
 The DLT pipeline's `target` is `{prefix}silver`. Gold aggregate tables (`unit_performance_daily`, `sos_compliance_summary`, `loyalty_cohort_metrics`, `inventory_waste_summary`) are co-located in `{prefix}silver` — not in a separate `{prefix}gold` schema. DAB destroys the entire pipeline-managed schema on `bundle destroy`.
@@ -44,8 +44,19 @@ The DLT pipeline's `target` is `{prefix}silver`. Gold aggregate tables (`unit_pe
 **`destroy_notebook.py` METRIC_VIEWS list targets the wrong schema.**
 The METRIC_VIEWS list in `destroy_notebook.py` (`unit_performance_daily`, `sos_compliance_summary`, etc.) attempts to drop views from `{prefix}metrics`, but those names are the DLT-managed gold tables in `{prefix}silver`. The actual UC metric views created by `create_metric_views.py` (`order_performance`, `loyalty_performance`, `inventory_waste`, `staff_hours`) are not dropped by the destroy job. They are removed when `DROP SCHEMA {prefix}metrics CASCADE` runs in Step 2. The stale list has no runtime impact (views don't exist in metrics so DROP VIEW IF EXISTS is a no-op) but is misleading.
 
-**Governance objects must be destroyed before schema drops.**
-`destroy_notebook.py` Steps 0a/0b/0c (drop UC functions, volume, and monitors) must run before the schema drops in Steps 1–4. SDK calls to delete monitors fail if the parent table has already been dropped by a preceding schema cascade. The current destroy order is correct; do not re-order the steps.
+**Governance objects must be destroyed in strict dependency order before schema drops.**
+`destroy_notebook.py` must clean up governance objects in this order before the schema drops in Steps 1–4:
+
+```
+Step 0a: DROP MASK (column masks on staging.guest_events and silver.guest_profile)
+Step 0d: DELETE Lakehouse Monitors (no function dependency — safe to remove first)
+Step 0e: DROP POLICY (ABAC policies reference mask functions — must precede function drops)
+Step 0b: DROP FUNCTION (mask_email, mask_phone, tier_to_multiplier, filter_by_franchisee)
+Step 0c: DROP VOLUME (ref.assets)
+Steps 1+: DROP schemas
+```
+
+SDK calls to delete monitors or drop functions fail if the parent table or catalog has already been dropped by a preceding schema cascade. Do not re-order these steps.
 
 **`staging` schema is intentionally preserved by the destroy job.**
 The destroy job does not drop `{prefix}staging`. This allows historical data to survive destroy/redeploy cycles so backfill doesn't need to regenerate from scratch. To fully wipe staging, manually run `DROP SCHEMA {catalog}.{prefix}staging CASCADE` after the destroy job completes.
@@ -78,6 +89,15 @@ Some serverless and older DBR versions do not support `COUNTIF`. Use `COUNT(CASE
 
 **`overwriteSchema=true` is required when adding columns to ref tables written with `mode("overwrite")`.**
 When Phase 2.5 added `market_price_index` to the `ref.unit` schema, the seeder's `df.write.format("delta").mode("overwrite")` call failed with `DELTA_METADATA_MISMATCH` because the new column wasn't in the existing schema. Fix: add `.option("overwriteSchema", "true")` to the seeder write. The current `seeder.py` includes this option.
+
+**ABAC `CREATE POLICY` does not support `IF NOT EXISTS` — exceptions must be caught explicitly.**
+Unlike most UC DDL, `CREATE POLICY` has no `IF NOT EXISTS` guard. Calling it a second time raises an error. `apply_governance.py` wraps all policy creates in `try/except` so re-runs are safe. Similarly, `DROP POLICY` does support `IF EXISTS` and should always be used in teardown.
+
+**ABAC policies must be dropped before the mask functions they reference.**
+`DROP FUNCTION` fails if any active ABAC policy still references that function. The destroy job's Step 0e drops ABAC policies before Step 0b drops functions. Column mask DDL (`DROP MASK`) must also precede function drops for the same reason (Step 0a before Step 0b).
+
+**`class.*` tags are the Data Classification namespace — use them consistently for ABAC integration.**
+Lakehouse Monitors configured with `MonitorDataClassificationConfig(enabled=True)` write detected PII using `class.*` tag keys (e.g., `class.email_address`, `class.phone_number`). An ABAC policy predicate of `has_tag('class.email_address')` covers both monitor-written tags and the deterministic tags applied by `apply_governance.py`. Mixing namespaces (e.g., keeping `pii=true` tags alongside `class.*`) requires multiple ABAC policies and creates confusion about which is authoritative.
 
 ---
 
