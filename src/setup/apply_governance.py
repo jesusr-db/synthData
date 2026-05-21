@@ -240,6 +240,8 @@ print(f"[OK] function {c}.{p}ref.tier_to_multiplier")
 # COMMAND ----------
 # Step 5: ABAC column mask policies — catalog-level, tag-driven
 # One policy per masking function; any column tagged class.email_address is masked automatically.
+# Masks for name and zip_code columns are deliberately omitted — those fields are tagged
+# (class.name, class.zip_code) for classification purposes but not masked in this demo.
 ABAC_POLICIES = [
     (
         "mask_email_policy",
@@ -255,7 +257,7 @@ ABAC_POLICIES = [
 
 for policy_name, mask_fn, tag_predicate in ABAC_POLICIES:
     try:
-        existing = spark.sql(f"SHOW POLICIES ON CATALOG {c}").filter(f"policy_name = '{policy_name}'").count()
+        existing = spark.sql(f"SHOW POLICIES ON CATALOG {c}").filter(f"policy_name = '{policy_name}'").count()  # IF NOT EXISTS not supported in this UC version
         if existing == 0:
             spark.sql(f"""
                 CREATE POLICY {policy_name}
@@ -268,7 +270,7 @@ for policy_name, mask_fn, tag_predicate in ABAC_POLICIES:
             """)
             print(f"[OK] ABAC policy {policy_name} -> {mask_fn} for columns where {tag_predicate}")
         else:
-            print(f"[INFO] ABAC policy {policy_name} already exists, skipping")
+            print(f"[OK] ABAC policy {policy_name} already exists (idempotent)")
     except Exception as e:
         print(f"[WARN] ABAC policy {policy_name} skipped: {e}")
 
