@@ -13,6 +13,9 @@ variables:
     description: "Sub-tick granularity (seconds) within each hourly live run. 60 = one sub-tick per minute, matching per-minute historical cadence."
   base_orders_per_unit_per_hour:
     default: "18"
+  start_dt_override:
+    default: ""
+    description: "Backfill window start (ISO datetime, e.g. 2026-05-19T00:00:00). Empty string = use staging MAX(event_ts) or backfill_months default."
 
 workspace:
   profile: DEFAULT

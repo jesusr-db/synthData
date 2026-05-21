@@ -54,6 +54,7 @@ resources:
               backfill_months: ${var.backfill_months}
               live_tick_seconds: ${var.live_tick_seconds}
               base_orders_per_unit_per_hour: ${var.base_orders_per_unit_per_hour}
+              start_dt_override: ${var.start_dt_override}
               mode: backfill
 
         - task_key: unpause_generator
