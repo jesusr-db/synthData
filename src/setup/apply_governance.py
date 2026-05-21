@@ -252,8 +252,8 @@ for _table, _col in [
     try:
         spark.sql(f"ALTER TABLE {_table} ALTER COLUMN {_col} DROP MASK")
         print(f"[INFO] Dropped legacy per-table mask: {_table}.{_col}")
-    except Exception:
-        pass  # expected if mask was not set
+    except Exception as e:
+        print(f"[WARN] Could not drop legacy mask {_table}.{_col}: {e}")
 
 # ABAC policies — idempotent: SHOW POLICIES → drop if exists → create
 ABAC_POLICIES = [
