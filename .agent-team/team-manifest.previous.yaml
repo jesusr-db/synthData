@@ -1,116 +1,96 @@
 project: qsr-synth-data-generator
-description: >
-  Build a fully automated QSR synthetic data generator that streams realistic,
-  referentially consistent Domino's-style restaurant data into 153 MVM Unity
-  Catalog tables on Databricks. A Python SCM-driven generator job writes to
-  Bronze staging Delta tables; a Spark Declarative Pipeline (DLT) reads those
-  tables and writes all MVM Silver + Gold metric tables. Everything deploys via
-  databricks bundle deploy.
+mode: incremental
+feature_description: >
+  Implement Phase 2.5 (generator realism fixes: waste categories, loyalty redeem transactions,
+  item status on cancellations, waste flags, order discounts, guest churn, AOV variance via
+  per-unit price index + catering multiplier + quarterly price drift) and Phase 2 (catalog
+  enrichment: table/column metadata, 5 metric views, Genie Space, setup_job wiring).
+  Each phase runs on its own branch: feat/phase-25-generator-realism and feat/phase-2-catalog-enrichment.
+previous_manifest: .agent-team/team-manifest.previous.yaml
 
-plan: docs/superpowers/plans/2026-05-15-qsr-synthetic-data-generator.md
+plan_files:
+  - docs/superpowers/plans/2026-05-18-phase-25-generator-realism.md
+  - docs/superpowers/plans/2026-05-18-phase-2-catalog-enrichment.md
+
+project_snapshot:
+  structure:
+    src_dirs:
+      - src/generator/domains/  # order, inventory, loyalty, guest, workforce generators
+      - src/generator/reference/ # us_locations, seeder, menu_catalog
+      - src/generator/           # entity_registry, runner, demand_model, entropy, causal_context
+      - src/pipeline/            # mvm_pipeline.py — DLT pipeline (14 silver + 4 gold tables)
+      - src/setup/               # setup_notebook, destroy_notebook, unpause_generator_notebook
+    resources:
+      - resources/setup_job.yml
+      - resources/generator_job.yml
+      - resources/pipeline.yml
+      - resources/destroy_job.yml
+    tests:
+      - tests/test_orders.py
+      - tests/test_inventory.py
+      - tests/test_guest_loyalty_workforce.py
+      - tests/test_runner.py
+      - tests/test_seeder.py
+      - tests/test_entity_registry.py
+      - tests/test_demand_model.py
+      - tests/test_causal_context.py
+      - tests/test_entropy.py
+      - tests/test_us_locations.py
+      - tests/test_smoke.py
+    dab_config:
+      targets: [dev (mode:development), prod (mode:production)]
+      catalog_var: catalog_name
+      pipeline: triggered mode (continuous disabled due to dev target)
+  history:
+    original_team: 9-agent 6-phase build team (all phases complete)
+    introspection: null
+    known_issues: []
+  architecture:
+    data_tables:
+      - jmrdemo.staging.* (14 bronze staging tables)
+      - jmrdemo.silver.* (14 silver + 4 gold via DLT)
+      - jmrdemo.ref.* (unit, menu_item, recipe_ingredient, financial_period, supplier, item_price)
+    endpoints: []
+    app_routes: []
+    frontend_pages: []
 
 agents:
-  - name: foundation-engineer
+  - name: generator-realism-engineer
     type: dynamic
-    registered_agent: .agent-team/agents/foundation-engineer.md
+    registered_agent: .agent-team/agents/generator-realism-engineer.md
     model: sonnet
     phase: 1
-    parallel_group: foundation
+    parallel_group: feature-work
+    branch: feat/phase-25-generator-realism
 
-  - name: domain-orders-engineer
+  - name: catalog-enrichment-engineer
     type: dynamic
-    registered_agent: .agent-team/agents/domain-orders-engineer.md
+    registered_agent: .agent-team/agents/catalog-enrichment-engineer.md
     model: sonnet
-    phase: 2
-    parallel_group: domain-generators
-
-  - name: domain-inventory-engineer
-    type: dynamic
-    registered_agent: .agent-team/agents/domain-inventory-engineer.md
-    model: sonnet
-    phase: 2
-    parallel_group: domain-generators
-
-  - name: domain-glw-engineer
-    type: dynamic
-    registered_agent: .agent-team/agents/domain-glw-engineer.md
-    model: sonnet
-    phase: 2
-    parallel_group: domain-generators
-
-  - name: integration-engineer
-    type: dynamic
-    registered_agent: .agent-team/agents/integration-engineer.md
-    model: sonnet
-    phase: 3
-    parallel_group: integration-dlt
-
-  - name: dlt-pipeline-engineer
-    type: dynamic
-    registered_agent: .agent-team/agents/dlt-pipeline-engineer.md
-    model: sonnet
-    phase: 3
-    parallel_group: integration-dlt
-
-  - name: setup-engineer
-    type: dynamic
-    registered_agent: .agent-team/agents/setup-engineer.md
-    model: sonnet
-    phase: 4
-    parallel_group: setup
+    phase: 1
+    parallel_group: feature-work
+    branch: feat/phase-2-catalog-enrichment
 
   - name: qa-engineer
     type: curated
     registered_agent: agents/qa-engineer.md
     model: sonnet
-    phase: 5
+    phase: 2
     parallel_group: qa
-
-  - name: deploy-engineer
-    type: curated
-    registered_agent: agents/deploy-engineer.md
-    model: sonnet
-    phase: 6
-    parallel_group: deploy
 
 phases:
   - id: 1
-    name: foundation
-    description: Project scaffold + core Python SCM modules (Tasks 1–7)
-    agents: [foundation-engineer]
-    parallel_groups: [[foundation-engineer]]
+    name: feature-implementation
+    description: >
+      Parallel implementation of Phase 2.5 (generator realism, 9 TDD tasks, pure Python)
+      and Phase 2 (catalog enrichment, 5 tasks, setup notebooks + DAB deploy).
+      Each engineer works on its own branch.
+    agents: [generator-realism-engineer, catalog-enrichment-engineer]
+    parallel_groups: [[generator-realism-engineer, catalog-enrichment-engineer]]
 
   - id: 2
-    name: domain-generators
-    description: Order, Inventory, Guest/Loyalty/Workforce domain generators (Tasks 8–10)
-    agents: [domain-orders-engineer, domain-inventory-engineer, domain-glw-engineer]
-    parallel_groups: [[domain-orders-engineer, domain-inventory-engineer, domain-glw-engineer]]
-    depends_on: [1]
-
-  - id: 3
-    name: integration-and-dlt
-    description: Generator runner + Databricks main.py + DLT pipeline (Tasks 11–14)
-    agents: [integration-engineer, dlt-pipeline-engineer]
-    parallel_groups: [[integration-engineer, dlt-pipeline-engineer]]
-    depends_on: [2]
-
-  - id: 4
-    name: setup-and-resources
-    description: Setup/destroy notebooks, DAB resources, requirements, smoke tests (Tasks 15–17)
-    agents: [setup-engineer]
-    parallel_groups: [[setup-engineer]]
-    depends_on: [3]
-
-  - id: 5
     name: qa
-    description: Full validation — pytest suite, contract compliance, DAB validate
+    description: Validate both branches — pytest suite, contract compliance, bundle validate
     agents: [qa-engineer]
     parallel_groups: [[qa-engineer]]
-    depends_on: [4]
-
-  - id: 6
-    name: deploy
-    description: Finalize bundle manifest, run databricks bundle deploy --target dev
-    agents: [deploy-engineer]
-    parallel_groups: [[deploy-engineer]]
-    depends_on: [5]
+    depends_on: [1]

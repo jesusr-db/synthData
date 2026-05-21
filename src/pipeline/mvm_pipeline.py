@@ -2,6 +2,7 @@
 # Spark Declarative Pipeline (Lakeflow Declarative Pipelines)
 from pyspark import pipelines as dp
 from pyspark.sql import functions as F
+from pyspark.sql.functions import broadcast
 from pyspark.sql.types import (
     BooleanType,
     DoubleType,
@@ -12,6 +13,13 @@ from pyspark.sql.types import (
 
 catalog = spark.conf.get("pipeline.catalog", "qsr_synth")
 schema_prefix = spark.conf.get("pipeline.schema_prefix", "synth_")
+
+
+def _unit_franchisee():
+    """Lookup helper: returns (unit_id, franchisee_id) from ref.unit, broadcast-friendly."""
+    return spark.read.table(f"{catalog}.{schema_prefix}ref.unit").select(
+        "unit_id", "franchisee_id"
+    )
 
 # --------------------------------------------------------------------------
 # ORDER DOMAIN
@@ -24,6 +32,7 @@ schema_prefix = spark.conf.get("pipeline.schema_prefix", "synth_")
     schema="""
         guest_order_id      BIGINT    COMMENT 'Surrogate primary key for the order.',
         unit_id             BIGINT    COMMENT 'Restaurant unit where the order was placed.',
+        franchisee_id       BIGINT    COMMENT 'Franchisee owner of the unit (from ref.unit).',
         channel             STRING    COMMENT 'Order channel: carryout, own_delivery, 3pd_delivery, catering.',
         order_type          STRING    COMMENT 'Broad order classification: dine_in, takeout, delivery.',
         order_status        STRING    COMMENT 'Current order state: placed, in_progress, ready, fulfilled, cancelled.',
@@ -47,7 +56,8 @@ schema_prefix = spark.conf.get("pipeline.schema_prefix", "synth_")
 @dp.expect_or_drop("valid_total", "total_amount >= 0")
 @dp.expect_or_drop("valid_unit", "unit_id IS NOT NULL")
 def guest_order():
-    return (
+    ref_unit = _unit_franchisee()
+    df = (
         spark.readStream.table(f"{catalog}.{schema_prefix}staging.order_events")
         .filter(F.col("event_type") == "guest_order")
         .select(
@@ -71,6 +81,7 @@ def guest_order():
             F.current_timestamp().alias("created_at"),
         )
     )
+    return df.join(broadcast(ref_unit), on="unit_id", how="left")
 
 
 @dp.table(
@@ -264,6 +275,7 @@ def on_hand_balance():
     schema="""
         waste_log_id   BIGINT COMMENT 'Surrogate primary key for the waste event.',
         unit_id        BIGINT COMMENT 'Restaurant unit where waste was recorded.',
+        franchisee_id  BIGINT COMMENT 'Franchisee owner of the unit (from ref.unit).',
         stock_sku      STRING COMMENT 'Inventory SKU of the wasted item.',
         waste_quantity DOUBLE,
         waste_category STRING COMMENT 'Reason for waste: spoilage, over_prep, damage, expiry.',
@@ -274,7 +286,8 @@ def on_hand_balance():
     """,
 )
 def waste_log():
-    return (
+    ref_unit = _unit_franchisee()
+    df = (
         spark.readStream.table(f"{catalog}.{schema_prefix}staging.inventory_events")
         .filter(F.col("event_type") == "waste_log")
         .select(
@@ -288,6 +301,7 @@ def waste_log():
             F.current_timestamp().alias("created_at"),
         )
     )
+    return df.join(broadcast(ref_unit), on="unit_id", how="left")
 
 
 @dp.table(
@@ -361,7 +375,8 @@ def replenishment_order():
 
 @dp.view(name="guest_profile_changes")
 def guest_profile_changes_view():
-    return (
+    ref_unit = _unit_franchisee()
+    df = (
         spark.readStream.table(f"{catalog}.{schema_prefix}staging.guest_events")
         .filter(F.col("event_type") == "guest_profile")
         .select(
@@ -377,6 +392,7 @@ def guest_profile_changes_view():
             F.col("event_ts").alias("created_at"),
         )
     )
+    return df.join(broadcast(ref_unit), on="unit_id", how="left")
 
 
 dp.create_streaming_table(
@@ -385,6 +401,7 @@ dp.create_streaming_table(
     schema="""
         guest_profile_id BIGINT  COMMENT 'Surrogate primary key for the guest profile.',
         unit_id          BIGINT,
+        franchisee_id    BIGINT  COMMENT 'Franchisee owner of the unit (from ref.unit).',
         first_name       STRING,
         last_name        STRING,
         email            STRING,
@@ -445,6 +462,7 @@ def digital_account():
         member_id              BIGINT    COMMENT 'FK to guest_profile (loyalty member).',
         guest_order_id         BIGINT,
         unit_id                BIGINT,
+        franchisee_id          BIGINT    COMMENT 'Franchisee owner of the unit (from ref.unit).',
         transaction_type       STRING    COMMENT 'earn or redeem.',
         points_delta           INT       COMMENT 'Points added (positive) or subtracted (negative) in this event.',
         transaction_at         TIMESTAMP,
@@ -455,7 +473,8 @@ def digital_account():
     """,
 )
 def loyalty_transaction():
-    return (
+    ref_unit = _unit_franchisee()
+    df = (
         spark.readStream.table(f"{catalog}.{schema_prefix}staging.loyalty_events")
         .filter(F.col("event_type") == "loyalty_transaction")
         .select(
@@ -470,6 +489,7 @@ def loyalty_transaction():
             F.current_timestamp().alias("created_at"),
         )
     )
+    return df.join(broadcast(ref_unit), on="unit_id", how="left")
 
 
 @dp.table(
@@ -551,6 +571,7 @@ def shift():
         time_punch_id BIGINT,
         employee_id   BIGINT,
         unit_id       BIGINT,
+        franchisee_id BIGINT COMMENT 'Franchisee owner of the unit (from ref.unit).',
         punch_in      TIMESTAMP,
         punch_out     TIMESTAMP,
         hours_worked  DOUBLE,
@@ -559,7 +580,8 @@ def shift():
     """,
 )
 def time_punch():
-    return (
+    ref_unit = _unit_franchisee()
+    df = (
         spark.readStream.table(f"{catalog}.{schema_prefix}staging.workforce_events")
         .filter(F.col("event_type") == "time_punch")
         .select(
@@ -572,6 +594,7 @@ def time_punch():
             F.current_timestamp().alias("created_at"),
         )
     )
+    return df.join(broadcast(ref_unit), on="unit_id", how="left")
 
 
 # --------------------------------------------------------------------------

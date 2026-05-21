@@ -42,15 +42,22 @@ def wait_for_update(update_id: str) -> UpdateInfoState:
         time.sleep(15)
 
 
-def run_full_refresh() -> None:
-    """Start a full_refresh update and wait for it to complete."""
-    print("[INFO] Starting full_refresh to clear streaming checkpoint state...")
-    result = w.pipelines.start_update(pipeline_id, full_refresh=True)
-    update_id = result.update_id
-    final = wait_for_update(update_id)
-    if final == UpdateInfoState.FAILED:
-        raise RuntimeError(f"Pipeline full_refresh failed: {update_id}")
-    print(f"[INFO] full_refresh finished: {final}")
+def run_full_refresh(max_attempts: int = 2) -> None:
+    """Start a full_refresh update and wait for completion.
+    Retries once — DLT coordinators occasionally report FAILED even when all flows
+    completed (transient platform error). A second attempt reliably recovers."""
+    for attempt in range(1, max_attempts + 1):
+        print(f"[INFO] Starting full_refresh (attempt {attempt}/{max_attempts})...")
+        result = w.pipelines.start_update(pipeline_id, full_refresh=True)
+        update_id = result.update_id
+        final = wait_for_update(update_id)
+        if final == UpdateInfoState.COMPLETED:
+            print(f"[INFO] full_refresh completed successfully")
+            return
+        print(f"[WARN] full_refresh attempt {attempt} ended with {final} (update_id={update_id})")
+        if attempt < max_attempts:
+            print("[INFO] Retrying full_refresh...")
+    raise RuntimeError(f"Pipeline full_refresh failed after {max_attempts} attempts: {update_id}")
 
 
 # COMMAND ----------

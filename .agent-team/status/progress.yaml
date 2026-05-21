@@ -1,36 +1,48 @@
-# INCREMENTAL FEATURE RUN: phase-25-and-phase-2-implementations (2026-05-18)
+# INCREMENTAL FEATURE RUN: governance-pack (2026-05-20)
 # Previous build progress archived in team-manifest.previous.yaml
-version: 2
-project: qsr-synthetic-data-generator
-last_updated: "2026-05-18T17:31:00-04:00"
+version: 3
+project: qsr-synth-data-generator
+branch: feat/governance-pack
+last_updated: "2026-05-20T23:35:00-04:00"
 
 phases:
   - id: 1
-    name: feature-implementation
-    status: pending
+    name: governance-implementation
+    status: completed
     agents:
-      - generator-realism-engineer
-      - catalog-enrichment-engineer
-    branches:
-      - feat/phase-25-generator-realism
-      - feat/phase-2-catalog-enrichment
+      - governance-engineer
+      - governance-deploy-engineer
     steps:
-      dispatch_agents: pending
-      await_agents: pending
-    outputs: []
+      read_phase_config: completed
+      resolve_contracts: completed
+      dispatch_agents: completed
+      await_agents: completed
+      merge_worktrees: completed
+      qa_gate: completed
+      update_progress: completed
+      introspection: completed
+    outputs:
+      - src/setup/apply_governance.py
+      - src/setup/configure_monitoring.py
+      - src/setup/destroy_notebook.py
+      - src/pipeline/mvm_pipeline.py
+      - resources/setup_job.yml
     errors: []
 
   - id: 2
     name: qa
-    status: pending
+    status: completed
     depends_on: [1]
     agents:
       - qa-engineer
     steps:
-      dispatch_agents: pending
-      await_agents: pending
-    outputs: []
+      dispatch_agents: completed
+      await_agents: completed
+      qa_gate: completed
+    outputs:
+      - .agent-team/status/qa-phase-2.yaml
     errors: []
+    result: PASS
 
 # --- Original build history below (all phases completed) ---
   - id: build-1

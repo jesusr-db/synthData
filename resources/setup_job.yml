@@ -46,6 +46,24 @@ resources:
               catalog_name: ${var.catalog_name}
               schema_prefix: ${var.schema_prefix}
 
+        - task_key: apply_governance
+          depends_on:
+            - task_key: start_pipeline
+          notebook_task:
+            notebook_path: ../src/setup/apply_governance.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
+              schema_prefix: ${var.schema_prefix}
+
+        - task_key: configure_monitoring
+          depends_on:
+            - task_key: apply_governance
+          notebook_task:
+            notebook_path: ../src/setup/configure_monitoring.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
+              schema_prefix: ${var.schema_prefix}
+
         - task_key: backfill
           depends_on:
             - task_key: setup
@@ -66,6 +84,7 @@ resources:
           depends_on:
             - task_key: backfill
             - task_key: create_genie_space
+            - task_key: configure_monitoring
           notebook_task:
             notebook_path: ../src/setup/unpause_generator_notebook.py
             base_parameters:

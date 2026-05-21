@@ -1,0 +1,47 @@
+status: PASS
+phase: 2
+project: qsr-synth-data-generator
+feature: governance-pack
+timestamp: "2026-05-20T23:35:00-04:00"
+
+checks:
+  - name: pytest_suite
+    status: PASS
+    details: "75/75 tests passing (1.29s)"
+  - name: bundle_validate
+    status: PASS
+    details: "databricks bundle validate — Validation OK"
+  - name: syntax_check_python
+    status: PASS
+    details: "apply_governance.py, configure_monitoring.py, destroy_notebook.py, mvm_pipeline.py all parse"
+  - name: apply_governance_steps_complete
+    status: PASS
+    details: "all 8 steps present (volume, table comments, column comments, tags, functions, masks, row filter, auto_classification, classification scan)"
+  - name: configure_monitoring_3_tables
+    status: PASS
+    details: "snapshot monitors created on guest_order, waste_log, loyalty_transaction; output_schema_name set; assets_dir under /Shared/qsr_monitors/"
+  - name: destroy_cleanup_added_before_step1
+    status: PASS
+    details: "Step 0a (functions), 0b (volume), 0c (monitors) inserted before Step 1 (metric views drop)"
+  - name: pipeline_franchisee_id_5_tables
+    status: PASS
+    details: "franchisee_id BIGINT added to schemas + 5 broadcast joins to ref.unit in guest_order, waste_log, loyalty_transaction, time_punch, and guest_profile_changes view (CDC)"
+  - name: setup_job_dag_updated
+    status: PASS
+    details: "apply_governance depends on start_pipeline; configure_monitoring depends on apply_governance; unpause_generator gains configure_monitoring dep"
+
+artifacts:
+  created:
+    - src/setup/apply_governance.py
+    - src/setup/configure_monitoring.py
+  modified:
+    - src/setup/destroy_notebook.py
+    - src/pipeline/mvm_pipeline.py
+    - resources/setup_job.yml
+
+recommendations: []
+
+deferred_for_runtime_verification:
+  - "Step 8 classification API call may fail with [WARN] on workspace tiers that don't expose the data-classification-tasks endpoint — wrapped in try/except as designed"
+  - "Lakehouse Monitor creation may fail with [WARN] on tiers without Lakehouse Monitoring — wrapped in try/except as designed"
+  - "Row filter + column masks are validated at SQL execution time; full validation requires running apply_governance against live UC"

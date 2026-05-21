@@ -39,6 +39,30 @@ spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog_name}.{schema_prefix}metrics")
 print(f"[INFO] Schemas ready: {schema_prefix}staging, {schema_prefix}ref, {schema_prefix}metrics")
 
 # COMMAND ----------
+# Step 2.5: Recreate mask functions in synth_ref so any existing column masks on staging
+# tables (applied by apply_governance in a prior run) remain valid. Without these functions
+# present, any query on staging.guest_events fails with UC_DEPENDENCY_DOES_NOT_EXIST,
+# breaking both backfill (MAX(event_ts)) and DLT streaming reads.
+spark.sql(f"""
+CREATE OR REPLACE FUNCTION {catalog_name}.{schema_prefix}ref.mask_email(email STRING)
+RETURNS STRING
+RETURN CASE
+  WHEN email IS NULL THEN NULL
+  WHEN INSTR(email, '@') > 1 THEN CONCAT(LEFT(email, 1), REPEAT('*', INSTR(email,'@')-2), SUBSTR(email, INSTR(email,'@')))
+  ELSE '***'
+END
+""")
+spark.sql(f"""
+CREATE OR REPLACE FUNCTION {catalog_name}.{schema_prefix}ref.mask_phone(phone STRING)
+RETURNS STRING
+RETURN CASE
+  WHEN phone IS NULL THEN NULL
+  ELSE CONCAT(REPEAT('*', GREATEST(0, LENGTH(REGEXP_REPLACE(phone,'[^0-9]','')) - 4)), RIGHT(REGEXP_REPLACE(phone,'[^0-9]',''), 4))
+END
+""")
+print(f"[INFO] Mask functions ready: {catalog_name}.{schema_prefix}ref.mask_email, mask_phone")
+
+# COMMAND ----------
 # Step 3: Create staging tables with full schemas so DLT can analyze flows at startup.
 # IF NOT EXISTS preserves existing data and Delta table IDs — required for DLT streaming checkpoints.
 spark.sql(f"""

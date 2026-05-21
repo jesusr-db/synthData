@@ -1,0 +1,103 @@
+name: governance-pack
+producer: governance-engineer, governance-deploy-engineer
+consumer: qa-engineer
+consumed_in_phase: 2
+
+artifacts:
+  # Read-only inputs
+  - path: docs/superpowers/specs/2026-05-20-governance-pack-design.md
+    access: read-only
+    description: Full implementation spec for all governance steps
+  - path: src/pipeline/mvm_pipeline.py
+    access: read-modify
+    description: Add franchisee_id join to 5 silver tables (governance-engineer)
+  - path: src/setup/destroy_notebook.py
+    access: read-modify
+    description: Add function/volume/monitor cleanup before existing schema drops (governance-engineer)
+  - path: resources/setup_job.yml
+    access: read-modify
+    description: Add apply_governance + configure_monitoring tasks; update unpause_generator deps (deploy-engineer)
+
+outputs:
+  - path: src/setup/apply_governance.py
+    description: >
+      8-step governance notebook: volume + sample files, table/column descriptions,
+      column tags (pii/financial/supply_chain), UC scalar functions (mask_email, mask_phone,
+      tier_to_multiplier), column masks on email/phone, row filter function + attach to 6 tables,
+      databricks:auto_classification:pii tags, UC classification scan (non-fatal)
+  - path: src/setup/configure_monitoring.py
+    description: >
+      Creates Lakehouse snapshot monitors on guest_order, waste_log, loyalty_transaction.
+      Output schema: {catalog}.{prefix}metrics. Non-fatal if workspace tier unsupported.
+
+schemas:
+  apply_governance_creates:
+    description: Objects created by apply_governance.py (must all be torn down by destroy_notebook.py)
+    objects:
+      - type: volume
+        name: "{catalog}.{prefix}ref.assets"
+      - type: function
+        name: "{catalog}.{prefix}ref.mask_email"
+      - type: function
+        name: "{catalog}.{prefix}ref.mask_phone"
+      - type: function
+        name: "{catalog}.{prefix}ref.tier_to_multiplier"
+      - type: function
+        name: "{catalog}.{prefix}ref.filter_by_franchisee"
+      - type: column_mask
+        table: "{catalog}.{prefix}staging.guest_events"
+        columns: [email, phone]
+      - type: column_mask
+        table: "{catalog}.{prefix}silver.guest_profile"
+        columns: [email, phone]
+      - type: row_filter
+        tables: [silver.guest_order, silver.waste_log, silver.loyalty_transaction, silver.guest_profile, silver.time_punch, ref.unit]
+
+  configure_monitoring_creates:
+    description: Monitors created by configure_monitoring.py
+    objects:
+      - type: quality_monitor
+        table: "{catalog}.{prefix}silver.guest_order"
+      - type: quality_monitor
+        table: "{catalog}.{prefix}silver.waste_log"
+      - type: quality_monitor
+        table: "{catalog}.{prefix}silver.loyalty_transaction"
+
+  mvm_pipeline_changes:
+    description: Silver tables gaining franchisee_id column
+    tables: [guest_order, waste_log, loyalty_transaction, guest_profile, time_punch]
+    new_column:
+      name: franchisee_id
+      type: BIGINT
+      join_source: ref.unit ON unit_id
+      join_type: left
+
+  setup_job_dag:
+    description: Updated task dependency graph
+    new_tasks: [apply_governance, configure_monitoring]
+    updated_deps:
+      unpause_generator: [backfill, create_genie_space, configure_monitoring]
+
+validation:
+  - type: artifact_exists
+    description: src/setup/apply_governance.py exists
+  - type: artifact_exists
+    description: src/setup/configure_monitoring.py exists
+  - type: schema_match
+    description: apply_governance.py creates volume, 4 functions, column masks, row filter
+  - type: schema_match
+    description: configure_monitoring.py creates 3 monitors using databricks.sdk WorkspaceClient
+  - type: schema_match
+    description: destroy_notebook.py drops 4 functions, 1 volume, 3 monitors before existing schema drops
+  - type: schema_match
+    description: mvm_pipeline.py adds franchisee_id to guest_order, waste_log, loyalty_transaction, guest_profile, time_punch
+  - type: schema_match
+    description: setup_job.yml has apply_governance task depending on start_pipeline
+  - type: schema_match
+    description: setup_job.yml has configure_monitoring task depending on apply_governance
+  - type: schema_match
+    description: setup_job.yml unpause_generator depends on backfill + create_genie_space + configure_monitoring
+  - type: test_pass
+    description: pytest tests/ -v — all 75 tests pass
+  - type: bundle_validate
+    description: databricks bundle validate passes without errors

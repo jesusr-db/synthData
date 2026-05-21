@@ -204,19 +204,7 @@ pytest tests/ -v
 
 ## Open Issues
 
-### ⚠️ Lakehouse Monitoring — switched to staging tables (unverified)
-
-**File:** `src/setup/configure_monitoring.py`  
-**Background:** Monitors on DLT-managed silver tables (`guest_order`, `waste_log`, `loyalty_transaction`) failed with `'TABLE SELECT' permission required` across all auth approaches tried (auto-detected runtime, `GRANT SELECT`, explicit token). Root cause: Lakeflow streaming tables are owned by the pipeline identity, not the setup job user.
-
-**Change made:** Switched to monitoring staging tables instead — `order_events`, `inventory_events`, `loyalty_events`. These are plain Delta tables created by `setup_notebook.py` (owned by the setup job user) and should not have the same ownership issue.
-
-**Not yet verified** — `configure_monitoring` has not been re-run after this change. Next agent should:
-1. Deploy and run setup job (or repair-run just `configure_monitoring`)
-2. Check notebook cell output for `[INFO] Monitor created` vs `[WARN] Monitor skipped`
-3. Verify monitors appear in UC Data Explorer under `synth_staging.order_events` Quality tab
-
-**If staging tables also fail:** Check `DESCRIBE EXTENDED jmrdemo.synth_staging.order_events` for the `Owner` field. If not owned by the running user, add `ALTER TABLE ... OWNER TO` before monitor creation.
+None at this time. All setup job tasks run clean. Lakehouse Monitors confirmed ACTIVE on all 3 staging tables.
 
 ---
 
@@ -234,8 +222,8 @@ pytest tests/ -v
 | Genie Space API returns 400 missing `warehouse_id` | Field required by API | Look up warehouse via SDK and add to payload |
 | PK duplication 83–87% across all order-domain tables | Module-level global counters (`_order_counter`, `_inv_counter`, etc.) reset to 0 on every Databricks serverless notebook execution (fresh Python process per job run) | Replaced all counters with `make_id(*parts)` in `src/generator/id_utils.py` — deterministic SHA-256 hash keyed on `(domain_prefix, unit_id, tick_ts, seq/sku)`, produces a stable 56-bit int that is idempotent across re-runs |
 | `silver.guest_profile` had ~19 duplicate `guest_profile_id` rows | `generate_guest_churn()` emits a `guest_profile` event reusing the original guest's ID as a churn/deactivation record | **Fixed.** Migrated to CDC via `dp.create_streaming_table` + `dp.create_auto_cdc_flow` (SCD Type 1, keyed on `guest_profile_id`). |
-| `configure_monitoring` silently skipped monitors on DLT silver tables | Lakehouse Monitoring API requires table ownership; DLT streaming tables owned by pipeline identity. `GRANT SELECT` + explicit SDK token both tried — permission error persisted. | Switched to monitoring staging tables (`order_events`, `inventory_events`, `loyalty_events`) which are owned by the setup job user. **Unverified** — see Open Issues. |
-| `start_pipeline` fails with "FAILED unexpectedly" even though all flows completed | Transient platform-level DLT update coordinator error — all 19 flows completed but the update status reported FAILED | Repair run resolves it. Consider adding retry logic to `start_pipeline_notebook.py`. |
+| `configure_monitoring` fails with `TABLE SELECT required` | The `[WARN]` about table-level SELECT was a red herring. The real gap was the compute service principal lacking USE CATALOG and USE SCHEMA privileges — table-level grants are ignored when the principal can't even see the catalog/schema. Fix: grant USE CATALOG and USE SCHEMA to the service principal (or `account users`) at the catalog and schema level, not just the table. | Permissions granted at catalog and schema level; monitors now create successfully with status MONITOR_STATUS_ACTIVE. |
+| `start_pipeline` fails with "FAILED unexpectedly" even though all flows completed | Transient platform-level DLT update coordinator error — all 19 flows completed but the update status reported FAILED | Added `max_attempts=2` retry loop to `run_full_refresh()` in `start_pipeline_notebook.py`. |
 
 ---
 
