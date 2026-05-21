@@ -21,12 +21,95 @@ except Exception:
 print(f"[INFO] Destroy: catalog={catalog_name}, schema_prefix={schema_prefix}")
 
 # COMMAND ----------
+# Step 0a: Drop column masks from staging tables BEFORE dropping ref schema/functions.
+# Masks on staging.guest_events reference synth_ref.mask_email/mask_phone. If these
+# functions are dropped while the masks remain, any query on guest_events fails with
+# UC_DEPENDENCY_DOES_NOT_EXIST — including DLT streaming reads and backfill queries.
+for col in ["email", "phone"]:
+    try:
+        spark.sql(
+            f"ALTER TABLE {catalog_name}.{schema_prefix}staging.guest_events "
+            f"ALTER COLUMN {col} DROP MASK"
+        )
+        print(f"[INFO] Dropped mask on staging.guest_events.{col}")
+    except Exception as e:
+        print(f"[WARN] Drop mask on guest_events.{col} skipped: {e}")
+
+for col in ["email", "phone"]:
+    try:
+        spark.sql(
+            f"ALTER TABLE {catalog_name}.{schema_prefix}silver.guest_profile "
+            f"ALTER COLUMN {col} DROP MASK"
+        )
+        print(f"[INFO] Dropped mask on silver.guest_profile.{col}")
+    except Exception as e:
+        print(f"[WARN] Drop mask on guest_profile.{col} skipped: {e}")
+
+# COMMAND ----------
+# Step 0d: Delete Lakehouse Monitors — non-fatal
+try:
+    from databricks.sdk import WorkspaceClient
+    from databricks.sdk.errors import NotFound
+    w = WorkspaceClient()
+    for table in ["order_events", "inventory_events", "loyalty_events"]:
+        full_name = f"{catalog_name}.{schema_prefix}staging.{table}"
+        try:
+            w.quality_monitors.delete(table_name=full_name)
+            print(f"[INFO] Monitor deleted: {full_name}")
+        except NotFound:
+            print(f"[INFO] Monitor not found (ok): {full_name}")
+        except Exception as e:
+            print(f"[WARN] Monitor delete skipped for {full_name}: {e}")
+    guest_order_monitor = f"{catalog_name}.{schema_prefix}silver.guest_order"
+    try:
+        w.quality_monitors.delete(table_name=guest_order_monitor)
+        print(f"[INFO] Monitor deleted: {guest_order_monitor}")
+    except NotFound:
+        print(f"[INFO] Monitor not found (ok): {guest_order_monitor}")
+    except Exception as e:
+        print(f"[WARN] Monitor delete skipped for {guest_order_monitor}: {e}")
+except Exception as e:
+    print(f"[WARN] Monitor cleanup step skipped entirely: {e}")
+
+# COMMAND ----------
+# Step 0e: Drop ABAC policies before dropping the mask functions they reference
+ABAC_POLICIES_TO_DROP = ["mask_email_policy", "mask_phone_policy"]
+for policy_name in ABAC_POLICIES_TO_DROP:
+    try:
+        existing = spark.sql(f"SHOW POLICIES ON CATALOG {catalog_name}").filter(f"policy_name = '{policy_name}'").count()
+        if existing > 0:
+            spark.sql(f"DROP POLICY {policy_name} ON CATALOG {catalog_name}")
+            print(f"[INFO] Dropped ABAC policy: {policy_name}")
+        else:
+            print(f"[INFO] ABAC policy not found (ok): {policy_name}")
+    except Exception as e:
+        print(f"[WARN] Drop ABAC policy {policy_name} skipped: {e}")
+
+# COMMAND ----------
+# Step 0b: Drop UC functions (governance pack)
+FUNCTIONS = ["mask_email", "mask_phone", "tier_to_multiplier", "filter_by_franchisee"]
+for fn in FUNCTIONS:
+    try:
+        spark.sql(f"DROP FUNCTION IF EXISTS {catalog_name}.{schema_prefix}ref.{fn}")
+        print(f"[INFO] Dropped function: {catalog_name}.{schema_prefix}ref.{fn}")
+    except Exception as e:
+        print(f"[WARN] Drop function {fn} skipped: {e}")
+
+# COMMAND ----------
+# Step 0c: Drop UC volume (governance pack)
+try:
+    spark.sql(f"DROP VOLUME IF EXISTS {catalog_name}.{schema_prefix}ref.assets")
+    print(f"[INFO] Dropped volume: {catalog_name}.{schema_prefix}ref.assets")
+except Exception as e:
+    print(f"[WARN] Drop volume assets skipped: {e}")
+
+# COMMAND ----------
 # Step 1: Drop UC Metric Views
 METRIC_VIEWS = [
-    "unit_performance_daily",
-    "sos_compliance_summary",
-    "loyalty_cohort_metrics",
-    "inventory_waste_summary",
+    "order_performance",
+    "loyalty_performance",
+    "inventory_waste",
+    "staff_hours",
 ]
 
 for view_name in METRIC_VIEWS:
