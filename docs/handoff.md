@@ -19,7 +19,7 @@ A fully automated QSR synthetic data generator (Domino's-style, 250 units):
 - **Gold layer:** 4 Gold aggregate tables co-located in `jmrdemo.synth_silver` (DLT managed)
 - **Metrics layer:** 4 Unity Catalog metric views in `jmrdemo.synth_metrics` (WITH METRICS LANGUAGE YAML — reusable measures + dimensions)
 - **Genie Space:** Pre-configured with domain instructions, 10 seed questions, all silver + metrics tables
-- **Governance Pack:** UC column tags (pii/financial/supply_chain), column masks (email/phone), row filter by franchisee on 6 silver/ref tables, 3 UC scalar functions, UC Volume with sample files, automated data classification scan. ⚠️ Lakehouse Monitoring **not yet working** — see Open Issues below.
+- **Governance Pack:** UC column tags (`class.*` for PII, `financial`, `supply_chain`), column masks (email/phone via per-table `SET MASK`), row filter by franchisee on 6 silver/ref tables, 3 UC scalar functions, UC Volume with sample files. 4 Lakehouse Monitors active (3 snapshot + 1 timeseries on `silver.guest_order`) with 12h auto-refresh schedule.
 
 ---
 
@@ -28,7 +28,7 @@ A fully automated QSR synthetic data generator (Domino's-style, 250 units):
 | Resource | Type | Notes |
 |---|---|---|
 | QSR MVM Pipeline [dev] | DLT Pipeline (triggered) | Triggered per generator run |
-| QSR Setup [dev] | Job (9 tasks) | Run to rebuild from scratch |
+| QSR Setup [dev] | Job (8 tasks) | Run to rebuild from scratch |
 | QSR Generator Live [dev] | Job (every-minute cron) | UNPAUSED — running live |
 | QSR Destroy [dev] | Job (teardown) | Ready — tears down non-DAB objects |
 
@@ -39,22 +39,23 @@ All resources tagged: `project: qsr-synth-data-generator`
 ## Setup Job Task Graph
 
 ```
-setup ──→ backfill ──────────────────────────────────────────────────────────┐
-      └─→ start_pipeline ──→ create_metric_views ──→ create_genie_space ─────┤
-                         └──→ apply_governance ──→ configure_monitoring ──────┤
-                                                                               ↓
-                                                                   unpause_generator
+setup ──→ backfill ──→ start_pipeline ──→ create_metric_views ──→ create_genie_space ──┐
+                                      └──→ apply_governance ──→ configure_monitoring ───┤
+                                                                                         ↓
+                                                                             unpause_generator
 ```
 
-`unpause_generator` waits for `backfill` + `create_genie_space` + `configure_monitoring`.
+`unpause_generator` waits for `backfill` (via `start_pipeline`) + `create_genie_space` + `configure_monitoring`.
+
+> **Why `start_pipeline` is after `backfill`:** The DLT pipeline full_refresh needs staging data to exist. Placing it after `backfill` ensures the pipeline processes real data on first run, and avoids transient failures when the pipeline starts before staging tables are populated.
 
 ### Important behaviors
 
 - **`setup_notebook.py`** uses `CREATE TABLE IF NOT EXISTS` for all 5 staging tables — never drops them. This preserves Delta table IDs so DLT streaming checkpoints survive re-runs.
-- **`start_pipeline_notebook.py`** waits for any active pipeline update; falls back to `full_refresh=True` if the update fails (clears broken streaming checkpoint state).
+- **`start_pipeline_notebook.py`** waits for any active pipeline update; falls back to `full_refresh=True` if the update fails (clears broken streaming checkpoint state). Retry logic: `max_attempts=2`.
 - **`backfill`** is incremental — reads `MAX(event_ts)` across staging tables and resumes from the next full hour. Safe to re-run.
-- **`apply_governance`** is fully idempotent — uses `CREATE OR REPLACE` / `IF NOT EXISTS` throughout.
-- **`configure_monitoring`** ⚠️ currently silently skips — see Open Issues below.
+- **`apply_governance`** is fully idempotent — uses `CREATE OR REPLACE` / `IF NOT EXISTS` throughout. Per-table `SET MASK` (not ABAC) — see Known Gotchas.
+- **`configure_monitoring`** creates/updates 4 Lakehouse Monitors. GET-before-CREATE pattern updates existing monitors (schedule + classification config) rather than skipping them.
 
 ---
 
@@ -76,12 +77,12 @@ src/setup/setup_notebook.py                # schemas + staging tables (IF NOT EX
 src/setup/start_pipeline_notebook.py       # idempotent pipeline start with full_refresh fallback
 src/setup/create_metric_views.py           # 4 UC metric views (WITH METRICS LANGUAGE YAML)
 src/setup/create_genie_space.py            # Genie Space via REST API
-src/setup/apply_governance.py             # UC tags, masks, functions, row filter, volume, classification
-src/setup/configure_monitoring.py         # ⚠️ Lakehouse Monitoring (currently broken — see Open Issues)
+src/setup/apply_governance.py             # UC tags (class.*/financial/supply_chain), masks, functions, row filter, volume
+src/setup/configure_monitoring.py         # 4 Lakehouse Monitors (3 snapshot + 1 timeseries), 12h schedule, classification config
 src/setup/destroy_notebook.py             # teardown logic (includes governance cleanup)
 src/setup/unpause_generator_notebook.py   # unpauses generator job after setup
 resources/pipeline.yml                    # DLT pipeline DAB resource
-resources/setup_job.yml                   # 9-task setup job
+resources/setup_job.yml                   # 8-task setup job (start_pipeline depends on backfill)
 resources/generator_job.yml              # live generator job (UNPAUSED)
 resources/destroy_job.yml               # destroy job
 ```
@@ -137,8 +138,8 @@ databricks jobs run-now <setup_job_id> -p DEFAULT
 ```
 
 setup_job handles everything: catalog check → schemas → staging tables → ref seed →
-pipeline full_refresh (silver/gold) → metric views → Genie Space →
-backfill → unpause generator.
+backfill (staging data) → pipeline full_refresh (silver/gold) → metric views → Genie Space →
+governance (tags, masks, row filters) → monitoring (4 monitors) → unpause generator.
 
 ### Re-running after partial failure
 
@@ -176,13 +177,38 @@ DESCRIBE TABLE EXTENDED jmrdemo.silver.guest_order;
 
 -- Genie Space: verify via UI at /genie/spaces
 -- or: GET /api/2.0/genie/spaces  (look for "QSR Synthetic Data — jmrdemo")
+
+-- Check class.* tags on PII columns (expect 8 rows)
+SELECT table_name, column_name, tag_name
+FROM system.information_schema.column_tags
+WHERE catalog_name = 'jmrdemo' AND tag_name LIKE 'class.%'
+ORDER BY table_name, column_name;
+
+-- Check column masks are bound (expect 4 rows: email/phone on guest_events + guest_profile)
+SELECT table_schema, table_name, column_name, mask_name
+FROM system.information_schema.column_masks
+WHERE table_catalog = 'jmrdemo'
+ORDER BY table_name, column_name;
+
+-- Confirm masking fires (values should be redacted, e.g. x*****@example.com)
+SELECT email, phone FROM jmrdemo.synth_staging.guest_events LIMIT 3;
+
+-- Check monitors via SDK
+-- python3 -c "
+-- from databricks.sdk import WorkspaceClient
+-- w = WorkspaceClient(profile='DEFAULT')
+-- for t in ['jmrdemo.synth_staging.order_events','jmrdemo.synth_staging.inventory_events',
+--           'jmrdemo.synth_staging.loyalty_events','jmrdemo.synth_silver.guest_order']:
+--     m = w.quality_monitors.get(table_name=t)
+--     print(t.split('.')[-1], m.status, m.schedule.quartz_cron_expression if m.schedule else 'no-sched')
+-- "
 ```
 
 ---
 
 ## Test Suite
 
-71 tests, all passing:
+75 tests, all passing:
 
 ```bash
 cd /path/to/synthData
@@ -204,7 +230,15 @@ pytest tests/ -v
 
 ## Open Issues
 
-None at this time. All setup job tasks run clean. Lakehouse Monitors confirmed ACTIVE on all 3 staging tables.
+### ABAC masking not yet wired (DLT compatibility workaround pending)
+
+`apply_governance.py` currently uses per-table `SET MASK` (Step 5). The intended architecture is tag-driven ABAC (`CREATE POLICY ... MATCH COLUMNS (has_tag('class.email_address'))`), but Databricks rejects ABAC catalog-level policies on DLT-managed tables during `full_refresh` with `ABAC_POLICIES_NOT_SUPPORTED`.
+
+**Workaround path (not yet implemented):** Drop ABAC policies in `start_pipeline_notebook.py` before triggering the full_refresh, then `apply_governance` recreates them after. This allows ABAC to work end-to-end while keeping the pipeline compatible. See branch `feat/abac-data-discovery` for the ABAC implementation — it just needs the drop-before-refresh step in `start_pipeline_notebook.py`.
+
+### Data classification auto-tagging not active
+
+`configure_monitoring.py` passes `MonitorDataClassificationConfig(enabled=True)` to all 4 monitors, but the workspace returns `enabled=False` — this workspace tier does not support the Data Classification feature. The `class.*` tags on PII columns are applied deterministically by `apply_governance.py` Step 3 (hardcoded DDL), not by any automated scanner. If the workspace is upgraded, the monitors will start writing `class.*` tags automatically on each 12h refresh.
 
 ---
 
@@ -224,6 +258,9 @@ None at this time. All setup job tasks run clean. Lakehouse Monitors confirmed A
 | `silver.guest_profile` had ~19 duplicate `guest_profile_id` rows | `generate_guest_churn()` emits a `guest_profile` event reusing the original guest's ID as a churn/deactivation record | **Fixed.** Migrated to CDC via `dp.create_streaming_table` + `dp.create_auto_cdc_flow` (SCD Type 1, keyed on `guest_profile_id`). |
 | `configure_monitoring` fails with `TABLE SELECT required` | The `[WARN]` about table-level SELECT was a red herring. The real gap was the compute service principal lacking USE CATALOG and USE SCHEMA privileges — table-level grants are ignored when the principal can't even see the catalog/schema. Fix: grant USE CATALOG and USE SCHEMA to the service principal (or `account users`) at the catalog and schema level, not just the table. | Permissions granted at catalog and schema level; monitors now create successfully with status MONITOR_STATUS_ACTIVE. |
 | `start_pipeline` fails with "FAILED unexpectedly" even though all flows completed | Transient platform-level DLT update coordinator error — all 19 flows completed but the update status reported FAILED | Added `max_attempts=2` retry loop to `run_full_refresh()` in `start_pipeline_notebook.py`. |
+| Catalog-level ABAC policies (`CREATE POLICY ON CATALOG`) cause DLT full_refresh to fail | DLT rejects `full_refresh` on tables that have catalog-level ABAC policies bound: `ABAC_POLICIES_NOT_SUPPORTED`. Both staging and silver tables are DLT-managed, so `ON CATALOG` ABAC covers them. | Reverted Step 5 of `apply_governance.py` to per-table `SET MASK`. ABAC is the intended end state — drop-before-refresh pattern in `start_pipeline_notebook.py` is the remaining work. See Open Issues. |
+| `class.*` UC tag values must be empty string, not `'true'` | The `jmrdemo` workspace has a UC tag policy governing the `class.*` namespace with an empty allowed-values list. Writing `SET TAGS ('class.email_address' = 'true')` fails. | All `class.*` tag values in `apply_governance.py` Step 3 use `''` (empty string). `financial` and `supply_chain` tags keep `'true'` — different policy. |
+| `CREATE POLICY IF NOT EXISTS` / `DROP POLICY IF EXISTS` not supported | Syntax not available in this UC version. | Guard existence with `SHOW POLICIES ON CATALOG {c}` → `.filter(...)` → `.count()` before issuing `CREATE POLICY` or `DROP POLICY`. |
 
 ---
 
