@@ -238,41 +238,22 @@ END
 print(f"[OK] function {c}.{p}ref.tier_to_multiplier")
 
 # COMMAND ----------
-# Step 5: ABAC column mask policies — catalog-level, tag-driven
-# One policy per masking function; any column tagged class.email_address is masked automatically.
-# Masks for name and zip_code columns are deliberately omitted — those fields are tagged
-# (class.name, class.zip_code) for classification purposes but not masked in this demo.
-ABAC_POLICIES = [
-    (
-        "mask_email_policy",
-        f"{c}.{p}ref.mask_email",
-        "has_tag('class.email_address')",
-    ),
-    (
-        "mask_phone_policy",
-        f"{c}.{p}ref.mask_phone",
-        "has_tag('class.phone_number')",
-    ),
+# Step 5: Column masks on PII email/phone
+# Note: catalog-level ABAC policies are not supported on DLT-managed tables (silver/staging).
+# Per-table SET MASK is required for tables owned by the DLT pipeline.
+COLUMN_MASKS = [
+    (f"{c}.{p}staging.guest_events", "email", f"{c}.{p}ref.mask_email"),
+    (f"{c}.{p}staging.guest_events", "phone", f"{c}.{p}ref.mask_phone"),
+    (f"{c}.{p}silver.guest_profile", "email", f"{c}.{p}ref.mask_email"),
+    (f"{c}.{p}silver.guest_profile", "phone", f"{c}.{p}ref.mask_phone"),
 ]
 
-for policy_name, mask_fn, tag_predicate in ABAC_POLICIES:
+for table, column, mask_fn in COLUMN_MASKS:
     try:
-        existing = spark.sql(f"SHOW POLICIES ON CATALOG {c}").filter(f"policy_name = '{policy_name}'").count()  # IF NOT EXISTS not supported in this UC version
-        if existing == 0:
-            spark.sql(f"""
-                CREATE POLICY {policy_name}
-                  ON CATALOG {c}
-                  COLUMN MASK {mask_fn}
-                  TO `account users`
-                  FOR TABLES
-                    MATCH COLUMNS ({tag_predicate}) AS m
-                  ON COLUMN m
-            """)
-            print(f"[OK] ABAC policy {policy_name} -> {mask_fn} for columns where {tag_predicate}")
-        else:
-            print(f"[OK] ABAC policy {policy_name} already exists (idempotent)")
+        spark.sql(f"ALTER TABLE {table} ALTER COLUMN {column} SET MASK {mask_fn}")
+        print(f"[OK] mask {table}.{column} -> {mask_fn}")
     except Exception as e:
-        print(f"[WARN] ABAC policy {policy_name} skipped: {e}")
+        print(f"[WARN] mask {table}.{column} skipped: {e}")
 
 # COMMAND ----------
 # Step 6: Row filter function + attach
@@ -301,11 +282,11 @@ for table in ROW_FILTER_TABLES:
         print(f"[WARN] row filter on {table} skipped: {e}")
 
 # COMMAND ----------
-# Data classification is now handled by Lakehouse Monitors (configure_monitoring.py).
+# Data classification is handled by Lakehouse Monitors (configure_monitoring.py).
 # Each monitor refresh runs MonitorDataClassificationConfig(enabled=True), which writes
 # class.* tags automatically. The class.* tags applied in Step 3 above serve as the
-# deterministic fallback so ABAC policies work before the first monitor refresh.
+# deterministic fallback so classification is populated before the first monitor refresh.
 print("[INFO] Data classification driven by monitors — see configure_monitoring task")
 
 # COMMAND ----------
-print("[INFO] apply_governance complete — volume, comments, class.* tags, functions, ABAC policies, row filters applied")
+print("[INFO] apply_governance complete — volume, comments, class.* tags, functions, column masks, row filters applied")

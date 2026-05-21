@@ -21,7 +21,7 @@ resources:
 
         - task_key: start_pipeline
           depends_on:
-            - task_key: setup
+            - task_key: backfill
           notebook_task:
             notebook_path: ../src/setup/start_pipeline_notebook.py
             base_parameters:

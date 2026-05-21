@@ -72,20 +72,6 @@ except Exception as e:
     print(f"[WARN] Monitor cleanup step skipped entirely: {e}")
 
 # COMMAND ----------
-# Step 0e: Drop ABAC policies before dropping the mask functions they reference
-ABAC_POLICIES_TO_DROP = ["mask_email_policy", "mask_phone_policy"]
-for policy_name in ABAC_POLICIES_TO_DROP:
-    try:
-        existing = spark.sql(f"SHOW POLICIES ON CATALOG {catalog_name}").filter(f"policy_name = '{policy_name}'").count()
-        if existing > 0:
-            spark.sql(f"DROP POLICY {policy_name} ON CATALOG {catalog_name}")
-            print(f"[INFO] Dropped ABAC policy: {policy_name}")
-        else:
-            print(f"[INFO] ABAC policy not found (ok): {policy_name}")
-    except Exception as e:
-        print(f"[WARN] Drop ABAC policy {policy_name} skipped: {e}")
-
-# COMMAND ----------
 # Step 0b: Drop UC functions (governance pack)
 FUNCTIONS = ["mask_email", "mask_phone", "tier_to_multiplier", "filter_by_franchisee"]
 for fn in FUNCTIONS:
