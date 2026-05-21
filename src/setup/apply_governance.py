@@ -238,22 +238,55 @@ END
 print(f"[OK] function {c}.{p}ref.tier_to_multiplier")
 
 # COMMAND ----------
-# Step 5: Column masks on PII email/phone
-# Note: catalog-level ABAC policies are not supported on DLT-managed tables (silver/staging).
-# Per-table SET MASK is required for tables owned by the DLT pipeline.
-COLUMN_MASKS = [
-    (f"{c}.{p}staging.guest_events", "email", f"{c}.{p}ref.mask_email"),
-    (f"{c}.{p}staging.guest_events", "phone", f"{c}.{p}ref.mask_phone"),
-    (f"{c}.{p}silver.guest_profile", "email", f"{c}.{p}ref.mask_email"),
-    (f"{c}.{p}silver.guest_profile", "phone", f"{c}.{p}ref.mask_phone"),
+# Step 5: ABAC column mask policies — catalog-level, tag-driven
+# Per-table SET MASK is NOT used; one policy per mask function covers all tagged columns catalog-wide.
+# start_pipeline_notebook.py drops these before DLT full_refresh to avoid ABAC_POLICIES_NOT_SUPPORTED.
+
+# Best-effort: drop any legacy per-table masks left from prior SET MASK runs to avoid double-masking
+for _table, _col in [
+    (f"{c}.{p}staging.guest_events", "email"),
+    (f"{c}.{p}staging.guest_events", "phone"),
+    (f"{c}.{p}silver.guest_profile", "email"),
+    (f"{c}.{p}silver.guest_profile", "phone"),
+]:
+    try:
+        spark.sql(f"ALTER TABLE {_table} ALTER COLUMN {_col} DROP MASK")
+        print(f"[INFO] Dropped legacy per-table mask: {_table}.{_col}")
+    except Exception:
+        pass  # expected if mask was not set
+
+# ABAC policies — idempotent: SHOW POLICIES → drop if exists → create
+ABAC_POLICIES = [
+    ("mask_email_policy", f"{c}.{p}ref.mask_email", "class.email_address"),
+    ("mask_phone_policy", f"{c}.{p}ref.mask_phone", "class.phone_number"),
 ]
 
-for table, column, mask_fn in COLUMN_MASKS:
+try:
+    _existing_policies = {
+        row["Policy Name"]
+        for row in spark.sql(f"SHOW POLICIES ON CATALOG {c}").collect()
+    }
+except Exception as e:
+    print(f"[WARN] SHOW POLICIES failed, assuming empty: {e}")
+    _existing_policies = set()
+
+for policy_name, mask_fn, tag_name in ABAC_POLICIES:
     try:
-        spark.sql(f"ALTER TABLE {table} ALTER COLUMN {column} SET MASK {mask_fn}")
-        print(f"[OK] mask {table}.{column} -> {mask_fn}")
+        if policy_name in _existing_policies:
+            spark.sql(f"DROP POLICY {policy_name} ON CATALOG {c}")
+            print(f"[INFO] Dropped existing ABAC policy: {policy_name}")
+        spark.sql(f"""
+            CREATE POLICY {policy_name}
+              ON CATALOG {c}
+              COLUMN MASK {mask_fn}
+              TO `account users`
+              FOR TABLES
+                MATCH COLUMNS (has_tag('{tag_name}')) AS m
+              ON COLUMN m
+        """)
+        print(f"[OK] ABAC policy {policy_name}: {mask_fn} for columns with tag '{tag_name}'")
     except Exception as e:
-        print(f"[WARN] mask {table}.{column} skipped: {e}")
+        print(f"[WARN] ABAC policy {policy_name} skipped: {e}")
 
 # COMMAND ----------
 # Step 6: Row filter function + attach
@@ -289,4 +322,4 @@ for table in ROW_FILTER_TABLES:
 print("[INFO] Data classification driven by monitors — see configure_monitoring task")
 
 # COMMAND ----------
-print("[INFO] apply_governance complete — volume, comments, class.* tags, functions, column masks, row filters applied")
+print("[INFO] apply_governance complete — volume, comments, class.* tags, functions, ABAC policies, row filters applied")
