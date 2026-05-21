@@ -13,7 +13,12 @@ try:
 except Exception:
     catalog_name = "jmrdemo"
 
-print(f"[INFO] Destroy: catalog={catalog_name}")
+try:
+    schema_prefix = dbutils.widgets.get("schema_prefix")
+except Exception:
+    schema_prefix = "synth_"
+
+print(f"[INFO] Destroy: catalog={catalog_name}, schema_prefix={schema_prefix}")
 
 # COMMAND ----------
 # Step 1: Drop UC Metric Views
@@ -25,35 +30,16 @@ METRIC_VIEWS = [
 ]
 
 for view_name in METRIC_VIEWS:
-    spark.sql(f"DROP VIEW IF EXISTS {catalog_name}.metrics.{view_name}")
-    print(f"[INFO] Dropped view: {catalog_name}.metrics.{view_name}")
+    spark.sql(f"DROP VIEW IF EXISTS {catalog_name}.{schema_prefix}metrics.{view_name}")
+    print(f"[INFO] Dropped view: {catalog_name}.{schema_prefix}metrics.{view_name}")
 
 # COMMAND ----------
 # Step 2: Drop metrics schema
-spark.sql(f"DROP SCHEMA IF EXISTS {catalog_name}.metrics CASCADE")
-print(f"[INFO] Dropped schema: {catalog_name}.metrics")
+spark.sql(f"DROP SCHEMA IF EXISTS {catalog_name}.{schema_prefix}metrics CASCADE")
+print(f"[INFO] Dropped schema: {catalog_name}.{schema_prefix}metrics")
 
 # COMMAND ----------
-# Step 3: Drop staging tables
-STAGING_TABLES = [
-    "order_events",
-    "inventory_events",
-    "guest_events",
-    "loyalty_events",
-    "workforce_events",
-]
-
-for table in STAGING_TABLES:
-    spark.sql(f"DROP TABLE IF EXISTS {catalog_name}.staging.{table}")
-    print(f"[INFO] Dropped table: {catalog_name}.staging.{table}")
-
-# COMMAND ----------
-# Step 4: Drop staging schema
-spark.sql(f"DROP SCHEMA IF EXISTS {catalog_name}.staging CASCADE")
-print(f"[INFO] Dropped schema: {catalog_name}.staging")
-
-# COMMAND ----------
-# Step 5: Drop reference tables
+# Step 3: Drop reference tables
 REF_TABLES = [
     "unit",
     "franchisee",
@@ -66,15 +52,15 @@ REF_TABLES = [
 ]
 
 for table in REF_TABLES:
-    spark.sql(f"DROP TABLE IF EXISTS {catalog_name}.ref.{table}")
-    print(f"[INFO] Dropped table: {catalog_name}.ref.{table}")
+    spark.sql(f"DROP TABLE IF EXISTS {catalog_name}.{schema_prefix}ref.{table}")
+    print(f"[INFO] Dropped table: {catalog_name}.{schema_prefix}ref.{table}")
 
 # COMMAND ----------
-# Step 6: Drop ref schema
-spark.sql(f"DROP SCHEMA IF EXISTS {catalog_name}.ref CASCADE")
-print(f"[INFO] Dropped schema: {catalog_name}.ref")
+# Step 4: Drop ref schema
+spark.sql(f"DROP SCHEMA IF EXISTS {catalog_name}.{schema_prefix}ref CASCADE")
+print(f"[INFO] Dropped schema: {catalog_name}.{schema_prefix}ref")
 
 # COMMAND ----------
-# Note: Gold/Silver schemas are managed by the DLT pipeline and dropped via
-# `databricks bundle destroy`. This job only tears down what DAB cannot manage.
-print("[INFO] Destroy complete. Run `databricks bundle destroy` to remove DAB-managed resources.")
+# Note: staging schema is intentionally preserved so historical data survives destroy/redeploy cycles.
+# Gold/Silver schemas are managed by the DLT pipeline and dropped via `databricks bundle destroy`.
+print(f"[INFO] Destroy complete. {schema_prefix}staging schema preserved. Run `databricks bundle destroy` to remove DAB-managed resources.")

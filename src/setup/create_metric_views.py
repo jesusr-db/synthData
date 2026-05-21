@@ -12,20 +12,25 @@ try:
 except Exception:
     catalog_name = "jmrdemo"
 
-print(f"[INFO] create_metric_views: catalog={catalog_name}")
+try:
+    schema_prefix = dbutils.widgets.get("schema_prefix")
+except Exception:
+    schema_prefix = "synth_"
+
+print(f"[INFO] create_metric_views: catalog={catalog_name}, schema_prefix={schema_prefix}")
 c = catalog_name
 
 # COMMAND ----------
-spark.sql(f"CREATE SCHEMA IF NOT EXISTS {c}.metrics")
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {c}.{schema_prefix}metrics")
 
 # COMMAND ----------
 # 1. Order Performance — volume, revenue, SOS compliance per unit/channel
 spark.sql(f"""
-    CREATE OR REPLACE VIEW {c}.metrics.order_performance
+    CREATE OR REPLACE VIEW {c}.{schema_prefix}metrics.order_performance
     WITH METRICS LANGUAGE YAML AS$$
 version: 1.1
 comment: "QSR order volume, revenue, and speed-of-service compliance by unit and channel"
-source: {c}.silver.guest_order
+source: {c}.{schema_prefix}silver.guest_order
 dimensions:
   - name: Unit ID
     expr: unit_id
@@ -67,11 +72,11 @@ print("[OK] metrics.order_performance")
 # COMMAND ----------
 # 2. Loyalty Performance — points activity and member engagement by tier
 spark.sql(f"""
-    CREATE OR REPLACE VIEW {c}.metrics.loyalty_performance
+    CREATE OR REPLACE VIEW {c}.{schema_prefix}metrics.loyalty_performance
     WITH METRICS LANGUAGE YAML AS$$
 version: 1.1
 comment: "Loyalty program points activity and member engagement by tier and unit"
-source: {c}.silver.loyalty_transaction
+source: {c}.{schema_prefix}silver.loyalty_transaction
 dimensions:
   - name: Tier
     expr: tier
@@ -100,11 +105,11 @@ print("[OK] metrics.loyalty_performance")
 # COMMAND ----------
 # 3. Inventory Waste — waste quantity and cost by unit, SKU, and category
 spark.sql(f"""
-    CREATE OR REPLACE VIEW {c}.metrics.inventory_waste
+    CREATE OR REPLACE VIEW {c}.{schema_prefix}metrics.inventory_waste
     WITH METRICS LANGUAGE YAML AS$$
 version: 1.1
 comment: "Inventory waste quantity and cost by unit, SKU, and waste category"
-source: {c}.silver.waste_log
+source: {c}.{schema_prefix}silver.waste_log
 dimensions:
   - name: Unit ID
     expr: unit_id
@@ -135,11 +140,11 @@ print("[OK] metrics.inventory_waste")
 # COMMAND ----------
 # 4. Staff Hours — actual hours worked and shift counts per unit
 spark.sql(f"""
-    CREATE OR REPLACE VIEW {c}.metrics.staff_hours
+    CREATE OR REPLACE VIEW {c}.{schema_prefix}metrics.staff_hours
     WITH METRICS LANGUAGE YAML AS$$
 version: 1.1
 comment: "Actual hours worked and shift counts per unit and date"
-source: {c}.silver.time_punch
+source: {c}.{schema_prefix}silver.time_punch
 dimensions:
   - name: Unit ID
     expr: unit_id

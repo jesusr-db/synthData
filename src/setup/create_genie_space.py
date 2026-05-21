@@ -14,6 +14,11 @@ try:
 except Exception:
     catalog_name = "jmrdemo"
 
+try:
+    schema_prefix = dbutils.widgets.get("schema_prefix")
+except Exception:
+    schema_prefix = "synth_"
+
 w = WorkspaceClient()
 workspace_url = w.config.host.rstrip("/")
 ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
@@ -93,10 +98,10 @@ serialized = {
     "data_sources": {
         # API requires identifiers sorted alphabetically
         "tables": [
-            {"identifier": f"{catalog_name}.silver.{t}"} for t in sorted(SILVER_TABLES)
+            {"identifier": f"{catalog_name}.{schema_prefix}silver.{t}"} for t in sorted(SILVER_TABLES)
         ],
         "metric_views": [
-            {"identifier": f"{catalog_name}.metrics.{v}"} for v in sorted(METRIC_VIEWS)
+            {"identifier": f"{catalog_name}.{schema_prefix}metrics.{v}"} for v in sorted(METRIC_VIEWS)
         ],
     },
     "instructions": {

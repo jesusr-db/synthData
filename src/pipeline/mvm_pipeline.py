@@ -11,6 +11,7 @@ from pyspark.sql.types import (
 )
 
 catalog = spark.conf.get("pipeline.catalog", "qsr_synth")
+schema_prefix = spark.conf.get("pipeline.schema_prefix", "synth_")
 
 # --------------------------------------------------------------------------
 # ORDER DOMAIN
@@ -47,7 +48,7 @@ catalog = spark.conf.get("pipeline.catalog", "qsr_synth")
 @dp.expect_or_drop("valid_unit", "unit_id IS NOT NULL")
 def guest_order():
     return (
-        spark.readStream.table(f"{catalog}.staging.order_events")
+        spark.readStream.table(f"{catalog}.{schema_prefix}staging.order_events")
         .filter(F.col("event_type") == "guest_order")
         .select(
             F.col("guest_order_id").cast(LongType()),
@@ -96,7 +97,7 @@ def guest_order():
 @dp.expect_or_drop("positive_price", "unit_price > 0")
 def order_item():
     return (
-        spark.readStream.table(f"{catalog}.staging.order_events")
+        spark.readStream.table(f"{catalog}.{schema_prefix}staging.order_events")
         .filter(F.col("event_type") == "order_item")
         .select(
             F.col("order_item_id").cast(LongType()),
@@ -134,7 +135,7 @@ def order_item():
 )
 def payment():
     return (
-        spark.readStream.table(f"{catalog}.staging.order_events")
+        spark.readStream.table(f"{catalog}.{schema_prefix}staging.order_events")
         .filter(F.col("event_type") == "payment")
         .select(
             F.col("payment_id").cast(LongType()),
@@ -169,7 +170,7 @@ def payment():
 )
 def status_event():
     return (
-        spark.readStream.table(f"{catalog}.staging.order_events")
+        spark.readStream.table(f"{catalog}.{schema_prefix}staging.order_events")
         .filter(F.col("event_type") == "status_event")
         .select(
             F.col("status_event_id").cast(LongType()),
@@ -204,7 +205,7 @@ def status_event():
 )
 def delivery_order():
     return (
-        spark.readStream.table(f"{catalog}.staging.order_events")
+        spark.readStream.table(f"{catalog}.{schema_prefix}staging.order_events")
         .filter(F.col("event_type") == "delivery_order")
         .select(
             F.col("delivery_order_id").cast(LongType()),
@@ -242,7 +243,7 @@ def delivery_order():
 @dp.expect_or_drop("nonnegative_quantity", "quantity_on_hand >= 0")
 def on_hand_balance():
     return (
-        spark.readStream.table(f"{catalog}.staging.inventory_events")
+        spark.readStream.table(f"{catalog}.{schema_prefix}staging.inventory_events")
         .filter(F.col("event_type") == "on_hand_balance")
         .select(
             F.col("on_hand_balance_id").cast(LongType()),
@@ -274,7 +275,7 @@ def on_hand_balance():
 )
 def waste_log():
     return (
-        spark.readStream.table(f"{catalog}.staging.inventory_events")
+        spark.readStream.table(f"{catalog}.{schema_prefix}staging.inventory_events")
         .filter(F.col("event_type") == "waste_log")
         .select(
             F.col("waste_log_id").cast(LongType()),
@@ -306,7 +307,7 @@ def waste_log():
 )
 def receiving_order():
     return (
-        spark.readStream.table(f"{catalog}.staging.inventory_events")
+        spark.readStream.table(f"{catalog}.{schema_prefix}staging.inventory_events")
         .filter(F.col("event_type") == "receiving_order")
         .select(
             F.col("receiving_order_id").cast(LongType()),
@@ -338,7 +339,7 @@ def receiving_order():
 )
 def replenishment_order():
     return (
-        spark.readStream.table(f"{catalog}.staging.inventory_events")
+        spark.readStream.table(f"{catalog}.{schema_prefix}staging.inventory_events")
         .filter(F.col("event_type") == "replenishment_order")
         .select(
             F.col("replenishment_order_id").cast(LongType()),
@@ -361,7 +362,7 @@ def replenishment_order():
 @dp.view(name="guest_profile_changes")
 def guest_profile_changes_view():
     return (
-        spark.readStream.table(f"{catalog}.staging.guest_events")
+        spark.readStream.table(f"{catalog}.{schema_prefix}staging.guest_events")
         .filter(F.col("event_type") == "guest_profile")
         .select(
             F.col("guest_profile_id").cast(LongType()),
@@ -419,7 +420,7 @@ dp.create_auto_cdc_flow(
 )
 def digital_account():
     return (
-        spark.readStream.table(f"{catalog}.staging.guest_events")
+        spark.readStream.table(f"{catalog}.{schema_prefix}staging.guest_events")
         .filter(F.col("event_type") == "guest_profile")
         .select(
             F.col("digital_account_id").cast(LongType()),
@@ -455,7 +456,7 @@ def digital_account():
 )
 def loyalty_transaction():
     return (
-        spark.readStream.table(f"{catalog}.staging.loyalty_events")
+        spark.readStream.table(f"{catalog}.{schema_prefix}staging.loyalty_events")
         .filter(F.col("event_type") == "loyalty_transaction")
         .select(
             F.col("loyalty_transaction_id").cast(LongType()),
@@ -489,7 +490,7 @@ def loyalty_transaction():
 )
 def reward_redemption():
     return (
-        spark.readStream.table(f"{catalog}.staging.loyalty_events")
+        spark.readStream.table(f"{catalog}.{schema_prefix}staging.loyalty_events")
         .filter(F.col("event_type") == "reward_redemption")
         .select(
             F.col("reward_redemption_id").cast(LongType()),
@@ -527,7 +528,7 @@ def reward_redemption():
 )
 def shift():
     return (
-        spark.readStream.table(f"{catalog}.staging.workforce_events")
+        spark.readStream.table(f"{catalog}.{schema_prefix}staging.workforce_events")
         .filter(F.col("event_type") == "shift")
         .select(
             F.col("shift_id").cast(LongType()),
@@ -559,7 +560,7 @@ def shift():
 )
 def time_punch():
     return (
-        spark.readStream.table(f"{catalog}.staging.workforce_events")
+        spark.readStream.table(f"{catalog}.{schema_prefix}staging.workforce_events")
         .filter(F.col("event_type") == "time_punch")
         .select(
             F.col("time_punch_id").cast(LongType()),

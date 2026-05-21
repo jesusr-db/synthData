@@ -17,7 +17,12 @@ except Exception:
     catalog_name = "jmrdemo"
     num_units = 250
 
-print(f"[INFO] Setup: catalog={catalog_name}, num_units={num_units}")
+try:
+    schema_prefix = dbutils.widgets.get("schema_prefix")
+except Exception:
+    schema_prefix = "synth_"
+
+print(f"[INFO] Setup: catalog={catalog_name}, schema_prefix={schema_prefix}, num_units={num_units}")
 
 # COMMAND ----------
 # Step 1: Verify catalog exists (managed externally — declared in databricks.yml)
@@ -28,16 +33,16 @@ print(f"[INFO] Catalog verified: {catalog_name}")
 
 # COMMAND ----------
 # Step 2: Create schemas
-spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog_name}.staging")
-spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog_name}.ref")
-spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog_name}.metrics")
-print(f"[INFO] Schemas ready: staging, ref, metrics")
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog_name}.{schema_prefix}staging")
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog_name}.{schema_prefix}ref")
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog_name}.{schema_prefix}metrics")
+print(f"[INFO] Schemas ready: {schema_prefix}staging, {schema_prefix}ref, {schema_prefix}metrics")
 
 # COMMAND ----------
 # Step 3: Create staging tables with full schemas so DLT can analyze flows at startup.
 # IF NOT EXISTS preserves existing data and Delta table IDs — required for DLT streaming checkpoints.
 spark.sql(f"""
-    CREATE TABLE IF NOT EXISTS {catalog_name}.staging.order_events (
+    CREATE TABLE IF NOT EXISTS {catalog_name}.{schema_prefix}staging.order_events (
         event_type                      STRING,
         event_id                        BIGINT,
         unit_id                         BIGINT,
@@ -92,10 +97,10 @@ spark.sql(f"""
         'delta.minWriterVersion'   = '5'
     )
 """)
-print(f"[INFO] Staging table ready: {catalog_name}.staging.order_events")
+print(f"[INFO] Staging table ready: {catalog_name}.{schema_prefix}staging.order_events")
 
 spark.sql(f"""
-    CREATE TABLE IF NOT EXISTS {catalog_name}.staging.inventory_events (
+    CREATE TABLE IF NOT EXISTS {catalog_name}.{schema_prefix}staging.inventory_events (
         event_type                  STRING,
         event_id                    BIGINT,
         unit_id                     BIGINT,
@@ -129,10 +134,10 @@ spark.sql(f"""
         'delta.minWriterVersion'   = '5'
     )
 """)
-print(f"[INFO] Staging table ready: {catalog_name}.staging.inventory_events")
+print(f"[INFO] Staging table ready: {catalog_name}.{schema_prefix}staging.inventory_events")
 
 spark.sql(f"""
-    CREATE TABLE IF NOT EXISTS {catalog_name}.staging.guest_events (
+    CREATE TABLE IF NOT EXISTS {catalog_name}.{schema_prefix}staging.guest_events (
         event_type          STRING,
         event_id            BIGINT,
         unit_id             BIGINT,
@@ -154,10 +159,10 @@ spark.sql(f"""
         'delta.minWriterVersion'   = '5'
     )
 """)
-print(f"[INFO] Staging table ready: {catalog_name}.staging.guest_events")
+print(f"[INFO] Staging table ready: {catalog_name}.{schema_prefix}staging.guest_events")
 
 spark.sql(f"""
-    CREATE TABLE IF NOT EXISTS {catalog_name}.staging.loyalty_events (
+    CREATE TABLE IF NOT EXISTS {catalog_name}.{schema_prefix}staging.loyalty_events (
         event_type              STRING,
         event_id                BIGINT,
         unit_id                 BIGINT,
@@ -181,10 +186,10 @@ spark.sql(f"""
         'delta.minWriterVersion'   = '5'
     )
 """)
-print(f"[INFO] Staging table ready: {catalog_name}.staging.loyalty_events")
+print(f"[INFO] Staging table ready: {catalog_name}.{schema_prefix}staging.loyalty_events")
 
 spark.sql(f"""
-    CREATE TABLE IF NOT EXISTS {catalog_name}.staging.workforce_events (
+    CREATE TABLE IF NOT EXISTS {catalog_name}.{schema_prefix}staging.workforce_events (
         event_type      STRING,
         event_id        BIGINT,
         unit_id         BIGINT,
@@ -208,13 +213,13 @@ spark.sql(f"""
         'delta.minWriterVersion'   = '5'
     )
 """)
-print(f"[INFO] Staging table ready: {catalog_name}.staging.workforce_events")
+print(f"[INFO] Staging table ready: {catalog_name}.{schema_prefix}staging.workforce_events")
 
 # COMMAND ----------
 # Step 4: Seed reference tables
 from src.generator.reference.seeder import seed_all
 
-seed_all(spark, catalog_name, num_units=num_units)
+seed_all(spark, catalog_name, num_units=num_units, schema_prefix=schema_prefix)
 print(f"[INFO] Reference tables seeded")
 
 print("[INFO] Setup complete")
