@@ -15,3 +15,4 @@ resources:
             notebook_path: ../src/setup/destroy_notebook.py
             base_parameters:
               catalog_name: ${var.catalog_name}
+              schema_prefix: ${var.schema_prefix}

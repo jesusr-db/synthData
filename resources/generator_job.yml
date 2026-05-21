@@ -25,6 +25,7 @@ resources:
               num_units: ${var.num_units}
               live_tick_seconds: ${var.live_tick_seconds}
               base_orders_per_unit_per_hour: ${var.base_orders_per_unit_per_hour}
+              schema_prefix: ${var.schema_prefix}
               mode: live
 
         - task_key: trigger_pipeline
