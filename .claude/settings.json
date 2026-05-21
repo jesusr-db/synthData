@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/scripts/hook_entry.py",
+            "timeout": 360
+          }
+        ]
+      }
+    ]
+  }
+}

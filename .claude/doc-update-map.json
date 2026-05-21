@@ -1,0 +1,12 @@
+{
+  "src/pipelines/lakebase_sync/**/*.sql": ["data-model", "dataflow"],
+  "src/notebooks/lakebase_setup.py": ["dataflow", "quickstart"],
+  "backend/routers/**/*.py": ["api"],
+  "backend/services/**/*.py": ["api"],
+  "backend/config.py": ["data-model", "api", "quickstart"],
+  "databricks.yml": ["architecture", "quickstart", "gotchas"],
+  "resources/**/*.yml": ["architecture", "quickstart", "gotchas"],
+  "HANDOFF.md": ["dataflow", "quickstart"],
+  "CLAUDE.md": ["gotchas"],
+  "docs/quickstart.md": ["gotchas"]
+}

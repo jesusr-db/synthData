@@ -1,0 +1,20 @@
+# Targeted Doc Update — Agent Prompt Template
+# (Reference only — actual prompt is built by build_context.py:build_targeted())
+
+The agent receives:
+  - A list of affected docs to update (e.g. "api, data-model")
+  - The full content of changed source files
+  - The current content of the affected docs
+
+The agent must:
+  1. Update only the sections derived from the changed source files
+  2. Preserve <!-- NARRATIVE --> blocks verbatim
+  3. Leave existing <!-- TODO: --> blocks unless the source now fills the gap
+  4. Output each updated doc as:
+       === FILE: docs/<name>.md ===
+       <complete file content>
+       === END FILE ===
+
+Trigger: PostToolUse hook after `git commit`
+Model: claude-sonnet-4-6 (via `claude -p`)
+Live Databricks queries: NO (targeted mode is source-file only)

@@ -1,0 +1,19 @@
+# Full Regeneration — Agent Prompt Template
+# (Reference only — actual prompt is built by build_context.py:build_full_regen())
+
+The agent receives:
+  - Output of `databricks bundle summary -t dev` (deployed resource IDs, statuses)
+  - Live INFORMATION_SCHEMA.COLUMNS query for zerobus_sdp.* (actual PG column types)
+  - Full content of all mapped source files
+  - Current content of all six docs (for NARRATIVE block preservation)
+
+The agent must:
+  1. Regenerate all seven docs completely
+  2. Mark unfillable gaps with <!-- TODO: human narrative needed — <hint> -->
+  3. Preserve <!-- NARRATIVE --> ... <!-- /NARRATIVE --> blocks verbatim
+  4. Output all seven files using === FILE: ... === === END FILE === format
+     (README, architecture, data-model, dataflow, api, quickstart, gotchas)
+
+Trigger: PostToolUse hook after `git merge` to main or `git push origin main`
+Model: claude-sonnet-4-6 (via `claude -p`)
+Live Databricks queries: YES (bundle summary + INFORMATION_SCHEMA via databricks CLI)
