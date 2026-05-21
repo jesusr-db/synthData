@@ -27,6 +27,7 @@ print(f"[OK] schema {c}.{p}metrics ready")
 
 # COMMAND ----------
 from databricks.sdk import WorkspaceClient
+from databricks.sdk.errors import NotFound
 from databricks.sdk.service.catalog import (
     MonitorSnapshot,
     MonitorTimeSeries,
@@ -78,17 +79,18 @@ for full_name, assets_suffix, monitor_kwargs in MONITORS:
         print(f"[WARN] SELECT grant skipped for {full_name}: {e}")
 
     try:
-        existing = w.quality_monitors.get(table_name=full_name)
+        w.quality_monitors.get(table_name=full_name)  # probe — raises NotFound if absent
         try:
             w.quality_monitors.update(
                 table_name=full_name,
+                output_schema_name=output_schema,
                 schedule=MONITOR_SCHEDULE,
                 data_classification_config=MonitorDataClassificationConfig(enabled=True),
             )
             print(f"[INFO] Monitor updated: {full_name} (schedule=0 0 0/12 * * ?, classification=enabled)")
         except Exception as ue:
             print(f"[WARN] Monitor update skipped for {full_name}: {ue}")
-    except Exception:
+    except NotFound:
         try:
             w.quality_monitors.create(
                 table_name=full_name,
