@@ -44,7 +44,7 @@ except Exception as e:
 # franchise_locations.csv — exported from ref.unit (selected columns)
 try:
     unit_df = spark.read.table(f"{c}.{p}ref.unit").select(
-        "unit_id", "unit_name", "city", "state", "franchisee_id"
+        "unit_id", "unit_name", "city", "state", "franchisee_id", "region_id"
     )
     (
         unit_df.coalesce(1)
@@ -291,9 +291,10 @@ for policy_name, mask_fn, tag_name in ABAC_POLICIES:
 # COMMAND ----------
 # Step 6: Row filter function + attach
 spark.sql(f"""
-CREATE OR REPLACE FUNCTION {c}.{p}ref.filter_by_franchisee(franchisee_id BIGINT)
+CREATE OR REPLACE FUNCTION {c}.{p}ref.filter_by_franchisee(franchisee_id BIGINT, region_id BIGINT)
 RETURNS BOOLEAN
 RETURN IS_MEMBER(CONCAT('franchisee_', CAST(franchisee_id AS STRING)))
+    OR IS_MEMBER(CONCAT('region_', CAST(region_id AS STRING)))
     OR IS_MEMBER('qsr_admin')
 """)
 print(f"[OK] function {c}.{p}ref.filter_by_franchisee")
@@ -309,7 +310,7 @@ ROW_FILTER_TABLES = [
 
 for table in ROW_FILTER_TABLES:
     try:
-        spark.sql(f"ALTER TABLE {table} SET ROW FILTER {c}.{p}ref.filter_by_franchisee ON (franchisee_id)")
+        spark.sql(f"ALTER TABLE {table} SET ROW FILTER {c}.{p}ref.filter_by_franchisee ON (franchisee_id, region_id)")
         print(f"[OK] row filter on {table}")
     except Exception as e:
         print(f"[WARN] row filter on {table} skipped: {e}")
