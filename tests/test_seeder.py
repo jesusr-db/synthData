@@ -32,3 +32,15 @@ def test_suppliers_data():
     rows = build_suppliers_data()
     assert len(rows) >= 5
     assert all("supplier_id" in r for r in rows)
+
+def test_seed_all_weather_conditions_schema():
+    """seed_all must create weather_conditions with the real schema, not the stub."""
+    from src.generator.reference import seeder
+    import inspect
+    src = inspect.getsource(seeder.seed_all)
+    assert "stub_id" not in src, "stub_id still present — replace stub schema with real schema"
+    assert "metro_area" in src, "weather_conditions must have metro_area column"
+    assert "forecast_date" in src, "weather_conditions must have forecast_date column"
+    assert "demand_multiplier" in src, "weather_conditions must have demand_multiplier column"
+    assert "event_id" in src, "local_events must have event_id column"
+    assert "event_category" in src, "local_events must have event_category column"
