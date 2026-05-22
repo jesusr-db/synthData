@@ -98,20 +98,44 @@ class CausalContext:
     local_event_attendance: Optional[int] = None
 
 def build_context(unit_id: int, timestamp: datetime, unit_volume_bias: float,
-                  base_orders_per_hour: int = 18) -> CausalContext:
+                  base_orders_per_hour: int = 18,
+                  weather_event_data: dict | None = None) -> CausalContext:
     is_holiday, holiday_name, event_mult = _classify_event(timestamp)
     hourly = HOURLY_MULTIPLIERS[timestamp.hour]
     dow = DOW_MULTIPLIERS[timestamp.weekday()]
-    effective_volume = base_orders_per_hour * hourly * dow * event_mult * unit_volume_bias
 
-    # Late-night delivery shift (10pm–1am): +15pp to delivery from carryout
+    weather_demand_mult = 1.0
+    channel_shift_delivery = 0.0
+    weather_condition = None
+    precipitation_inches = None
+    temperature_f = None
+    local_event_type = None
+    local_event_attendance = None
+
+    if weather_event_data:
+        weather_demand_mult = weather_event_data.get("demand_multiplier", 1.0) or 1.0
+        channel_shift_delivery = weather_event_data.get("channel_shift_delivery", 0.0) or 0.0
+        weather_condition = weather_event_data.get("weather_condition")
+        precipitation_inches = weather_event_data.get("precipitation_inches")
+        temperature_f = weather_event_data.get("high_temp_f")
+        local_event_type = weather_event_data.get("event_category")
+        local_event_attendance = weather_event_data.get("est_attendance")
+        real_event_mult = weather_event_data.get("event_demand_multiplier")
+        if real_event_mult:
+            event_mult = max(event_mult, real_event_mult)
+
+    effective_volume = (
+        base_orders_per_hour * hourly * dow * event_mult * unit_volume_bias * weather_demand_mult
+    )
+
     mix = dict(BASE_CHANNEL_MIX)
     if timestamp.hour >= 22 or timestamp.hour <= 1:
-        shift = 0.15
-        mix["3pd_delivery"] = min(1.0, mix["3pd_delivery"] + shift)
-        mix["carryout"] = max(0.0, mix["carryout"] - shift)
+        mix["3pd_delivery"] = min(1.0, mix["3pd_delivery"] + 0.15)
+        mix["carryout"] = max(0.0, mix["carryout"] - 0.15)
+    if channel_shift_delivery > 0:
+        mix["3pd_delivery"] = min(1.0, mix["3pd_delivery"] + channel_shift_delivery)
+        mix["carryout"] = max(0.0, mix["carryout"] - channel_shift_delivery)
 
-    # SOS breach spikes with high event multiplier
     sos_base = 0.08
     sos = sos_base + max(0, (event_mult - 1.5) * 0.05)
 
@@ -129,4 +153,9 @@ def build_context(unit_id: int, timestamp: datetime, unit_volume_bias: float,
         sos_breach_probability=sos,
         cancellation_rate=0.025,
         waste_probability=0.03,
+        weather_condition=weather_condition,
+        precipitation_inches=precipitation_inches,
+        temperature_f=temperature_f,
+        local_event_type=local_event_type,
+        local_event_attendance=local_event_attendance,
     )
