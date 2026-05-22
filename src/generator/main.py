@@ -37,6 +37,52 @@ from src.generator.reference.seeder import seed_all
 registry = EntityRegistry.from_spark(spark, catalog_name, schema_prefix=schema_prefix)
 
 # COMMAND ----------
+def _load_weather_event_lookup():
+    """Load (metro_area, date) → weather/event dict from ref tables. Returns {} on any error."""
+    try:
+        weather_rows = spark.sql(f"""
+            SELECT metro_area, forecast_date, weather_condition, high_temp_f, low_temp_f,
+                   precipitation_inches, alert_level, demand_multiplier, channel_shift_delivery
+            FROM {catalog_name}.{schema_prefix}ref.weather_conditions
+        """).collect()
+
+        event_rows = spark.sql(f"""
+            SELECT metro_area, event_date, event_category, est_attendance, est_demand_multiplier
+            FROM {catalog_name}.{schema_prefix}ref.local_events
+        """).collect()
+
+        lookup = {}
+        for r in weather_rows:
+            fd = r.forecast_date
+            d = fd.date() if hasattr(fd, "date") else fd
+            key = (r.metro_area, d)
+            lookup[key] = {
+                "weather_condition": r.weather_condition,
+                "high_temp_f": r.high_temp_f,
+                "low_temp_f": r.low_temp_f,
+                "precipitation_inches": r.precipitation_inches,
+                "alert_level": r.alert_level,
+                "demand_multiplier": r.demand_multiplier,
+                "channel_shift_delivery": r.channel_shift_delivery,
+            }
+        for r in event_rows:
+            ed = r.event_date
+            d = ed.date() if hasattr(ed, "date") else ed
+            key = (r.metro_area, d)
+            entry = lookup.setdefault(key, {})
+            entry["event_category"] = r.event_category
+            entry["est_attendance"] = r.est_attendance
+            entry["event_demand_multiplier"] = r.est_demand_multiplier
+
+        print(f"[INFO] Weather/event lookup: {len(lookup)} (metro, date) entries loaded")
+        return lookup
+    except Exception as e:
+        print(f"[WARN] Weather/event lookup skipped (tables empty or missing): {e}")
+        return {}
+
+weather_event_lookup = _load_weather_event_lookup()
+
+# COMMAND ----------
 from collections import defaultdict
 from pyspark.sql import Row
 
@@ -129,6 +175,7 @@ if mode == "backfill":
             base_orders_per_hour=base_orders,
             start_dt=start_dt,
             end_dt=end_dt,
+            weather_event_lookup=weather_event_lookup,
         )
     ):
         write_batch(batch)
@@ -145,7 +192,8 @@ else:
     print(f"[INFO] Live tick: window=[{start_dt}, {end_dt}), sub_tick_seconds={live_tick_seconds}, catalog={catalog_name}, schema_prefix={schema_prefix}")
     total_rows = 0
     for batch in backfill_ticks(registry, backfill_months=1, tick_seconds=live_tick_seconds,
-                                 base_orders_per_hour=base_orders, start_dt=start_dt, end_dt=end_dt):
+                                 base_orders_per_hour=base_orders, start_dt=start_dt, end_dt=end_dt,
+                                 weather_event_lookup=weather_event_lookup):
         write_batch(batch)
         total_rows += len(batch)
     print(f"[INFO] Live tick complete: {total_rows} rows written for window [{start_dt}, {end_dt})")
