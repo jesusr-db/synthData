@@ -16,9 +16,9 @@ schema_prefix = spark.conf.get("pipeline.schema_prefix", "synth_")
 
 
 def _unit_franchisee():
-    """Lookup helper: returns (unit_id, franchisee_id) from ref.unit, broadcast-friendly."""
+    """Lookup helper: returns (unit_id, franchisee_id, region_id) from ref.unit, broadcast-friendly."""
     return spark.read.table(f"{catalog}.{schema_prefix}ref.unit").select(
-        "unit_id", "franchisee_id"
+        "unit_id", "franchisee_id", "region_id"
     )
 
 # --------------------------------------------------------------------------
@@ -33,6 +33,7 @@ def _unit_franchisee():
         guest_order_id      BIGINT    COMMENT 'Surrogate primary key for the order.',
         unit_id             BIGINT    COMMENT 'Restaurant unit where the order was placed.',
         franchisee_id       BIGINT    COMMENT 'Franchisee owner of the unit (from ref.unit).',
+        region_id           BIGINT    COMMENT 'Geographic region of the unit (from ref.unit).',
         channel             STRING    COMMENT 'Order channel: carryout, own_delivery, 3pd_delivery, catering.',
         order_type          STRING    COMMENT 'Broad order classification: dine_in, takeout, delivery.',
         order_status        STRING    COMMENT 'Current order state: placed, in_progress, ready, fulfilled, cancelled.',
@@ -276,6 +277,7 @@ def on_hand_balance():
         waste_log_id   BIGINT COMMENT 'Surrogate primary key for the waste event.',
         unit_id        BIGINT COMMENT 'Restaurant unit where waste was recorded.',
         franchisee_id  BIGINT COMMENT 'Franchisee owner of the unit (from ref.unit).',
+        region_id      BIGINT COMMENT 'Geographic region of the unit (from ref.unit).',
         stock_sku      STRING COMMENT 'Inventory SKU of the wasted item.',
         waste_quantity DOUBLE,
         waste_category STRING COMMENT 'Reason for waste: spoilage, over_prep, damage, expiry.',
@@ -402,6 +404,7 @@ dp.create_streaming_table(
         guest_profile_id BIGINT  COMMENT 'Surrogate primary key for the guest profile.',
         unit_id          BIGINT,
         franchisee_id    BIGINT  COMMENT 'Franchisee owner of the unit (from ref.unit).',
+        region_id        BIGINT  COMMENT 'Geographic region of the unit (from ref.unit).',
         first_name       STRING,
         last_name        STRING,
         email            STRING,
@@ -463,6 +466,7 @@ def digital_account():
         guest_order_id         BIGINT,
         unit_id                BIGINT,
         franchisee_id          BIGINT    COMMENT 'Franchisee owner of the unit (from ref.unit).',
+        region_id              BIGINT    COMMENT 'Geographic region of the unit (from ref.unit).',
         transaction_type       STRING    COMMENT 'earn or redeem.',
         points_delta           INT       COMMENT 'Points added (positive) or subtracted (negative) in this event.',
         transaction_at         TIMESTAMP,
@@ -572,6 +576,7 @@ def shift():
         employee_id   BIGINT,
         unit_id       BIGINT,
         franchisee_id BIGINT COMMENT 'Franchisee owner of the unit (from ref.unit).',
+        region_id     BIGINT COMMENT 'Geographic region of the unit (from ref.unit).',
         punch_in      TIMESTAMP,
         punch_out     TIMESTAMP,
         hours_worked  DOUBLE,
