@@ -177,8 +177,7 @@ COLUMN_TAGS = [
     (f"{c}.{p}staging.guest_events", "first_name",  "class.name",          ""),
     (f"{c}.{p}staging.guest_events", "last_name",   "class.name",          ""),
     (f"{c}.{p}staging.guest_events", "zip_code",    "class.zip_code",      ""),
-    (f"{c}.{p}silver.guest_profile", "email",       "class.email_address", ""),
-    (f"{c}.{p}silver.guest_profile", "phone",       "class.phone_number",  ""),
+    # email/phone intentionally omitted — per-table SET MASK used instead (ABAC not supported on DLT-owned tables)
     (f"{c}.{p}silver.guest_profile", "first_name",  "class.name",          ""),
     (f"{c}.{p}silver.guest_profile", "last_name",   "class.name",          ""),
     (f"{c}.{p}silver.guest_profile", "zip_code",    "class.zip_code",      ""),
@@ -238,16 +237,16 @@ END
 print(f"[OK] function {c}.{p}ref.tier_to_multiplier")
 
 # COMMAND ----------
-# Step 5: ABAC column mask policies — catalog-level, tag-driven
-# Per-table SET MASK is NOT used; one policy per mask function covers all tagged columns catalog-wide.
-# start_pipeline_notebook.py drops these before DLT full_refresh to avoid ABAC_POLICIES_NOT_SUPPORTED.
+# Step 5: ABAC column mask policies — catalog-level, tag-driven, scoped to staging only.
+# silver.guest_profile uses per-table SET MASK (Step 5b) because ABAC_POLICIES_NOT_SUPPORTED
+# fires on every DLT update (not just full_refresh) when a catalog ABAC policy matches a
+# DLT-owned table. Removing class.email_address/phone_number from silver.guest_profile
+# prevents the ABAC policy from matching it.
 
-# Best-effort: drop any legacy per-table masks left from prior SET MASK runs to avoid double-masking
+# Best-effort: drop any legacy per-table masks on staging tables to avoid double-masking.
 for _table, _col in [
     (f"{c}.{p}staging.guest_events", "email"),
     (f"{c}.{p}staging.guest_events", "phone"),
-    (f"{c}.{p}silver.guest_profile", "email"),
-    (f"{c}.{p}silver.guest_profile", "phone"),
 ]:
     try:
         spark.sql(f"ALTER TABLE {_table} ALTER COLUMN {_col} DROP MASK")
@@ -287,6 +286,21 @@ for policy_name, mask_fn, tag_name in ABAC_POLICIES:
         print(f"[OK] ABAC policy {policy_name}: {mask_fn} for columns with tag '{tag_name}'")
     except Exception as e:
         print(f"[WARN] ABAC policy {policy_name} skipped: {e}")
+
+# COMMAND ----------
+# Step 5b: Per-table SET MASK on silver.guest_profile — applied after full_refresh resets the table.
+# DLT does not support catalog ABAC on tables it owns, so masking is applied here instead.
+# Regular DLT updates preserve SET MASK; full_refresh resets it, but apply_governance always
+# runs after start_pipeline in the setup job DAG so this fires after every full_refresh.
+for _col, _fn in [
+    ("email", f"{c}.{p}ref.mask_email"),
+    ("phone", f"{c}.{p}ref.mask_phone"),
+]:
+    try:
+        spark.sql(f"ALTER TABLE {c}.{p}silver.guest_profile ALTER COLUMN {_col} SET MASK {_fn}")
+        print(f"[OK] per-table mask on silver.guest_profile.{_col}")
+    except Exception as e:
+        print(f"[WARN] per-table mask silver.guest_profile.{_col} skipped: {e}")
 
 # COMMAND ----------
 # Step 6: Row filter function + attach
