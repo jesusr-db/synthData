@@ -15,11 +15,36 @@
 A fully automated QSR synthetic data generator (Domino's-style, 250 units):
 
 - **Staging layer:** Python generator writes to 5 Delta tables in `jmrdemo.synth_staging`
-- **Silver layer:** Lakeflow Declarative Pipeline reads staging via `readStream`, produces 14 Silver tables in `jmrdemo.synth_silver` — table/column comments, PK, and FK constraints declared inline in `@dp.table` decorators so they survive every pipeline refresh. `guest_profile` uses CDC (`dp.create_auto_cdc_flow`, SCD Type 1). All silver tables include `franchisee_id` (left-joined from `ref.unit`).
+- **Silver layer:** Lakeflow Declarative Pipeline reads staging via `readStream`, produces 14 Silver tables in `jmrdemo.synth_silver` — table/column comments, PK, and FK constraints declared inline in `@dp.table` decorators so they survive every pipeline refresh. `guest_profile` uses CDC (`dp.create_auto_cdc_flow`, SCD Type 1). All silver tables include `franchisee_id` and `region_id` (left-joined from `ref.unit` via `_unit_franchisee()` helper).
 - **Gold layer:** 4 Gold aggregate tables co-located in `jmrdemo.synth_silver` (DLT managed)
 - **Metrics layer:** 4 Unity Catalog metric views in `jmrdemo.synth_metrics` (WITH METRICS LANGUAGE YAML — reusable measures + dimensions)
 - **Genie Space:** Pre-configured with domain instructions, 10 seed questions, all silver + metrics tables
 - **Governance Pack:** UC column tags (`class.*` for PII, `financial`, `supply_chain`), column masks (email/phone via catalog-level ABAC policies — `CREATE POLICY ... MATCH COLUMNS (has_tag(...))`), row filter by franchisee on 6 silver/ref tables, 3 UC scalar functions, UC Volume with sample files. 4 Lakehouse Monitors active (3 snapshot + 1 timeseries on `silver.guest_order`) with 12h auto-refresh schedule.
+
+---
+
+## Access Control Model
+
+Row isolation is enforced via a UC row filter function bound to 6 tables (5 silver + `ref.unit`):
+
+```sql
+FUNCTION filter_by_franchisee(franchisee_id BIGINT, region_id BIGINT)
+RETURNS BOOLEAN
+RETURN IS_MEMBER(CONCAT('franchisee_', CAST(franchisee_id AS STRING)))
+    OR IS_MEMBER(CONCAT('region_', CAST(region_id AS STRING)))
+    OR IS_MEMBER('qsr_admin')
+```
+
+| Group pattern | Who it gives access to | Example |
+|---|---|---|
+| `franchisee_<id>` | All units owned by that franchisee | `franchisee_1` → sees only franchisee 1's stores |
+| `region_<id>` | All units in that geographic region | `region_1` → sees all stores in region 1 |
+| `qsr_admin` | All units (full access) | Current user is a member |
+
+**Demo groups pre-created by setup:** `franchisee_1`, `franchisee_2`, `region_1`  
+(no users added — add yourself via Workspace Settings → Groups to test isolation)
+
+**Tables with row filter:** `silver.guest_order`, `silver.waste_log`, `silver.loyalty_transaction`, `silver.guest_profile`, `silver.time_punch`, `ref.unit`
 
 ---
 
@@ -72,7 +97,7 @@ src/generator/domains/guest.py              # guest profiles + churn events
 src/generator/reference/us_locations.py     # unit seeder (seed=42, deterministic)
 src/generator/reference/seeder.py           # seed_all() — overwriteSchema=true for ref.unit
 src/generator/entity_registry.py           # FK registry (unit_price_index, item_price_multiplier)
-src/pipeline/mvm_pipeline.py               # Lakeflow Declarative Pipeline (14 silver + 4 gold; franchisee_id on 5 tables)
+src/pipeline/mvm_pipeline.py               # Lakeflow Declarative Pipeline (14 silver + 4 gold; franchisee_id + region_id on 5 tables)
 src/setup/setup_notebook.py                # schemas + staging tables (IF NOT EXISTS) + ref seed
 src/setup/start_pipeline_notebook.py       # idempotent pipeline start with full_refresh fallback
 src/setup/create_metric_views.py           # 4 UC metric views (WITH METRICS LANGUAGE YAML)
@@ -202,6 +227,18 @@ SELECT email, phone FROM jmrdemo.synth_staging.guest_events LIMIT 3;
 --     m = w.quality_monitors.get(table_name=t)
 --     print(t.split('.')[-1], m.status, m.schedule.quartz_cron_expression if m.schedule else 'no-sched')
 -- "
+
+-- Check ref.unit region distribution (5 regions across 250 units)
+SELECT region_id, COUNT(*) AS unit_count FROM jmrdemo.synth_ref.unit GROUP BY 1 ORDER BY 1;
+-- Expected: 5 rows, ~50 units per region
+
+-- Test franchisee isolation (requires membership in franchisee_1 and NOT qsr_admin):
+-- SELECT DISTINCT franchisee_id FROM jmrdemo.synth_silver.guest_order;
+-- Expected: only franchisee_id = 1
+
+-- Test regional access (requires membership in region_1 and NOT qsr_admin):
+-- SELECT DISTINCT region_id FROM jmrdemo.synth_silver.guest_order;
+-- Expected: only region_id = 1
 ```
 
 ---
