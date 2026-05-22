@@ -136,3 +136,72 @@ def test_nager_returns_empty_on_non_200():
     resp.status_code = 404
     rows = fetch_us_holidays(2026, "NY", _fetch=lambda url, **kw: resp)
     assert rows == []
+
+
+# ---------------------------------------------------------------------------
+# Events client (Ticketmaster + SeatGeek)
+# ---------------------------------------------------------------------------
+
+def _mock_tm_get(fixture_file):
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = json.loads((FIXTURES / fixture_file).read_text())
+    return lambda url, params=None, **kw: resp
+
+
+def test_ticketmaster_returns_events():
+    from src.refresh.events_client import fetch_ticketmaster_events
+    rows = fetch_ticketmaster_events(
+        "New York-Newark", "NY",
+        start_date="2026-08-01", end_date="2026-09-30",
+        api_key="test_key",
+        _fetch=_mock_tm_get("ticketmaster_events.json"),
+    )
+    assert len(rows) == 2
+    assert rows[0]["event_category"] == "major_sports"
+    assert rows[1]["event_category"] == "concert"
+    assert all(r["source"] == "ticketmaster" for r in rows)
+    assert all(r["metro_area"] == "New York-Newark" for r in rows)
+
+
+def test_ticketmaster_event_id_is_stable():
+    from src.refresh.events_client import fetch_ticketmaster_events
+    rows1 = fetch_ticketmaster_events(
+        "New York-Newark", "NY",
+        start_date="2026-08-01", end_date="2026-09-30",
+        api_key="test_key",
+        _fetch=_mock_tm_get("ticketmaster_events.json"),
+    )
+    rows2 = fetch_ticketmaster_events(
+        "New York-Newark", "NY",
+        start_date="2026-08-01", end_date="2026-09-30",
+        api_key="test_key",
+        _fetch=_mock_tm_get("ticketmaster_events.json"),
+    )
+    assert rows1[0]["event_id"] == rows2[0]["event_id"]
+
+
+def test_seatgeek_returns_events():
+    from src.refresh.events_client import fetch_seatgeek_events
+    rows = fetch_seatgeek_events(
+        "New York-Newark", "NY",
+        start_date="2026-10-01", end_date="2026-10-31",
+        api_key="test_key",
+        _fetch=_mock_tm_get("seatgeek_events.json"),
+    )
+    assert len(rows) == 1
+    assert rows[0]["source"] == "seatgeek"
+    assert rows[0]["event_category"] == "major_sports"
+
+
+def test_events_client_returns_empty_on_error():
+    from src.refresh.events_client import fetch_ticketmaster_events
+    resp = MagicMock()
+    resp.status_code = 401
+    rows = fetch_ticketmaster_events(
+        "New York-Newark", "NY",
+        start_date="2026-08-01", end_date="2026-09-30",
+        api_key="bad_key",
+        _fetch=lambda url, **kw: resp,
+    )
+    assert rows == []

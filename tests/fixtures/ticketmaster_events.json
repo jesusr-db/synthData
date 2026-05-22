@@ -1,0 +1,22 @@
+{
+  "_embedded": {
+    "events": [
+      {
+        "name": "New York Giants vs Dallas Cowboys",
+        "dates": {"start": {"localDate": "2026-09-13"}},
+        "classifications": [{"segment": {"name": "Sports"}}],
+        "_embedded": {
+          "venues": [{"name": "MetLife Stadium", "upcomingEvents": {"_total": 8}}]
+        }
+      },
+      {
+        "name": "Taylor Swift | The Eras Tour",
+        "dates": {"start": {"localDate": "2026-08-01"}},
+        "classifications": [{"segment": {"name": "Music"}}],
+        "_embedded": {
+          "venues": [{"name": "Madison Square Garden", "upcomingEvents": {"_total": 12}}]
+        }
+      }
+    ]
+  }
+}
