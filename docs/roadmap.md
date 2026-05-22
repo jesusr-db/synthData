@@ -105,12 +105,26 @@ See `docs/handoff.md` for full deploy + test instructions. Summary:
 
 ## Phase 3 — External Signal Integration
 
-> Status: Not started
+> Status: In progress
 
-- `ref.weather_conditions` — empty stub; populate with NOAA or weather API
-- `ref.local_events` — empty stub; populate with events API or manual seeding
-- Causal model upgrade: weather + local events feed into `CausalContext` as real demand multipliers
+### 3.1 Weather Data (Open-Meteo + NOAA Alerts) (done)
+`src/refresh/openmeteo_client.py` fetches 30-day historical + 14-day forecast from Open-Meteo (no key). `src/refresh/noaa_client.py` fetches active NWS alerts per state. Combined into `ref.weather_conditions` with `demand_multiplier` and `channel_shift_delivery` pre-computed from `conf/weather_event_multipliers.yml`.
+
+### 3.2 Local Events (Nager.Date + Ticketmaster + SeatGeek) (done)
+`src/refresh/nager_client.py` provides federal/state holidays (no key). `src/refresh/events_client.py` fetches major sports + concerts from Ticketmaster and SeatGeek (optional — key-gated, graceful skip if absent). Events land in `ref.local_events` with `est_demand_multiplier`.
+
+### 3.3 Demand Model Integration (done)
+`CausalContext.build_context()` accepts optional `weather_event_data` dict. `runner.backfill_ticks()` accepts optional `weather_event_lookup: dict[(metro_area, date), dict]`. `main.py` loads the lookup from ref tables once per run and passes it through. No-data fallback is silent (multiplier=1.0).
+
+### 3.4 Demand Risk Forecast View (done)
+`metrics.demand_risk_forecast` joins units × weather × events for the next 14 days. Labels each (unit, date) as `demand_risk`, `capacity_risk`, or `normal`. Queryable from Genie Space: "Which units have the highest demand risk this week?"
+
+### 3.5 Daily Refresh Job (done)
+`resources/refresh_weather_events.yml` declares a DAB-managed job on daily cron (05:00 UTC). `setup_job.yml` adds `initial_weather_refresh` task (after `setup`, before `backfill`) so data is available on day 1.
+
+### Remaining Phase 3 Work
 - Marketing domain: campaigns, promotions, loyalty program configuration
+- Causal model upgrade: weather + events as statistically calibrated multipliers (current values are informed estimates)
 
 ---
 
