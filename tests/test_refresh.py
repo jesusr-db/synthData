@@ -70,3 +70,39 @@ def test_openmeteo_observation_type():
     # fixture has past/present/future dates — just verify field exists and valid values
     valid = {"historical", "forecast"}
     assert all(r["observation_type"] in valid for r in rows)
+
+
+# ---------------------------------------------------------------------------
+# NOAA alerts client
+# ---------------------------------------------------------------------------
+
+def test_noaa_returns_only_classifiable_alerts():
+    from src.refresh.noaa_client import fetch_state_alerts
+    rows = fetch_state_alerts("NY", _fetch=_mock_get("noaa_alerts_ny.json"))
+    # "Heat Advisory" → advisory; "Rip Current Statement" → None (filtered out)
+    assert len(rows) == 1
+    assert rows[0]["alert_level"] == "advisory"
+    assert rows[0]["event"] == "Heat Advisory"
+
+
+def test_noaa_classifies_warning():
+    from src.refresh.noaa_client import _classify_alert
+    assert _classify_alert("Winter Storm Warning") == "warning"
+
+
+def test_noaa_classifies_watch():
+    from src.refresh.noaa_client import _classify_alert
+    assert _classify_alert("Tornado Watch") == "watch"
+
+
+def test_noaa_classifies_advisory():
+    from src.refresh.noaa_client import _classify_alert
+    assert _classify_alert("Heat Advisory") == "advisory"
+
+
+def test_noaa_returns_empty_on_non_200():
+    from src.refresh.noaa_client import fetch_state_alerts
+    resp = MagicMock()
+    resp.status_code = 503
+    rows = fetch_state_alerts("TX", _fetch=lambda url, **kw: resp)
+    assert rows == []
