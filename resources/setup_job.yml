@@ -19,6 +19,24 @@ resources:
               num_units: ${var.num_units}
               schema_prefix: ${var.schema_prefix}
 
+        - task_key: initial_weather_refresh
+          depends_on:
+            - task_key: setup
+          notebook_task:
+            notebook_path: ../src/refresh/refresh_notebook.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
+              schema_prefix: ${var.schema_prefix}
+              ticketmaster_secret_scope: ${var.ticketmaster_secret_scope}
+              ticketmaster_secret_key: "ticketmaster_consumer_key"
+              seatgeek_secret_scope: ${var.seatgeek_secret_scope}
+              seatgeek_secret_key: "seatgeek_client_id"
+          libraries:
+            - pypi:
+                package: requests
+            - pypi:
+                package: pyyaml
+
         - task_key: start_pipeline
           depends_on:
             - task_key: backfill
@@ -67,6 +85,7 @@ resources:
         - task_key: backfill
           depends_on:
             - task_key: setup
+            - task_key: initial_weather_refresh
           environment_key: generator
           notebook_task:
             notebook_path: ../src/generator/main.py

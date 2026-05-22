@@ -19,6 +19,15 @@ variables:
   schema_prefix:
     default: "synth_"
     description: "Prefix for all Unity Catalog schemas (e.g. 'synth_' → synth_staging, synth_silver, synth_ref, synth_metrics). Use empty string for no prefix."
+  weather_refresh_cron:
+    default: "0 0 5 * * ?"
+    description: "Quartz cron for daily weather/events refresh job (default 05:00 UTC)."
+  ticketmaster_secret_scope:
+    default: "qsr-synth"
+    description: "Databricks secret scope containing ticketmaster_consumer_key. Leave default if not using Ticketmaster."
+  seatgeek_secret_scope:
+    default: "qsr-synth"
+    description: "Databricks secret scope containing seatgeek_client_id. Leave default if not using SeatGeek."
 
 workspace:
   profile: DEFAULT
