@@ -42,6 +42,25 @@ Unity Catalog ABAC policies at the catalog level apply to non-DLT tables. When a
 
 ---
 
+## Weather & Events Refresh
+
+**Missing Ticketmaster or SeatGeek secrets silently skip those providers — this is expected.**
+`refresh_notebook.py` wraps each third-party secret fetch in a bare `except` block. If `dbutils.secrets.get(scope=..., key=...)` raises (scope missing, key missing, or insufficient permissions), that provider is skipped and the notebook logs `[INFO] ... secret not configured — skipping`. The job still completes successfully with holidays from Nager.Date populated. Only configure secret scopes/keys if you have API credentials; do not treat the `[INFO]` skip message as an error.
+
+**NOAA alert `onset` and `expires` fields can be `None` — date-range matching requires a null guard.**
+The NOAA NWS API occasionally returns alerts where `onset` or `expires` is `None` (e.g., alerts with no defined expiry). `refresh_notebook.py` guards this with `alert["onset"][:10] if alert["onset"] else ""`. A row-level comparison `"" <= date_str <= ""` always evaluates to `False`, so null-bounded alerts are simply not applied. If NOAA alerts appear to have no effect on a date range, verify the raw alert has non-null `onset`/`expires` values.
+
+**`ref.weather_conditions` and `ref.local_events` must exist before the MERGE — setup_notebook.py creates them.**
+`refresh_notebook.py` uses `MERGE INTO {catalog}.{prefix}ref.weather_conditions` without a CREATE-if-not-exists guard. If the ref schema or tables don't exist, the notebook fails. The setup job task ordering enforces this: `initial_weather_refresh` depends on `setup`, which runs `setup_notebook.py` to create the ref schema and empty tables. Running `refresh_notebook.py` standalone against a workspace where setup has not completed will fail with a table-not-found error.
+
+**The weather refresh job reads distinct metros from `ref.unit` — an empty or missing `ref.unit` produces zero weather rows.**
+The notebook opens with `spark.sql("SELECT DISTINCT metro_area, state, AVG(latitude), AVG(longitude) FROM {catalog}.{prefix}ref.unit GROUP BY ...")`. If `ref.unit` is empty (setup never seeded it) or the table doesn't exist, `metro_rows` is empty and all subsequent API calls are skipped silently. Weather and events tables will remain empty. This is why `initial_weather_refresh` in the setup job depends on `setup` (which seeds `ref.unit`) rather than running in parallel with it.
+
+**Ticketmaster and SeatGeek events are deduplicated by `event_id` — SeatGeek cannot overwrite Ticketmaster rows.**
+`event_rows_by_id` is keyed on `event_id`. The SeatGeek loop only inserts rows where `r["event_id"] not in event_rows_by_id`, so SeatGeek events that share an ID with a Ticketmaster event are silently dropped. Cross-provider deduplication is intentional (to avoid duplicate event rows in `ref.local_events`) but means SeatGeek data for any event already fetched by Ticketmaster will never appear.
+
+---
+
 ## Destroy Job
 
 **`destroy_notebook.py` METRIC_VIEWS list targets the wrong schema.**

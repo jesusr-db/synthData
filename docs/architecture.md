@@ -44,15 +44,29 @@
 │  └─────────────────────────────────────────────────────────┘               │
 │                                                                             │
 │  ┌─────────────────────────────────────────┐                               │
+│  │  weather_events_refresh_job  (daily cron)│                               │
+│  │  src/refresh/refresh_notebook.py         │                               │
+│  │  ├── Open-Meteo → weather_conditions     │                               │
+│  │  ├── NOAA NWS alerts (overlaid on rows)  │                               │
+│  │  ├── Nager.Date holidays → local_events  │                               │
+│  │  ├── Ticketmaster (optional, key-gated)  │                               │
+│  │  └── SeatGeek    (optional, key-gated)  │                               │
+│  │  MERGE INTO ref.weather_conditions       │                               │
+│  │  MERGE INTO ref.local_events             │                               │
+│  └─────────────────────────────────────────┘                               │
+│                                                                             │
+│  ┌─────────────────────────────────────────┐                               │
 │  │  setup_job  (one-time or on-demand)      │                               │
-│  │  8 tasks: setup → backfill →             │                               │
-│  │           start_pipeline →               │                               │
-│  │             create_metric_views →        │                               │
-│  │               create_genie_space ────────┐                              │
-│  │             apply_governance →           │                              │
-│  │               configure_monitoring ──────┤                              │
-│  │           backfill + create_genie_space  │                              │
-│  │           + configure_monitoring ────────┴→ unpause_generator           │
+│  │  9 tasks: setup →                        │                               │
+│  │           initial_weather_refresh ────┐  │                               │
+│  │           (both) → backfill →         │  │                               │
+│  │           start_pipeline →            │  │                               │
+│  │             create_metric_views →     │  │                               │
+│  │               create_genie_space ─────────┐                             │
+│  │             apply_governance →        │   │                             │
+│  │               configure_monitoring ───────┤                             │
+│  │           backfill + create_genie_space│  │                             │
+│  │           + configure_monitoring ─────────┴→ unpause_generator          │
 │  └─────────────────────────────────────────┘                               │
 │                                                                             │
 │  ┌─────────────────────┐   ┌────────────────────────────────────────────┐  │
@@ -73,8 +87,9 @@
 
 | Name | Type | Purpose | Status |
 |---|---|---|---|
-| `QSR Setup [dev]` | Job (8 tasks) | Full one-time setup: schemas, staging tables, ref seed, backfill, pipeline start, metric views, Genie Space, governance, monitoring, unpause | Not deployed (run `bundle deploy` first) |
+| `QSR Setup [dev]` | Job (9 tasks) | Full one-time setup: schemas, staging tables, ref seed, initial weather/events refresh, backfill, pipeline start, metric views, Genie Space, governance, monitoring, unpause | Not deployed (run `bundle deploy` first) |
 | `QSR Generator Live [dev]` | Job (hourly cron) | Generates previous hour of events across all 5 domains; triggers pipeline | Not deployed |
+| `Weather & Events Refresh [dev]` | Job (daily cron, 05:00 UTC) | Refreshes `ref.weather_conditions` and `ref.local_events` from Open-Meteo, NOAA NWS alerts, Nager.Date holidays, Ticketmaster, and SeatGeek | Not deployed |
 | `QSR Destroy [dev]` | Job (on-demand) | Tears down all non-DAB objects: column masks, UC functions, volume, monitors, metric views, ref schema, metrics schema | Not deployed |
 | `QSR MVM Pipeline [dev]` | Lakeflow Declarative Pipeline | Streaming promotion of staging → silver → gold; serverless, triggered mode | Not deployed |
 
@@ -105,3 +120,9 @@ Unity Catalog ABAC catalog-level `CREATE POLICY` is not supported on tables owne
 
 ### Why `start_pipeline` depends on `backfill`, not `setup`
 The DLT pipeline reads from staging tables. If `start_pipeline` ran immediately after `setup` (before `backfill`), the pipeline would process an empty staging layer and produce zero silver rows. Depending on `backfill` ensures the pipeline has data to process on its first full refresh. `apply_governance` also depends on `start_pipeline` so silver tables exist before column masks and row filters are attached.
+
+### Why `backfill` depends on both `setup` and `initial_weather_refresh`
+The backfill generator reads `ref.weather_conditions` and `ref.local_events` to compute demand multipliers for historical ticks. Running backfill before those tables are populated produces ticks with no weather or event context — effectively generating flat demand curves. Gating `backfill` on `initial_weather_refresh` ensures the ref tables are populated with real forward-looking data (±30 days) before any synthetic history is written.
+
+### Why Ticketmaster and SeatGeek are optional in the refresh notebook
+Both event APIs require API keys stored in Databricks secrets. The refresh notebook wraps each provider's secret fetch in a bare `except` — if the secret scope or key doesn't exist, the provider is silently skipped and the job continues. Holidays from Nager.Date always run unconditionally. This makes the job functional in environments that haven't configured third-party keys, without requiring conditional bundle config.

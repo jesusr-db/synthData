@@ -22,6 +22,9 @@ All configuration lives in `databricks.yml` as bundle variables. Override at dep
 | `base_orders_per_unit_per_hour` | `18` | Base hourly order volume per unit. |
 | `start_dt_override` | `""` | ISO datetime override for backfill start. Empty = auto from staging MAX(event_ts). |
 | `schema_prefix` | `synth_` | Prefix for all UC schemas. Use `""` for no prefix. |
+| `weather_refresh_cron` | `0 0 5 * * ?` | Quartz cron for daily weather/events refresh job (default 05:00 UTC). |
+| `ticketmaster_secret_scope` | `qsr-synth` | Databricks secret scope containing `ticketmaster_consumer_key`. Omit if not using Ticketmaster. |
+| `seatgeek_secret_scope` | `qsr-synth` | Databricks secret scope containing `seatgeek_client_id`. Omit if not using SeatGeek. |
 
 ## Deploy Steps
 
@@ -44,7 +47,7 @@ databricks bundle run setup_job --target dev
 databricks jobs run-now <setup_job_id>
 ```
 
-The setup job handles everything in order: catalog check → schemas → staging tables → ref seed → backfill → pipeline start → (parallel) metric views + governance → Genie Space + monitoring → unpause generator.
+The setup job handles everything in order: catalog check → schemas → staging tables → ref seed → (parallel) initial weather/events refresh → backfill → pipeline start → (parallel) metric views + governance → Genie Space + monitoring → unpause generator.
 
 ## Common Commands
 
@@ -61,6 +64,9 @@ databricks bundle run setup_job --target dev
 # Run just the generator once (backfill mode, custom date range)
 databricks jobs run-now <generator_job_id> \
   --job-parameters '{"mode":"backfill","start_dt_override":"2026-05-01T00:00:00"}'
+
+# Manually trigger a weather/events refresh (e.g. after adding API keys)
+databricks bundle run weather_events_refresh_job --target dev
 
 # Repair a failed setup_job run (preferred over restarting)
 databricks jobs repair-run --run-id <run_id> --rerun-all-failed-tasks
@@ -122,6 +128,16 @@ WHERE catalog_name = 'jmrdemo'
 -- Verify PII masking is active (per-table SET MASK on email/phone columns)
 SELECT email, phone FROM jmrdemo.synth_silver.guest_profile LIMIT 5;
 -- email shows as j***@example.com, phone as *******1234
+
+-- Check weather/events ref tables were populated by initial refresh
+SELECT COUNT(*), MIN(forecast_date), MAX(forecast_date)
+FROM jmrdemo.synth_ref.weather_conditions;
+-- Expected: rows spanning ~30 days back to ~14 days forward per metro
+
+SELECT event_category, COUNT(*)
+FROM jmrdemo.synth_ref.local_events
+GROUP BY 1 ORDER BY 2 DESC;
+-- Expected: at minimum holiday rows for current + next year; Ticketmaster/SeatGeek rows if keys configured
 ```
 
 ## Known Failure Modes
