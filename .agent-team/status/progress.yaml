@@ -1,83 +1,17 @@
-# INCREMENTAL FEATURE RUN: governance-pack (2026-05-20)
+# INCREMENTAL FEATURE RUN: weather-events-phase3 (2026-05-22)
 # Previous build progress archived in team-manifest.previous.yaml
-version: 3
+version: 4
 project: qsr-synth-data-generator
-branch: feat/governance-pack
-last_updated: "2026-05-20T23:35:00-04:00"
+branch: feat/weather-events-phase3
+last_updated: "2026-05-22T09:47:00-04:00"
 
 phases:
   - id: 1
-    name: governance-implementation
-    status: completed
-    agents:
-      - governance-engineer
-      - governance-deploy-engineer
-    steps:
-      read_phase_config: completed
-      resolve_contracts: completed
-      dispatch_agents: completed
-      await_agents: completed
-      merge_worktrees: completed
-      qa_gate: completed
-      update_progress: completed
-      introspection: completed
-    outputs:
-      - src/setup/apply_governance.py
-      - src/setup/configure_monitoring.py
-      - src/setup/destroy_notebook.py
-      - src/pipeline/mvm_pipeline.py
-      - resources/setup_job.yml
-    errors: []
-
-  - id: 2
-    name: qa
-    status: completed
-    depends_on: [1]
-    agents:
-      - qa-engineer
-    steps:
-      dispatch_agents: completed
-      await_agents: completed
-      qa_gate: completed
-    outputs:
-      - .agent-team/status/qa-phase-2.yaml
-    errors: []
-    result: PASS
-
-# --- Original build history below (all phases completed) ---
-  - id: build-1
-    name: foundation
-    status: completed
-    agents:
-      - foundation-engineer
-    steps:
-      read_phase_config: completed
-      resolve_contracts: completed
-      dispatch_agents: completed
-      await_agents: completed
-      merge_worktrees: completed
-      qa_gate: completed
-      update_progress: completed
-      introspection: completed
-    outputs:
-      - conf/params.yml
-      - src/generator/causal_context.py
-      - src/generator/demand_model.py
-      - src/generator/entropy.py
-      - src/generator/reference/us_locations.py
-      - src/generator/reference/menu_catalog.py
-      - src/generator/reference/seeder.py
-      - src/generator/entity_registry.py
-    errors: []
-
-  - id: 2
-    name: domain-generators
+    name: weather-events-implementation
     status: in_progress
-    depends_on: [1]
     agents:
-      - domain-orders-engineer
-      - domain-inventory-engineer
-      - domain-glw-engineer
+      - weather-events-data-engineer
+      - weather-events-deploy-engineer
     steps:
       read_phase_config: completed
       resolve_contracts: completed
@@ -87,78 +21,21 @@ phases:
       qa_gate: pending
       update_progress: pending
       introspection: pending
+    agent_status:
+      weather-events-data-engineer: dispatched
+      weather-events-deploy-engineer: dispatched
     outputs: []
     errors: []
 
-  - id: 3
-    name: integration-and-dlt
-    status: pending
-    depends_on: [2]
-    agents:
-      - integration-engineer
-      - dlt-pipeline-engineer
-    steps:
-      read_phase_config: pending
-      resolve_contracts: pending
-      dispatch_agents: pending
-      await_agents: pending
-      merge_worktrees: pending
-      qa_gate: pending
-      update_progress: pending
-      introspection: pending
-    outputs: []
-    errors: []
-
-  - id: 4
-    name: setup-and-resources
-    status: pending
-    depends_on: [3]
-    agents:
-      - setup-engineer
-    steps:
-      read_phase_config: pending
-      resolve_contracts: pending
-      dispatch_agents: pending
-      await_agents: pending
-      merge_worktrees: pending
-      qa_gate: pending
-      update_progress: pending
-      introspection: pending
-    outputs: []
-    errors: []
-
-  - id: 5
+  - id: 2
     name: qa
     status: pending
-    depends_on: [4]
+    depends_on: [1]
     agents:
       - qa-engineer
     steps:
-      read_phase_config: pending
-      resolve_contracts: pending
       dispatch_agents: pending
       await_agents: pending
-      merge_worktrees: pending
       qa_gate: pending
-      update_progress: pending
-      introspection: pending
-    outputs: []
-    errors: []
-
-  - id: 6
-    name: deploy
-    status: pending
-    depends_on: [5]
-    agents:
-      - deploy-engineer
-    steps:
-      read_phase_config: pending
-      resolve_contracts: pending
-      dispatch_agents: pending
-      await_agents: pending
-      merge_worktrees: pending
-      qa_gate: pending
-      update_progress: pending
-      introspection: pending
     outputs: []
     errors: []
