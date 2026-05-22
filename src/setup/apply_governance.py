@@ -293,8 +293,8 @@ for policy_name, mask_fn, tag_name in ABAC_POLICIES:
 spark.sql(f"""
 CREATE OR REPLACE FUNCTION {c}.{p}ref.filter_by_franchisee(franchisee_id BIGINT)
 RETURNS BOOLEAN
-RETURN IS_ACCOUNT_GROUP_MEMBER(CONCAT('franchisee_', CAST(franchisee_id AS STRING)))
-    OR IS_ACCOUNT_GROUP_MEMBER('qsr_admin')
+RETURN IS_MEMBER(CONCAT('franchisee_', CAST(franchisee_id AS STRING)))
+    OR IS_MEMBER('qsr_admin')
 """)
 print(f"[OK] function {c}.{p}ref.filter_by_franchisee")
 
