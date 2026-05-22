@@ -15,7 +15,7 @@
 A fully automated QSR synthetic data generator (Domino's-style, 250 units):
 
 - **Staging layer:** Python generator writes to 5 Delta tables in `jmrdemo.synth_staging`
-- **Silver layer:** Lakeflow Declarative Pipeline reads staging via `readStream`, produces 14 Silver tables in `jmrdemo.synth_silver` — table/column comments, PK, and FK constraints declared inline in `@dp.table` decorators so they survive every pipeline refresh. `guest_profile` uses CDC (`dp.create_auto_cdc_flow`, SCD Type 1). All silver tables include `franchisee_id` and `region_id` (left-joined from `ref.unit` via `_unit_franchisee()` helper).
+- **Silver layer:** Lakeflow Declarative Pipeline reads staging via `readStream`, produces 14 Silver tables in `jmrdemo.synth_silver` — table/column comments, PK, and FK constraints declared inline in `@dp.table` decorators so they survive every pipeline refresh. `guest_profile` uses CDC (`dp.create_auto_cdc_flow`, SCD Type 1). 5 silver tables include `franchisee_id` and `region_id` (left-joined from `ref.unit` via `_unit_franchisee()` helper): `guest_order`, `waste_log`, `guest_profile`, `loyalty_transaction`, `time_punch`.
 - **Gold layer:** 4 Gold aggregate tables co-located in `jmrdemo.synth_silver` (DLT managed)
 - **Metrics layer:** 4 Unity Catalog metric views in `jmrdemo.synth_metrics` (WITH METRICS LANGUAGE YAML — reusable measures + dimensions)
 - **Genie Space:** Pre-configured with domain instructions, 10 seed questions, all silver + metrics tables
