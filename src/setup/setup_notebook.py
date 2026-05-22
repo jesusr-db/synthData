@@ -277,3 +277,21 @@ except Exception as e:
     print(f"[WARN] qsr_admin group setup skipped (requires workspace admin): {e}")
 
 print("[INFO] Setup complete")
+
+# COMMAND ----------
+# Step 6: Create demo workspace groups for row-filter testing — non-fatal
+# franchisee_<n>: row filter matches units owned by that franchisee
+# region_<n>:     row filter matches all units in that geographic region
+DEMO_GROUPS = ["franchisee_1", "franchisee_2", "region_1"]
+try:
+    from databricks.sdk import WorkspaceClient
+    _wc = WorkspaceClient()
+    for _group_name in DEMO_GROUPS:
+        _existing = list(_wc.groups.list(filter=f"displayName eq '{_group_name}'", attributes="id,displayName"))
+        if not _existing:
+            _wc.groups.create(display_name=_group_name)
+            print(f"[OK] Created demo group: {_group_name}")
+        else:
+            print(f"[INFO] Demo group already exists: {_group_name}")
+except Exception as e:
+    print(f"[WARN] Demo group creation skipped (requires workspace admin): {e}")
