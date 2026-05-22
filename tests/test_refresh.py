@@ -106,3 +106,33 @@ def test_noaa_returns_empty_on_non_200():
     resp.status_code = 503
     rows = fetch_state_alerts("TX", _fetch=lambda url, **kw: resp)
     assert rows == []
+
+
+# ---------------------------------------------------------------------------
+# Nager.Date holidays client
+# ---------------------------------------------------------------------------
+
+def test_nager_returns_holiday_rows():
+    from src.refresh.nager_client import fetch_us_holidays
+    rows = fetch_us_holidays(2026, "NY", _fetch=_mock_get("nager_holidays.json"))
+    assert len(rows) == 3
+    assert all(r["source"] == "nager" for r in rows)
+    assert all(r["event_category"] == "national_holiday" for r in rows)
+
+
+def test_nager_event_id_is_stable():
+    from src.refresh.nager_client import fetch_us_holidays
+    rows1 = fetch_us_holidays(2026, "NY", _fetch=_mock_get("nager_holidays.json"))
+    rows2 = fetch_us_holidays(2026, "TX", _fetch=_mock_get("nager_holidays.json"))
+    # Same holiday same date → same event_id regardless of state
+    ids1 = {r["event_id"] for r in rows1}
+    ids2 = {r["event_id"] for r in rows2}
+    assert ids1 == ids2
+
+
+def test_nager_returns_empty_on_non_200():
+    from src.refresh.nager_client import fetch_us_holidays
+    resp = MagicMock()
+    resp.status_code = 404
+    rows = fetch_us_holidays(2026, "NY", _fetch=lambda url, **kw: resp)
+    assert rows == []
