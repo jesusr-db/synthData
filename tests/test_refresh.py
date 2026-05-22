@@ -205,3 +205,54 @@ def test_events_client_returns_empty_on_error():
         _fetch=lambda url, **kw: resp,
     )
     assert rows == []
+
+
+# ---------------------------------------------------------------------------
+# Multiplier engine
+# ---------------------------------------------------------------------------
+
+def test_multiplier_engine_clear_weather():
+    from src.refresh.multiplier_engine import compute_weather_multipliers, load_config
+    cfg = load_config()
+    demand, shift = compute_weather_multipliers("clear", None, cfg)
+    assert demand == 1.0
+    assert shift == 0.0
+
+
+def test_multiplier_engine_heavy_rain():
+    from src.refresh.multiplier_engine import compute_weather_multipliers, load_config
+    cfg = load_config()
+    demand, shift = compute_weather_multipliers("heavy_rain", None, cfg)
+    assert demand == 0.85
+    assert shift == 0.15
+
+
+def test_multiplier_engine_alert_reduces_demand():
+    from src.refresh.multiplier_engine import compute_weather_multipliers, load_config
+    cfg = load_config()
+    demand_no_alert, _ = compute_weather_multipliers("rain", None, cfg)
+    demand_warning, _ = compute_weather_multipliers("rain", "warning", cfg)
+    assert demand_warning < demand_no_alert
+
+
+def test_multiplier_engine_cap():
+    from src.refresh.multiplier_engine import compose_multipliers, load_config
+    cfg = load_config()
+    # 1.6 * 1.6 = 2.56 → capped at 2.5
+    result = compose_multipliers(1.6, 1.6, cfg)
+    assert result == 2.5
+
+
+def test_multiplier_engine_floor():
+    from src.refresh.multiplier_engine import compose_multipliers, load_config
+    cfg = load_config()
+    # 0.6 * 0.4 = 0.24 → floored at 0.3
+    result = compose_multipliers(0.6, 0.4, cfg)
+    assert result == 0.3
+
+
+def test_multiplier_engine_event_multiplier():
+    from src.refresh.multiplier_engine import compute_event_multiplier, load_config
+    cfg = load_config()
+    assert compute_event_multiplier("major_sports", cfg) == 1.60
+    assert compute_event_multiplier(None, cfg) == 1.0
