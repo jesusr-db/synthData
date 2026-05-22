@@ -106,6 +106,34 @@ except Exception as e:
     print(f"[WARN] Demo group cleanup skipped: {e}")
 
 # COMMAND ----------
+# Step 0g: Delete Genie Space — non-fatal
+try:
+    import requests
+    from databricks.sdk import WorkspaceClient
+    _wc = WorkspaceClient()
+    _workspace_url = _wc.config.host.rstrip("/")
+    _ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+    _token = _ctx.apiToken().get()
+    _headers = {"Authorization": f"Bearer {_token}"}
+    _space_title = f"QSR Synthetic Data — {catalog_name}"
+    _resp = requests.get(f"{_workspace_url}/api/2.0/genie/spaces", headers=_headers, timeout=30)
+    if _resp.status_code == 200:
+        _spaces = [s for s in _resp.json().get("spaces", []) if s.get("title") == _space_title]
+        if _spaces:
+            _space_id = _spaces[0]["space_id"]
+            _del = requests.delete(f"{_workspace_url}/api/2.0/genie/spaces/{_space_id}", headers=_headers, timeout=30)
+            if _del.status_code in (200, 204):
+                print(f"[INFO] Deleted Genie Space: '{_space_title}' (id={_space_id})")
+            else:
+                print(f"[WARN] Genie Space delete returned {_del.status_code}: {_del.text}")
+        else:
+            print(f"[INFO] Genie Space not found (ok): '{_space_title}'")
+    else:
+        print(f"[WARN] Could not list Genie Spaces ({_resp.status_code}): {_resp.text}")
+except Exception as e:
+    print(f"[WARN] Genie Space cleanup skipped: {e}")
+
+# COMMAND ----------
 # Step 0b: Drop UC functions (governance pack)
 FUNCTIONS = ["mask_email", "mask_phone", "tier_to_multiplier", "filter_by_franchisee"]
 for fn in FUNCTIONS:
