@@ -246,4 +246,34 @@ from src.generator.reference.seeder import seed_all
 seed_all(spark, catalog_name, num_units=num_units, schema_prefix=schema_prefix)
 print(f"[INFO] Reference tables seeded")
 
+# COMMAND ----------
+# Step 5: Create qsr_admin workspace group and add current user — non-fatal
+try:
+    from databricks.sdk import WorkspaceClient
+    from databricks.sdk.service.iam import Patch, PatchOp, PatchSchema
+
+    w = WorkspaceClient()
+    me = w.current_user.me()
+
+    groups = list(w.groups.list(filter="displayName eq 'qsr_admin'", attributes="id,displayName,members"))
+    if not groups:
+        group = w.groups.create(display_name="qsr_admin")
+        print(f"[OK] Created workspace group: qsr_admin (id={group.id})")
+    else:
+        group = groups[0]
+        print(f"[INFO] Workspace group qsr_admin already exists (id={group.id})")
+
+    existing_members = {m.value for m in (group.members or [])}
+    if me.id not in existing_members:
+        w.groups.patch(
+            id=group.id,
+            schemas=[PatchSchema.URN_IETF_PARAMS_SCIM_API_MESSAGES_2_0_PATCH_OP],
+            operations=[Patch(op=PatchOp.ADD, path="members", value=[{"value": me.id}])],
+        )
+        print(f"[OK] Added {me.user_name} to qsr_admin")
+    else:
+        print(f"[INFO] {me.user_name} already in qsr_admin")
+except Exception as e:
+    print(f"[WARN] qsr_admin group setup skipped (requires workspace admin): {e}")
+
 print("[INFO] Setup complete")
