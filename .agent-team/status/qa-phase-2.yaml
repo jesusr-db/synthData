@@ -1,47 +1,74 @@
 status: PASS
 phase: 2
 project: qsr-synth-data-generator
-feature: governance-pack
-timestamp: "2026-05-20T23:35:00-04:00"
+feature: weather-events-phase3
+timestamp: "2026-05-22T10:01:00-04:00"
+attempt: 1
 
 checks:
   - name: pytest_suite
     status: PASS
-    details: "75/75 tests passing (1.29s)"
+    details: "102/102 tests passing (1.36s) — 75 baseline + 27 new"
+    expected_minimum: 75
+    actual: 102
   - name: bundle_validate
     status: PASS
-    details: "databricks bundle validate — Validation OK"
-  - name: syntax_check_python
+    details: "databricks bundle validate -p DEFAULT — Validation OK!"
+  - name: contract_files_exist
     status: PASS
-    details: "apply_governance.py, configure_monitoring.py, destroy_notebook.py, mvm_pipeline.py all parse"
-  - name: apply_governance_steps_complete
+    details: "All 15 new/required files present (7 src/refresh, 1 conf, 5 fixtures, 1 test, 1 resource yml)"
+  - name: seeder_schema_real
     status: PASS
-    details: "all 8 steps present (volume, table comments, column comments, tags, functions, masks, row filter, auto_classification, classification scan)"
-  - name: configure_monitoring_3_tables
+    details: "stub_id replaced; weather_conditions has metro_area+forecast_date+demand_multiplier; local_events has event_id+event_category"
+  - name: build_context_signature
     status: PASS
-    details: "snapshot monitors created on guest_order, waste_log, loyalty_transaction; output_schema_name set; assets_dir under /Shared/qsr_monitors/"
-  - name: destroy_cleanup_added_before_step1
+    details: "build_context(unit_id, timestamp, unit_volume_bias, base_orders_per_hour=18, weather_event_data: dict | None = None)"
+  - name: backfill_ticks_signature
     status: PASS
-    details: "Step 0a (functions), 0b (volume), 0c (monitors) inserted before Step 1 (metric views drop)"
-  - name: pipeline_franchisee_id_5_tables
+    details: "backfill_ticks(... weather_event_lookup: dict | None = None) — falls back silently when lookup is None or absent"
+  - name: refresh_weather_events_yml
     status: PASS
-    details: "franchisee_id BIGINT added to schemas + 5 broadcast joins to ref.unit in guest_order, waste_log, loyalty_transaction, time_punch, and guest_profile_changes view (CDC)"
+    details: "quartz_cron_expression bound to var; libraries include requests + pyyaml; notebook_path is ../src/refresh/refresh_notebook.py"
   - name: setup_job_dag_updated
     status: PASS
-    details: "apply_governance depends on start_pipeline; configure_monitoring depends on apply_governance; unpause_generator gains configure_monitoring dep"
+    details: "initial_weather_refresh task added (depends on setup); backfill depends_on includes both setup and initial_weather_refresh; existing DAG (start_pipeline → backfill → ...) preserved"
+  - name: databricks_yml_variables
+    status: PASS
+    details: "weather_refresh_cron (default '0 0 5 * * ?'), ticketmaster_secret_scope ('qsr-synth'), seatgeek_secret_scope ('qsr-synth') all added"
 
 artifacts:
   created:
-    - src/setup/apply_governance.py
-    - src/setup/configure_monitoring.py
+    - src/refresh/__init__.py
+    - src/refresh/openmeteo_client.py
+    - src/refresh/noaa_client.py
+    - src/refresh/nager_client.py
+    - src/refresh/events_client.py
+    - src/refresh/multiplier_engine.py
+    - src/refresh/refresh_notebook.py
+    - conf/weather_event_multipliers.yml
+    - tests/fixtures/openmeteo_forecast.json
+    - tests/fixtures/noaa_alerts_ny.json
+    - tests/fixtures/nager_holidays.json
+    - tests/fixtures/ticketmaster_events.json
+    - tests/fixtures/seatgeek_events.json
+    - tests/test_refresh.py
+    - resources/refresh_weather_events.yml
   modified:
-    - src/setup/destroy_notebook.py
-    - src/pipeline/mvm_pipeline.py
+    - src/generator/reference/seeder.py
+    - src/generator/causal_context.py
+    - src/generator/runner.py
+    - src/generator/main.py
+    - src/setup/create_metric_views.py
+    - tests/test_seeder.py
+    - tests/test_causal_context.py
     - resources/setup_job.yml
+    - databricks.yml
+    - docs/roadmap.md
+    - docs/handoff.md
 
 recommendations: []
 
 deferred_for_runtime_verification:
-  - "Step 8 classification API call may fail with [WARN] on workspace tiers that don't expose the data-classification-tasks endpoint — wrapped in try/except as designed"
-  - "Lakehouse Monitor creation may fail with [WARN] on tiers without Lakehouse Monitoring — wrapped in try/except as designed"
-  - "Row filter + column masks are validated at SQL execution time; full validation requires running apply_governance against live UC"
+  - "Live Open-Meteo, NOAA, Nager, Ticketmaster, and SeatGeek API calls are exercised only on Databricks Jobs (notebook); hermetic tests cover error and parsing paths but not actual network behavior"
+  - "Lakehouse Monitoring/Genie integration with new demand_risk_forecast view validated by SQL parse only — full e2e runs once data exists in ref.weather_conditions"
+  - "demand_risk_forecast view CASE expression depends on ref.weather_conditions populated; will return zero rows until first refresh job lands"
