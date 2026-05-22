@@ -90,6 +90,22 @@ except Exception as e:
     print(f"[WARN] ABAC policy cleanup skipped: {e}")
 
 # COMMAND ----------
+# Step 0f: Delete demo workspace groups — non-fatal
+DEMO_GROUPS = ["franchisee_1", "franchisee_2", "region_1"]
+try:
+    from databricks.sdk import WorkspaceClient
+    _wc = WorkspaceClient()
+    for _group_name in DEMO_GROUPS:
+        _existing = list(_wc.groups.list(filter=f"displayName eq '{_group_name}'", attributes="id,displayName"))
+        if _existing:
+            _wc.groups.delete(id=_existing[0].id)
+            print(f"[INFO] Deleted demo group: {_group_name}")
+        else:
+            print(f"[INFO] Demo group not found (ok): {_group_name}")
+except Exception as e:
+    print(f"[WARN] Demo group cleanup skipped: {e}")
+
+# COMMAND ----------
 # Step 0b: Drop UC functions (governance pack)
 FUNCTIONS = ["mask_email", "mask_phone", "tier_to_multiplier", "filter_by_franchisee"]
 for fn in FUNCTIONS:
