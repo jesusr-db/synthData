@@ -42,7 +42,7 @@ refreshed_at = datetime.now().isoformat()
 # Load distinct metros from ref.unit
 metro_rows = spark.sql(f"""
     SELECT DISTINCT metro_area, state,
-           AVG(latitude) AS lat, AVG(longitude) AS lon
+           AVG(lat) AS lat, AVG(lon) AS lon
     FROM {catalog_name}.{schema_prefix}ref.unit
     GROUP BY metro_area, state
 """).collect()

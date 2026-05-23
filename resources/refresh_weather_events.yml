@@ -7,8 +7,16 @@ resources:
         quartz_cron_expression: "${var.weather_refresh_cron}"
         timezone_id: "UTC"
         pause_status: UNPAUSED
+      environments:
+        - environment_key: refresh
+          spec:
+            client: "1"
+            dependencies:
+              - requests
+              - pyyaml
       tasks:
         - task_key: refresh_weather_events
+          environment_key: refresh
           notebook_task:
             notebook_path: ../src/refresh/refresh_notebook.py
             base_parameters:
@@ -18,8 +26,3 @@ resources:
               ticketmaster_secret_key: "ticketmaster_consumer_key"
               seatgeek_secret_scope: ${var.seatgeek_secret_scope}
               seatgeek_secret_key: "seatgeek_client_id"
-          libraries:
-            - pypi:
-                package: requests
-            - pypi:
-                package: pyyaml

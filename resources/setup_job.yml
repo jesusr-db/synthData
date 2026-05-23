@@ -10,6 +10,12 @@ resources:
             client: "1"
             dependencies:
               - faker>=20.0.0
+        - environment_key: refresh
+          spec:
+            client: "1"
+            dependencies:
+              - requests
+              - pyyaml
       tasks:
         - task_key: setup
           notebook_task:
@@ -22,6 +28,7 @@ resources:
         - task_key: initial_weather_refresh
           depends_on:
             - task_key: setup
+          environment_key: refresh
           notebook_task:
             notebook_path: ../src/refresh/refresh_notebook.py
             base_parameters:
@@ -31,11 +38,6 @@ resources:
               ticketmaster_secret_key: "ticketmaster_consumer_key"
               seatgeek_secret_scope: ${var.seatgeek_secret_scope}
               seatgeek_secret_key: "seatgeek_client_id"
-          libraries:
-            - pypi:
-                package: requests
-            - pypi:
-                package: pyyaml
 
         - task_key: start_pipeline
           depends_on:
