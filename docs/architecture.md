@@ -53,6 +53,7 @@
 │  │  └── SeatGeek    (optional, key-gated)  │                               │
 │  │  MERGE INTO ref.weather_conditions       │                               │
 │  │  MERGE INTO ref.local_events             │                               │
+│  │  env: refresh (requests, pyyaml)         │                               │
 │  └─────────────────────────────────────────┘                               │
 │                                                                             │
 │  ┌─────────────────────────────────────────┐                               │
@@ -67,6 +68,7 @@
 │  │               configure_monitoring ───────┤                             │
 │  │           backfill + create_genie_space│  │                             │
 │  │           + configure_monitoring ─────────┴→ unpause_generator          │
+│  │  envs: generator (faker), refresh (requests, pyyaml)                    │
 │  └─────────────────────────────────────────┘                               │
 │                                                                             │
 │  ┌─────────────────────┐   ┌────────────────────────────────────────────┐  │
@@ -89,7 +91,7 @@
 |---|---|---|---|
 | `QSR Setup [dev]` | Job (9 tasks) | Full one-time setup: schemas, staging tables, ref seed, initial weather/events refresh, backfill, pipeline start, metric views, Genie Space, governance, monitoring, unpause | Not deployed (run `bundle deploy` first) |
 | `QSR Generator Live [dev]` | Job (hourly cron) | Generates previous hour of events across all 5 domains; triggers pipeline | Not deployed |
-| `Weather & Events Refresh [dev]` | Job (daily cron, 05:00 UTC) | Refreshes `ref.weather_conditions` and `ref.local_events` from Open-Meteo, NOAA NWS alerts, Nager.Date holidays, Ticketmaster, and SeatGeek | Not deployed |
+| `Weather & Events Refresh [dev]` | Job (daily cron, 05:00 UTC) | Refreshes `ref.weather_conditions` and `ref.local_events` from Open-Meteo, NOAA NWS alerts, Nager.Date holidays, Ticketmaster, and SeatGeek. Note: the yml includes an explicit name prefix that causes a duplicate `[dev ...]` prefix when DAB also auto-prepends one — remove the explicit prefix from the yml before merge. | Not deployed |
 | `QSR Destroy [dev]` | Job (on-demand) | Tears down all non-DAB objects: column masks, UC functions, volume, monitors, metric views, ref schema, metrics schema | Not deployed |
 | `QSR MVM Pipeline [dev]` | Lakeflow Declarative Pipeline | Streaming promotion of staging → silver → gold; serverless, triggered mode | Not deployed |
 
@@ -126,3 +128,6 @@ The backfill generator reads `ref.weather_conditions` and `ref.local_events` to 
 
 ### Why Ticketmaster and SeatGeek are optional in the refresh notebook
 Both event APIs require API keys stored in Databricks secrets. The refresh notebook wraps each provider's secret fetch in a bare `except` — if the secret scope or key doesn't exist, the provider is silently skipped and the job continues. Holidays from Nager.Date always run unconditionally. This makes the job functional in environments that haven't configured third-party keys, without requiring conditional bundle config.
+
+### Why serverless tasks declare dependencies in `environments:` rather than task-level `libraries:`
+Databricks serverless notebook tasks do not support the `libraries:` field at the task level. The Terraform provider rejects a bundle deploy with `"Libraries field is not supported for serverless task, please specify libraries in environment."` Notably, `databricks bundle validate` (a schema-only check) passes locally without catching this — the error only surfaces at deploy time. The correct pattern: declare an `environments:` block at the job level with a named `spec.dependencies` list, then reference it on each task via `environment_key: <name>`. Both `setup_job.yml` and `refresh_weather_events.yml` use a `refresh` environment spec (`requests`, `pyyaml`) for this reason.

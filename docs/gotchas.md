@@ -15,6 +15,12 @@ All bundle variables arrive as strings in notebook widgets (e.g. `num_units` com
 **`pipeline.catalog` and `pipeline.schema_prefix` must be read from `spark.conf`, not widgets.**
 DLT notebooks do not have access to `dbutils.widgets`. Pipeline-level config is injected via `spark.conf.get("pipeline.catalog")` and `spark.conf.get("pipeline.schema_prefix")` — these are declared in `resources/pipeline.yml` under `configuration:`.
 
+**Serverless tasks cannot use task-level `libraries:` — declare dependencies in `environments:` instead.**
+The Databricks Terraform provider rejects any serverless notebook task that includes a `libraries:` field at the task level with: `"Libraries field is not supported for serverless task, please specify libraries in environment."` This error only appears at `bundle deploy` time — `databricks bundle validate` (schema-only) passes without catching it. The fix: add an `environments:` block at the job level with an `environment_key` name and a `spec.dependencies` list; then set `environment_key: <name>` on the task instead of `libraries:`. Both `setup_job.yml` and `refresh_weather_events.yml` declare a `refresh` environment for `requests` and `pyyaml` using this pattern.
+
+**DAB auto-prepends `[dev <short_user>]` to all job names — adding an explicit prefix in the yml produces a duplicate.**
+If a yml `name:` field includes `[${bundle.target} ${workspace.current_user.userName}]` (or any explicit prefix), and DAB's `presets` also adds an auto-prefix, the deployed job name will show two `[dev ...]` prefixes. To avoid this, rely solely on DAB's auto-prefix, or suppress it in `databricks.yml` with `presets.name_prefix: ""` and use only the explicit yml prefix.
+
 ---
 
 ## Lakeflow Declarative Pipelines (DLT)
@@ -54,7 +60,7 @@ The NOAA NWS API occasionally returns alerts where `onset` or `expires` is `None
 `refresh_notebook.py` uses `MERGE INTO {catalog}.{prefix}ref.weather_conditions` without a CREATE-if-not-exists guard. If the ref schema or tables don't exist, the notebook fails. The setup job task ordering enforces this: `initial_weather_refresh` depends on `setup`, which runs `setup_notebook.py` to create the ref schema and empty tables. Running `refresh_notebook.py` standalone against a workspace where setup has not completed will fail with a table-not-found error.
 
 **The weather refresh job reads distinct metros from `ref.unit` — an empty or missing `ref.unit` produces zero weather rows.**
-The notebook opens with `spark.sql("SELECT DISTINCT metro_area, state, AVG(latitude), AVG(longitude) FROM {catalog}.{prefix}ref.unit GROUP BY ...")`. If `ref.unit` is empty (setup never seeded it) or the table doesn't exist, `metro_rows` is empty and all subsequent API calls are skipped silently. Weather and events tables will remain empty. This is why `initial_weather_refresh` in the setup job depends on `setup` (which seeds `ref.unit`) rather than running in parallel with it.
+The notebook opens with `spark.sql("SELECT DISTINCT metro_area, state, AVG(lat) AS lat, AVG(lon) AS lon FROM {catalog}.{prefix}ref.unit GROUP BY metro_area, state")`. Note: `ref.unit` stores coordinates as `lat` and `lon` (not `latitude`/`longitude`). If `ref.unit` is empty (setup never seeded it) or the table doesn't exist, `metro_rows` is empty and all subsequent API calls are skipped silently. Weather and events tables will remain empty. This is why `initial_weather_refresh` in the setup job depends on `setup` (which seeds `ref.unit`) rather than running in parallel with it.
 
 **Ticketmaster and SeatGeek events are deduplicated by `event_id` — SeatGeek cannot overwrite Ticketmaster rows.**
 `event_rows_by_id` is keyed on `event_id`. The SeatGeek loop only inserts rows where `r["event_id"] not in event_rows_by_id`, so SeatGeek events that share an ID with a Ticketmaster event are silently dropped. Cross-provider deduplication is intentional (to avoid duplicate event rows in `ref.local_events`) but means SeatGeek data for any event already fetched by Ticketmaster will never appear.

@@ -132,12 +132,23 @@ SELECT email, phone FROM jmrdemo.synth_silver.guest_profile LIMIT 5;
 -- Check weather/events ref tables were populated by initial refresh
 SELECT COUNT(*), MIN(forecast_date), MAX(forecast_date)
 FROM jmrdemo.synth_ref.weather_conditions;
--- Expected: rows spanning ~30 days back to ~14 days forward per metro
+-- Expected: ~880 rows (20 metros × ~44 days: ~30 days back + ~14 days forward)
+
+SELECT COUNT(*) FROM jmrdemo.synth_ref.local_events;
+-- Expected: at minimum 28 rows for US federal holidays (current + next year via Nager.Date)
+-- Additional Ticketmaster/SeatGeek rows if those API keys are configured
 
 SELECT event_category, COUNT(*)
 FROM jmrdemo.synth_ref.local_events
 GROUP BY 1 ORDER BY 2 DESC;
--- Expected: at minimum holiday rows for current + next year; Ticketmaster/SeatGeek rows if keys configured
+
+-- Check demand_risk_forecast view (populated after initial_weather_refresh completes)
+SELECT risk_level, COUNT(*), AVG(demand_multiplier)
+FROM jmrdemo.synth_metrics.demand_risk_forecast
+GROUP BY 1 ORDER BY 1;
+-- Expected: ~3,250 rows total (num_units × 13 forecast days)
+-- normal: ~3,191 rows (avg multiplier ~0.97), demand_risk: ~59 rows (avg multiplier ~0.61)
+-- Returns 0 rows if initial_weather_refresh has not yet run
 ```
 
 ## Known Failure Modes
