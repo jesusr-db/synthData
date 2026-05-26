@@ -37,9 +37,8 @@ if not ontos_enabled:
 
 # COMMAND ----------
 # Get auth token from the running cluster's service principal
-from databricks.sdk import WorkspaceClient
-w = WorkspaceClient()
-token = w.config.token
+_ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+token = _ctx.apiToken().get()
 
 from src.setup.ontos_client import OntosClient
 c = OntosClient(base_url=ontos_app_url, token=token)

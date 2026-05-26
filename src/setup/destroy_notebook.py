@@ -205,7 +205,6 @@ try:
     if _bundle_root not in sys.path:
         sys.path.insert(0, _bundle_root)
 
-    from databricks.sdk import WorkspaceClient
     from src.setup.ontos_client import OntosClient
 
     try:
@@ -221,8 +220,8 @@ try:
     if not ontos_enabled:
         print("[INFO] ontos_enabled=false — skipping ontos teardown")
     else:
-        w = WorkspaceClient()
-        c = OntosClient(ontos_app_url, w.config.token)
+        _ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+        c = OntosClient(ontos_app_url, _ctx.apiToken().get())
 
         # Delete in reverse dependency order: semantic links first, then
         # products, contracts, assets, teams, domains.

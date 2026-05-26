@@ -8,6 +8,8 @@ resources:
         - environment_key: default
           spec:
             client: "1"
+            dependencies:
+              - pyyaml
       tasks:
         - task_key: destroy
           environment_key: default

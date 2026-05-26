@@ -87,6 +87,7 @@ resources:
         - task_key: apply_ontos
           depends_on:
             - task_key: configure_monitoring
+          environment_key: refresh
           notebook_task:
             notebook_path: ../src/setup/apply_ontos.py
             base_parameters:
