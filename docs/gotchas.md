@@ -21,6 +21,9 @@ The Databricks Terraform provider rejects any serverless notebook task that incl
 **DAB auto-prepends `[dev <short_user>]` to all job names — adding an explicit prefix in the yml produces a duplicate.**
 If a yml `name:` field includes `[${bundle.target} ${workspace.current_user.userName}]` (or any explicit prefix), and DAB's `presets` also adds an auto-prefix, the deployed job name will show two `[dev ...]` prefixes. To avoid this, rely solely on DAB's auto-prefix, or suppress it in `databricks.yml` with `presets.name_prefix: ""` and use only the explicit yml prefix.
 
+**`ontos_enabled: false` skips ontos steps in both setup and destroy — set it before deploying if the ontos app is unavailable.**
+Both `apply_ontos.py` (setup) and `destroy_notebook.py` (destroy) check the `ontos_enabled` widget. If the ontos Databricks App is not deployed in the target workspace, set `--var ontos_enabled=false` at deploy time to suppress all ontos API calls. The task graph is unchanged — the `apply_ontos` task still runs, but exits immediately when `ontos_enabled` is `false`. Forgetting this flag in an environment without the ontos app causes `apply_ontos` to fail with a connection error against `ontos_app_url`.
+
 ---
 
 ## Lakeflow Declarative Pipelines (DLT)
@@ -66,7 +69,7 @@ The notebook opens with `spark.sql("SELECT DISTINCT metro_area, state, AVG(lat) 
 `event_rows_by_id` is keyed on `event_id`. The SeatGeek loop only inserts rows where `r["event_id"] not in event_rows_by_id`, so SeatGeek events that share an ID with a Ticketmaster event are silently dropped. Cross-provider deduplication is intentional (to avoid duplicate event rows in `ref.local_events`) but means SeatGeek data for any event already fetched by Ticketmaster will never appear.
 
 **`demand_risk_forecast` view returns zero rows until the first refresh job completes.**
-The view's `CASE` expression joins against `ref.weather_conditions`. Until `initial_weather_refresh` runs during setup and populates that table, the join produces no matches and the view returns an empty result set. This is not a bug — the view "lights up" automatically once the setup job's `initial_weather_refresh` task finishes. If the view is empty after a fresh deploy, check whether the setup job completed all 9 tasks including `initial_weather_refresh`.
+The view's `CASE` expression joins against `ref.weather_conditions`. Until `initial_weather_refresh` runs during setup and populates that table, the join produces no matches and the view returns an empty result set. This is not a bug — the view "lights up" automatically once the setup job's `initial_weather_refresh` task finishes. If the view is empty after a fresh deploy, check whether the setup job completed all 10 tasks including `initial_weather_refresh`.
 
 **WMO weather code → condition mapping overrides for extreme temperatures may mask the raw code.**
 `openmeteo_client.py` maps WMO codes 0–3 to `clear` by default, but overrides to `extreme_heat` when `temp_max > 100°F` or `extreme_cold` when `temp_min < 15°F`. If you observe a `clear`-coded day being stored as `extreme_heat`, this override is intentional — it catches summer heatwaves and winter cold snaps that WMO would otherwise classify as fair weather. Debugging weather condition values requires checking both the raw WMO code and the daily temperature bounds from Open-Meteo.
@@ -96,6 +99,9 @@ Column masks (Step 0a) must precede function drops (Step 0b): if the mask functi
 
 **`staging` schema is intentionally preserved by the destroy job.**
 The destroy job does not drop `{prefix}staging`. This allows historical data to survive destroy/redeploy cycles so backfill doesn't need to regenerate from scratch. To fully wipe staging, manually run `DROP SCHEMA {catalog}.{prefix}staging CASCADE` after the destroy job completes.
+
+**Ontos teardown requires the ontos app to be reachable — set `ontos_enabled=false` if it is not.**
+`destroy_notebook.py` receives `ontos_app_url` and `ontos_enabled` as parameters (passed from `destroy_job.yml`). When `ontos_enabled` is `true`, the notebook calls the ontos REST API to remove registered schemas, data products, and semantic links before the schema drops proceed. If the ontos app is unreachable or has already been decommissioned, the destroy job will fail at the ontos teardown step. Run with `--var ontos_enabled=false` (or update the variable default) to skip ontos teardown in those cases.
 
 ---
 

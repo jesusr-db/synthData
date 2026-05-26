@@ -25,6 +25,8 @@ All configuration lives in `databricks.yml` as bundle variables. Override at dep
 | `weather_refresh_cron` | `0 0 5 * * ?` | Quartz cron for daily weather/events refresh job (default 05:00 UTC). |
 | `ticketmaster_secret_scope` | `qsr-synth` | Databricks secret scope containing `ticketmaster_consumer_key`. Omit if not using Ticketmaster. |
 | `seatgeek_secret_scope` | `qsr-synth` | Databricks secret scope containing `seatgeek_client_id`. Omit if not using SeatGeek. |
+| `ontos_app_url` | `https://ontos-7405605519549535.15.azure.databricksapps.com` | Base URL of the deployed ontos Databricks App. |
+| `ontos_enabled` | `true` | Set to `false` to skip ontos configuration steps in setup/destroy. |
 
 ## Deploy Steps
 
@@ -47,7 +49,13 @@ databricks bundle run setup_job --target dev
 databricks jobs run-now <setup_job_id>
 ```
 
-The setup job handles everything in order: catalog check → schemas → staging tables → ref seed → (parallel) initial weather/events refresh → backfill → pipeline start → (parallel) metric views + governance → Genie Space + monitoring → unpause generator.
+The setup job handles everything in order: catalog check → schemas → staging tables → ref seed → (parallel) initial weather/events refresh → backfill → pipeline start → (parallel) metric views + governance → Genie Space + monitoring → ontos ontology layer → unpause generator.
+
+If deploying to a workspace without the ontos app, add `--var ontos_enabled=false` to skip the ontology steps:
+
+```bash
+databricks bundle deploy --target dev --var ontos_enabled=false
+```
 
 ## Common Commands
 
@@ -60,6 +68,9 @@ databricks bundle deploy --target dev
 
 # Run setup from scratch (safe to re-run — IF NOT EXISTS throughout)
 databricks bundle run setup_job --target dev
+
+# Run setup without ontos (e.g. ontos app not deployed in target workspace)
+databricks bundle run setup_job --target dev --var ontos_enabled=false
 
 # Run just the generator once (backfill mode, custom date range)
 databricks jobs run-now <generator_job_id> \
