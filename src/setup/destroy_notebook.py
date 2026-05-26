@@ -227,9 +227,19 @@ try:
         # Delete in reverse dependency order: semantic links first, then
         # products, contracts, assets, teams, domains.
         print("[INFO] Deleting QSR semantic links...")
-        for entity_type in ["uc_column", "data_contract", "data_product", "data_domain"]:
-            # ontos has no bulk-delete; skip entity-by-entity for semantic links
-            pass
+        _links_path = Path(_bundle_root) / "conf" / "ontos" / "semantic_links.yaml"
+        if _links_path.exists():
+            import yaml as _yaml
+            _links = _yaml.safe_load(_links_path.read_text()).get("semantic_links", [])
+            deleted_links = 0
+            for _link in _links:
+                existing = c.get_semantic_links_for_entity("uc_column", _link["entity_id"])
+                for _lnk in existing:
+                    if c.delete_semantic_link(_lnk["id"]):
+                        deleted_links += 1
+            print(f"  [OK] deleted {deleted_links} semantic links")
+        else:
+            print(f"  [WARN] semantic_links.yaml not found at {_links_path} — skipping link deletion")
 
         print("[INFO] Deleting QSR data products...")
         for pid in [
