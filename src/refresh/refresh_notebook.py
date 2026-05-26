@@ -162,9 +162,13 @@ except Exception:
 
 # COMMAND ----------
 # Step 4: Write local_events via MERGE
+_EVENT_FIELDS = [
+    "metro_area", "event_date", "event_id", "event_name", "event_category",
+    "venue", "est_attendance", "est_demand_multiplier", "source", "refreshed_at",
+]
 event_rows = list(event_rows_by_id.values())
 if event_rows:
-    event_df = spark.createDataFrame([Row(**r) for r in event_rows])
+    event_df = spark.createDataFrame([Row(**{k: r.get(k) for k in _EVENT_FIELDS}) for r in event_rows])
     event_df.createOrReplaceTempView("_events_refresh")
     spark.sql(f"""
         MERGE INTO {catalog_name}.{schema_prefix}ref.local_events t
