@@ -13,35 +13,61 @@ def _make_client():
     return client
 
 
-# ── get_or_create_schema ────────────────────────────────────────────────────
+# ── seed_contract_schemas: schema creation strategy ─────────────────────────
 
-def test_get_schema_returns_existing_id():
+def test_seed_schema_skips_when_already_has_properties():
+    """If schema exists with propertyCount > 0, skip without re-POSTing."""
     from src.setup.ontos_client import OntosClient
     with patch.object(OntosClient, "_get") as mock_get, \
-         patch.object(OntosClient, "_post") as mock_post:
-        mock_get.return_value = [{"id": "schema-abc", "name": "guest_order"}]
+         patch.object(OntosClient, "_post") as mock_post, \
+         patch.object(OntosClient, "_delete") as mock_del, \
+         patch.object(OntosClient, "fetch_uc_columns", return_value=[]):
+        mock_get.return_value = [{"name": "guest_order", "propertyCount": 5}]
         client = _make_client()
-        sid = client.get_or_create_schema("contract-123", "guest_order",
-                                          "jmrdemo.synth_silver.guest_order", "desc")
-        assert sid == "guest_order"
+        client.seed_contract_schemas("contract-123", "jmrdemo", "synth_silver", ["guest_order"])
+        mock_del.assert_not_called()
         mock_post.assert_not_called()
 
 
-def test_create_schema_when_missing():
+def test_seed_schema_deletes_and_recreates_empty_schema():
+    """If schema exists with 0 properties, delete it then re-POST with properties."""
     from src.setup.ontos_client import OntosClient
+    columns = [{"name": "order_id", "type": "bigint", "comment": "PK"}]
     with patch.object(OntosClient, "_get") as mock_get, \
-         patch.object(OntosClient, "_post") as mock_post:
-        mock_get.return_value = []
-        mock_post.return_value = {"status": "ok", "schema_name": "guest_order"}
+         patch.object(OntosClient, "_post") as mock_post, \
+         patch.object(OntosClient, "_delete") as mock_del, \
+         patch.object(OntosClient, "fetch_uc_columns", return_value=columns):
+        mock_get.return_value = [{"name": "guest_order", "propertyCount": 0}]
+        mock_post.return_value = {"status": "ok"}
         client = _make_client()
-        client.get_or_create_schema("contract-123", "guest_order",
-                                    "jmrdemo.synth_silver.guest_order", "desc")
-        mock_post.assert_called_once_with(
-            "/api/data-contracts/contract-123/schemas",
-            {"name": "guest_order",
-             "physicalName": "jmrdemo.synth_silver.guest_order",
-             "description": "desc"}
-        )
+        client.seed_contract_schemas("contract-123", "jmrdemo", "synth_silver", ["guest_order"])
+        mock_del.assert_called_once_with("/api/data-contracts/contract-123/schemas/guest_order")
+        mock_post.assert_called_once()
+        body = mock_post.call_args[0][1]
+        assert body["name"] == "guest_order"
+        assert len(body["properties"]) == 1
+
+
+def test_seed_schema_creates_new_schema_with_properties():
+    """When schema doesn't exist, POST with embedded properties in one call."""
+    from src.setup.ontos_client import OntosClient
+    columns = [
+        {"name": "order_id", "type": "bigint", "comment": "PK"},
+        {"name": "channel",  "type": "string",  "comment": "Order channel"},
+    ]
+    with patch.object(OntosClient, "_get") as mock_get, \
+         patch.object(OntosClient, "_post") as mock_post, \
+         patch.object(OntosClient, "fetch_uc_columns", return_value=columns):
+        mock_get.return_value = []  # no existing schemas
+        mock_post.return_value = {"status": "ok"}
+        client = _make_client()
+        client.seed_contract_schemas("contract-123", "jmrdemo", "synth_silver", ["guest_order"])
+        mock_post.assert_called_once()
+        path, body = mock_post.call_args[0]
+        assert path == "/api/data-contracts/contract-123/schemas"
+        assert body["name"] == "guest_order"
+        assert body["physicalName"] == "jmrdemo.synth_silver.guest_order"
+        assert len(body["properties"]) == 2
 
 
 # ── fetch_uc_columns ────────────────────────────────────────────────────────
@@ -71,35 +97,7 @@ def test_fetch_uc_columns_returns_empty_on_error():
         assert cols == []
 
 
-# ── upsert_property ─────────────────────────────────────────────────────────
-
-def test_upsert_property_creates_when_not_exists():
-    from src.setup.ontos_client import OntosClient
-    with patch.object(OntosClient, "_get") as mock_get, \
-         patch.object(OntosClient, "_post") as mock_post:
-        mock_get.return_value = {"items": []}
-        mock_post.return_value = {"id": "prop-xyz"}
-        client = _make_client()
-        client.upsert_property("contract-1", "guest_order", {
-            "name": "order_id",
-            "logicalType": "integer",
-            "primaryKey": True,
-            "description": "PK",
-        })
-        mock_post.assert_called_once()
-        call_path = mock_post.call_args[0][0]
-        assert "contract-1" in call_path
-        assert "guest_order" in call_path
-
-
-def test_upsert_property_skips_when_exists():
-    from src.setup.ontos_client import OntosClient
-    with patch.object(OntosClient, "_get") as mock_get, \
-         patch.object(OntosClient, "_post") as mock_post:
-        mock_get.return_value = {"items": [{"name": "order_id", "id": "prop-123"}]}
-        client = _make_client()
-        client.upsert_property("contract-1", "guest_order", {"name": "order_id"})
-        mock_post.assert_not_called()
+# ── seed_contract_schemas: PII and edge cases ────────────────────────────────
 
 
 # ── create_semantic_link ────────────────────────────────────────────────────
@@ -160,6 +158,19 @@ def test_upload_ttl_returns_none_on_error():
         assert result is None
 
 
+def test_upload_ttl_idempotent_returns_existing_id():
+    """If model already uploaded, return existing id without re-uploading."""
+    from src.setup.ontos_client import OntosClient
+    with patch.object(OntosClient, "_get", return_value={
+        "semantic_models": [{"id": "existing-123", "original_filename": "qsr-ontology.ttl"}]
+    }):
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            client = _make_client()
+            result = client.upload_ttl(b"ttl content", "qsr-ontology")
+            assert result == "existing-123"
+            mock_urlopen.assert_not_called()
+
+
 # ── get_assets ──────────────────────────────────────────────────────────────
 
 def test_get_assets_returns_items_list():
@@ -213,45 +224,16 @@ def test_get_semantic_links_returns_empty_on_non_list():
         assert result == []
 
 
-# --- Column schema seeding tests --------------------------------------------
-
-def test_seed_contract_schemas_calls_upsert_per_column():
-    """seed_contract_schemas should call upsert_property for each UC column."""
-    from src.setup.ontos_client import OntosClient
-
-    columns = [
-        {"name": "order_id", "type": "bigint", "comment": "PK"},
-        {"name": "channel",  "type": "string",  "comment": "Order channel"},
-    ]
-    pii_columns = {"email", "phone"}
-
-    with patch.object(OntosClient, "fetch_uc_columns", return_value=columns), \
-         patch.object(OntosClient, "get_or_create_schema", return_value="guest_order"), \
-         patch.object(OntosClient, "upsert_property") as mock_upsert:
-
-        client = _make_client()
-        client.seed_contract_schemas(
-            contract_id="cid-1",
-            catalog="jmrdemo",
-            schema="synth_silver",
-            tables=["guest_order"],
-            pii_columns=pii_columns,
-        )
-        assert mock_upsert.call_count == 2
-        prop_names = [c[0][2]["name"] for c in mock_upsert.call_args_list]
-        assert "order_id" in prop_names
-        assert "channel" in prop_names
-
-
 def test_seed_contract_schemas_marks_pii():
-    """Columns in pii_columns set should get classification='pii'."""
+    """Columns in pii_columns set should get classification='pii' and criticalDataElement=True."""
     from src.setup.ontos_client import OntosClient
 
     columns = [{"name": "email", "type": "string", "comment": "Guest email"}]
-    with patch.object(OntosClient, "fetch_uc_columns", return_value=columns), \
-         patch.object(OntosClient, "get_or_create_schema", return_value="guest_profile"), \
-         patch.object(OntosClient, "upsert_property") as mock_upsert:
-
+    with patch.object(OntosClient, "_get") as mock_get, \
+         patch.object(OntosClient, "_post") as mock_post, \
+         patch.object(OntosClient, "fetch_uc_columns", return_value=columns):
+        mock_get.return_value = []  # no existing schemas
+        mock_post.return_value = {"status": "ok"}
         client = _make_client()
         client.seed_contract_schemas(
             contract_id="cid-2",
@@ -260,19 +242,41 @@ def test_seed_contract_schemas_marks_pii():
             tables=["guest_profile"],
             pii_columns={"email", "phone"},
         )
-        prop = mock_upsert.call_args[0][2]
+        body = mock_post.call_args[0][1]
+        prop = body["properties"][0]
         assert prop["classification"] == "pii"
         assert prop["criticalDataElement"] is True
 
 
-def test_seed_contract_schemas_skips_when_no_columns():
-    """When fetch_uc_columns returns [], upsert_property must not be called."""
+def test_seed_contract_schemas_embeds_all_columns_as_properties():
+    """All UC columns are embedded in the POST body properties list."""
     from src.setup.ontos_client import OntosClient
 
-    with patch.object(OntosClient, "fetch_uc_columns", return_value=[]), \
-         patch.object(OntosClient, "get_or_create_schema", return_value="empty_table"), \
-         patch.object(OntosClient, "upsert_property") as mock_upsert:
+    columns = [
+        {"name": "order_id", "type": "bigint", "comment": "PK"},
+        {"name": "channel",  "type": "string",  "comment": "Order channel"},
+        {"name": "total",    "type": "double",  "comment": None},
+    ]
+    with patch.object(OntosClient, "_get", return_value=[]), \
+         patch.object(OntosClient, "_post", return_value={"status": "ok"}) as mock_post, \
+         patch.object(OntosClient, "fetch_uc_columns", return_value=columns):
+        client = _make_client()
+        client.seed_contract_schemas("cid-4", "jmrdemo", "synth_silver", ["guest_order"])
+        body = mock_post.call_args[0][1]
+        prop_names = [p["name"] for p in body["properties"]]
+        assert prop_names == ["order_id", "channel", "total"]
+        # description falls back to column name when comment is None
+        assert body["properties"][2]["description"] == "total"
 
+
+def test_seed_contract_schemas_skips_when_no_columns():
+    """When fetch_uc_columns returns [], no POST should be made."""
+    from src.setup.ontos_client import OntosClient
+
+    with patch.object(OntosClient, "_get") as mock_get, \
+         patch.object(OntosClient, "_post") as mock_post, \
+         patch.object(OntosClient, "fetch_uc_columns", return_value=[]):
+        mock_get.return_value = []  # no existing schemas
         client = _make_client()
         client.seed_contract_schemas(
             contract_id="cid-3",
@@ -280,4 +284,4 @@ def test_seed_contract_schemas_skips_when_no_columns():
             schema="synth_silver",
             tables=["empty_table"],
         )
-        mock_upsert.assert_not_called()
+        mock_post.assert_not_called()

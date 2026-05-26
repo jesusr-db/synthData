@@ -60,35 +60,6 @@ class OntosClient:
             return []
         return result
 
-    def get_or_create_schema(self, contract_id: str, name: str,
-                              physical_name: str, description: str) -> str | None:
-        """Return schema id if it exists; create and return name if not."""
-        existing = self._get(f"/api/data-contracts/{contract_id}/schemas") or []
-        for s in existing:
-            if s["name"] == name:
-                print(f"    [SKIP] schema {name} already exists")
-                return name
-        result = self._post(
-            f"/api/data-contracts/{contract_id}/schemas",
-            {"name": name, "physicalName": physical_name, "description": description},
-        )
-        if result:
-            return name
-        return None
-
-    def upsert_property(self, contract_id: str, schema_name: str, prop: dict):
-        """Add a property to a contract schema; skip if column name already present."""
-        existing = self._get(
-            f"/api/data-contracts/{contract_id}/schemas/{schema_name}/properties"
-        ) or {"items": []}
-        existing_names = {p["name"] for p in (existing.get("items") or [])}
-        if prop["name"] in existing_names:
-            return
-        self._post(
-            f"/api/data-contracts/{contract_id}/schemas/{schema_name}/properties",
-            prop,
-        )
-
     def seed_contract_schemas(
         self,
         contract_id: str,
@@ -97,31 +68,62 @@ class OntosClient:
         tables: list[str],
         pii_columns: set[str] | None = None,
     ):
-        """Fetch columns from UC via ontos catalog API and upsert them onto the contract schema."""
+        """Fetch columns from UC via ontos catalog API and POST each schema with properties in one call.
+
+        The ontos API only exposes GET on /schemas/{name}/properties — properties must be
+        embedded in the initial POST /schemas body. If the schema already exists with
+        properties, it is skipped. If it exists with 0 properties (e.g. from a prior partial
+        run), it is deleted and re-created so properties land correctly.
+        """
         pii_columns = pii_columns or set()
+        existing_schemas = self._get(f"/api/data-contracts/{contract_id}/schemas") or []
+        existing_by_name = {s["name"]: s for s in existing_schemas}
+
         for table in tables:
             physical_name = f"{catalog}.{schema}.{table}"
-            schema_name = self.get_or_create_schema(contract_id, table, physical_name, f"QSR silver table {physical_name}")
-            if not schema_name:
-                print(f"  [WARN] Could not create schema for {table}")
-                continue
+
+            # Check if schema already exists with properties — skip if so
+            if table in existing_by_name:
+                prop_count = existing_by_name[table].get("propertyCount", 0)
+                if prop_count > 0:
+                    print(f"    [SKIP] schema {table} already has {prop_count} properties")
+                    continue
+                # Exists but empty — delete so we can re-create with properties
+                print(f"    [INFO] schema {table} exists but has 0 properties — deleting to re-create")
+                self._delete(f"/api/data-contracts/{contract_id}/schemas/{table}")
+
             columns = self.fetch_uc_columns(catalog, schema, table)
             if not columns:
-                print(f"  [WARN] No columns returned for {table}, skipping property seeding")
+                print(f"  [WARN] No columns returned for {table}, skipping schema creation")
                 continue
+
+            properties = []
             for col in columns:
                 col_name = col.get("name", "")
                 is_pii = col_name in pii_columns
-                prop = {
+                properties.append({
                     "name": col_name,
                     "logicalType": col.get("type", "string"),
                     "description": col.get("comment") or col_name,
                     "required": False,
                     "criticalDataElement": is_pii,
                     "classification": "pii" if is_pii else None,
-                }
-                self.upsert_property(contract_id, schema_name, prop)
+                })
                 print(f"    ↳ {col_name} ({col.get('type','?')}){' [PII]' if is_pii else ''}")
+
+            result = self._post(
+                f"/api/data-contracts/{contract_id}/schemas",
+                {
+                    "name": table,
+                    "physicalName": physical_name,
+                    "description": f"QSR silver table {physical_name}",
+                    "properties": properties,
+                },
+            )
+            if result:
+                print(f"    [OK] schema {table} created with {len(properties)} properties")
+            else:
+                print(f"  [WARN] Could not create schema for {table}")
 
     def create_semantic_link(self, entity_type: str, entity_id: str, iri: str):
         """POST a semantic link. Returns result dict or None on error."""
@@ -131,11 +133,22 @@ class OntosClient:
         )
 
     def upload_ttl(self, ttl_bytes: bytes, title: str) -> str | None:
-        """Upload a Turtle ontology file. Returns model_id or None."""
+        """Upload a Turtle ontology file. Returns model_id or None.
+
+        Idempotent: if a model with filename '{title}.ttl' already exists, returns its id
+        without re-uploading.
+        """
+        filename = f"{title}.ttl"
+        existing = self._get("/api/semantic-models") or {}
+        for m in existing.get("semantic_models", []):
+            if m.get("original_filename") == filename or m.get("name") == filename:
+                print(f"    [SKIP] semantic model '{filename}' already uploaded (id={m['id']})")
+                return m["id"]
+
         boundary = "----FormBoundaryQSRONTOS"
         body = (
             f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="file"; filename="{title}.ttl"\r\n'
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
             f"Content-Type: text/turtle\r\n\r\n"
         ).encode() + ttl_bytes + f"\r\n--{boundary}--\r\n".encode()
         req = urllib.request.Request(
