@@ -22,8 +22,9 @@ class OntosClient:
         try:
             with urllib.request.urlopen(req) as resp:
                 return json.loads(resp.read())
-        except urllib.error.HTTPError as e:
-            print(f"  [WARN] GET {path}: {e.code} {e.read().decode()[:200]}")
+        except (urllib.error.HTTPError, urllib.error.URLError) as e:
+            err_detail = e.read().decode()[:200] if hasattr(e, 'read') else str(e.reason)
+            print(f"  [WARN] GET {path}: {err_detail}")
             return None
 
     def _post(self, path, body):
@@ -34,8 +35,9 @@ class OntosClient:
         try:
             with urllib.request.urlopen(req) as resp:
                 return json.loads(resp.read())
-        except urllib.error.HTTPError as e:
-            print(f"  [WARN] POST {path}: {e.code} {e.read().decode()[:300]}")
+        except (urllib.error.HTTPError, urllib.error.URLError) as e:
+            err_detail = e.read().decode()[:300] if hasattr(e, 'read') else str(e.reason)
+            print(f"  [WARN] POST {path}: {err_detail}")
             return None
 
     def _delete(self, path):
@@ -46,8 +48,9 @@ class OntosClient:
             with urllib.request.urlopen(req) as resp:
                 resp.read()
                 return True
-        except urllib.error.HTTPError as e:
-            print(f"  [WARN] DELETE {path}: {e.code}")
+        except (urllib.error.HTTPError, urllib.error.URLError) as e:
+            err_detail = e.code if hasattr(e, 'code') else str(e.reason)
+            print(f"  [WARN] DELETE {path}: {err_detail}")
             return False
 
     def fetch_uc_columns(self, catalog: str, schema: str, table: str) -> list:
@@ -64,7 +67,7 @@ class OntosClient:
         for s in existing:
             if s["name"] == name:
                 print(f"    [SKIP] schema {name} already exists")
-                return s["id"]
+                return name
         result = self._post(
             f"/api/data-contracts/{contract_id}/schemas",
             {"name": name, "physicalName": physical_name, "description": description},
@@ -112,8 +115,9 @@ class OntosClient:
             with urllib.request.urlopen(req) as resp:
                 result = json.loads(resp.read())
                 return result.get("id") or result.get("model_id")
-        except urllib.error.HTTPError as e:
-            print(f"  [WARN] upload_ttl: {e.code} {e.read().decode()[:300]}")
+        except (urllib.error.HTTPError, urllib.error.URLError) as e:
+            err_detail = e.read().decode()[:300] if hasattr(e, 'read') else str(e.reason)
+            print(f"  [WARN] upload_ttl: {err_detail}")
             return None
 
     def get_assets(self, limit: int = 200) -> list:

@@ -4,13 +4,12 @@ from unittest.mock import MagicMock, patch, call
 import pytest
 
 
-def _make_client(responses=None):
+def _make_client():
     """Return an OntosClient with all HTTP mocked out."""
     from src.setup.ontos_client import OntosClient
     client = OntosClient.__new__(OntosClient)
     client.base = "https://fake.ontos"
     client.token = "fake-token"
-    client._responses = responses or {}
     return client
 
 
@@ -24,7 +23,7 @@ def test_get_schema_returns_existing_id():
         client = _make_client()
         sid = client.get_or_create_schema("contract-123", "guest_order",
                                           "jmrdemo.synth_silver.guest_order", "desc")
-        assert sid == "schema-abc"
+        assert sid == "guest_order"
         mock_post.assert_not_called()
 
 
@@ -133,3 +132,82 @@ def test_create_semantic_link_returns_none_on_error():
         client = _make_client()
         result = client.create_semantic_link("uc_column", "bad-id", "bad-iri")
         assert result is None
+
+
+# ── upload_ttl ──────────────────────────────────────────────────────────────
+
+def test_upload_ttl_returns_model_id():
+    from src.setup.ontos_client import OntosClient
+    import urllib.request
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = b'{"id": "model-123"}'
+    mock_resp.__enter__ = lambda s: s
+    mock_resp.__exit__ = MagicMock(return_value=False)
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        client = _make_client()
+        result = client.upload_ttl(b"@prefix qsr: <http://qsr.synth/ontology#> .", "qsr-ontology")
+        assert result == "model-123"
+
+
+def test_upload_ttl_returns_none_on_error():
+    from src.setup.ontos_client import OntosClient
+    import urllib.error
+    with patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError(
+        url=None, code=500, msg="Internal Server Error", hdrs=None, fp=None
+    )):
+        client = _make_client()
+        result = client.upload_ttl(b"ttl content", "qsr-ontology")
+        assert result is None
+
+
+# ── get_assets ──────────────────────────────────────────────────────────────
+
+def test_get_assets_returns_items_list():
+    from src.setup.ontos_client import OntosClient
+    with patch.object(OntosClient, "_get") as mock_get:
+        mock_get.return_value = {"items": [{"id": "asset-1"}, {"id": "asset-2"}]}
+        client = _make_client()
+        result = client.get_assets()
+        assert len(result) == 2
+        mock_get.assert_called_once_with("/api/assets?limit=200")
+
+
+# ── delete_contract / delete_semantic_link ──────────────────────────────────
+
+def test_delete_contract_calls_delete():
+    from src.setup.ontos_client import OntosClient
+    with patch.object(OntosClient, "_delete", return_value=True) as mock_del:
+        client = _make_client()
+        result = client.delete_contract("cid-abc")
+        mock_del.assert_called_once_with("/api/data-contracts/cid-abc")
+        assert result is True
+
+
+def test_delete_semantic_link_calls_delete():
+    from src.setup.ontos_client import OntosClient
+    with patch.object(OntosClient, "_delete", return_value=True) as mock_del:
+        client = _make_client()
+        result = client.delete_semantic_link("link-xyz")
+        mock_del.assert_called_once_with("/api/semantic-links/link-xyz")
+        assert result is True
+
+
+# ── get_semantic_links_for_entity ────────────────────────────────────────────
+
+def test_get_semantic_links_returns_list():
+    from src.setup.ontos_client import OntosClient
+    with patch.object(OntosClient, "_get") as mock_get:
+        mock_get.return_value = [{"iri": "http://qsr.synth/ontology#Order"}]
+        client = _make_client()
+        result = client.get_semantic_links_for_entity("uc_column", "jmrdemo.synth_silver.guest_order.order_id")
+        assert len(result) == 1
+        mock_get.assert_called_once()
+
+
+def test_get_semantic_links_returns_empty_on_non_list():
+    from src.setup.ontos_client import OntosClient
+    with patch.object(OntosClient, "_get") as mock_get:
+        mock_get.return_value = None
+        client = _make_client()
+        result = client.get_semantic_links_for_entity("uc_column", "bad-id")
+        assert result == []
