@@ -106,6 +106,9 @@ class OntosClient:
                 print(f"  [WARN] Could not create schema for {table}")
                 continue
             columns = self.fetch_uc_columns(catalog, schema, table)
+            if not columns:
+                print(f"  [WARN] No columns returned for {table}, skipping property seeding")
+                continue
             for col in columns:
                 col_name = col.get("name", "")
                 is_pii = col_name in pii_columns
@@ -118,8 +121,7 @@ class OntosClient:
                     "classification": "pii" if is_pii else None,
                 }
                 self.upsert_property(contract_id, schema_name, prop)
-                if columns:
-                    print(f"    ↳ {col_name} ({col.get('type','?')}){' [PII]' if is_pii else ''}")
+                print(f"    ↳ {col_name} ({col.get('type','?')}){' [PII]' if is_pii else ''}")
 
     def create_semantic_link(self, entity_type: str, entity_id: str, iri: str):
         """POST a semantic link. Returns result dict or None on error."""

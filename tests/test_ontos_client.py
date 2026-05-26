@@ -263,3 +263,21 @@ def test_seed_contract_schemas_marks_pii():
         prop = mock_upsert.call_args[0][2]
         assert prop["classification"] == "pii"
         assert prop["criticalDataElement"] is True
+
+
+def test_seed_contract_schemas_skips_when_no_columns():
+    """When fetch_uc_columns returns [], upsert_property must not be called."""
+    from src.setup.ontos_client import OntosClient
+
+    with patch.object(OntosClient, "fetch_uc_columns", return_value=[]), \
+         patch.object(OntosClient, "get_or_create_schema", return_value="empty_table"), \
+         patch.object(OntosClient, "upsert_property") as mock_upsert:
+
+        client = _make_client()
+        client.seed_contract_schemas(
+            contract_id="cid-3",
+            catalog="jmrdemo",
+            schema="synth_silver",
+            tables=["empty_table"],
+        )
+        mock_upsert.assert_not_called()
