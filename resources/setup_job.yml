@@ -84,6 +84,17 @@ resources:
               catalog_name: ${var.catalog_name}
               schema_prefix: ${var.schema_prefix}
 
+        - task_key: apply_ontos
+          depends_on:
+            - task_key: configure_monitoring
+          notebook_task:
+            notebook_path: ../src/setup/apply_ontos.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
+              schema_prefix: ${var.schema_prefix}
+              ontos_app_url: ${var.ontos_app_url}
+              ontos_enabled: ${var.ontos_enabled}
+
         - task_key: backfill
           depends_on:
             - task_key: setup
@@ -105,7 +116,7 @@ resources:
           depends_on:
             - task_key: backfill
             - task_key: create_genie_space
-            - task_key: configure_monitoring
+            - task_key: apply_ontos
           notebook_task:
             notebook_path: ../src/setup/unpause_generator_notebook.py
             base_parameters:
