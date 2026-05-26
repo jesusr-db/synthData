@@ -1,0 +1,98 @@
+@prefix qsr:  <http://qsr.synth/ontology#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+<http://qsr.synth/ontology> a owl:Ontology ;
+    rdfs:label "QSR Synthetic Data Ontology" ;
+    rdfs:comment "Business concepts for the QSR synthetic data generator (synthData project)." .
+
+# ── Core Domain Entities ───────────────────────────────────────────────────
+
+qsr:Order a owl:Class ;
+    rdfs:label "Order" ;
+    skos:definition "A commercial transaction initiated by a guest at a QSR unit. Grain: one row per order." ;
+    skos:example "guest_order_id 10042 — carryout order at unit 1005 on 2026-03-15." .
+
+qsr:OrderItem a owl:Class ;
+    rdfs:label "Order Item" ;
+    skos:definition "A single menu item line within an order, with quantity and unit price. Grain: one row per order × menu item." .
+
+qsr:Guest a owl:Class ;
+    rdfs:label "Guest" ;
+    skos:definition "An individual who visits or places an order at a QSR unit. May be anonymous (no profile_id) or identified." .
+
+qsr:LoyaltyMember a owl:Class ;
+    rdfs:subClassOf qsr:Guest ;
+    rdfs:label "Loyalty Member" ;
+    skos:definition "A guest enrolled in the QSR loyalty programme, earning and redeeming points." .
+
+qsr:Restaurant a owl:Class ;
+    rdfs:label "Restaurant" ;
+    skos:definition "An individual QSR unit, identified by unit_id. Belongs to a franchisee and metro area." .
+
+qsr:Franchisee a owl:Class ;
+    rdfs:label "Franchisee" ;
+    skos:definition "A franchise owner who operates one or more restaurant units under the QSR brand." .
+
+qsr:MenuItem a owl:Class ;
+    rdfs:label "Menu Item" ;
+    skos:definition "A product offered for sale, with category, price, and recipe linkage." .
+
+qsr:Ingredient a owl:Class ;
+    rdfs:label "Ingredient" ;
+    skos:definition "A raw component mapped to one or more menu items via bill-of-materials." .
+
+qsr:Shift a owl:Class ;
+    rdfs:label "Shift" ;
+    skos:definition "A scheduled work period for an employee at a restaurant unit." .
+
+qsr:WeatherCondition a owl:Class ;
+    rdfs:label "Weather Condition" ;
+    skos:definition "Observed or forecast weather state (clear, rain, snow, storm, extreme_heat, extreme_cold) for a metro area on a date." .
+
+qsr:LocalEvent a owl:Class ;
+    rdfs:label "Local Event" ;
+    skos:definition "A public event (holiday, concert, sports game) in a metro area that may shift demand patterns." .
+
+qsr:DemandRiskScore a owl:Class ;
+    rdfs:label "Demand Risk Score" ;
+    skos:definition "A per-unit per-day composite score combining weather and event demand multipliers. Values > 1.0 indicate elevated demand; < 1.0 suppressed demand." .
+
+# ── Object Properties ──────────────────────────────────────────────────────
+
+qsr:hasOrderItem a owl:ObjectProperty ;
+    rdfs:domain qsr:Order ;
+    rdfs:range  qsr:OrderItem ;
+    rdfs:label  "has order item" .
+
+qsr:placedBy a owl:ObjectProperty ;
+    rdfs:domain qsr:Order ;
+    rdfs:range  qsr:Guest ;
+    rdfs:label  "placed by" .
+
+qsr:placedAt a owl:ObjectProperty ;
+    rdfs:domain qsr:Order ;
+    rdfs:range  qsr:Restaurant ;
+    rdfs:label  "placed at" .
+
+qsr:operatedBy a owl:ObjectProperty ;
+    rdfs:domain qsr:Restaurant ;
+    rdfs:range  qsr:Franchisee ;
+    rdfs:label  "operated by" .
+
+qsr:includes a owl:ObjectProperty ;
+    rdfs:domain qsr:OrderItem ;
+    rdfs:range  qsr:MenuItem ;
+    rdfs:label  "includes menu item" .
+
+qsr:madeFrom a owl:ObjectProperty ;
+    rdfs:domain qsr:MenuItem ;
+    rdfs:range  qsr:Ingredient ;
+    rdfs:label  "made from" .
+
+qsr:hasRiskScore a owl:ObjectProperty ;
+    rdfs:domain qsr:Restaurant ;
+    rdfs:range  qsr:DemandRiskScore ;
+    rdfs:label  "has demand risk score" .
