@@ -106,7 +106,6 @@ CONTRACT_SCHEMAS = {
 
 print("\n── Phase 2: Seeding column schemas ──")
 for contract_id, spec in CONTRACT_SCHEMAS.items():
-    schema_key = spec["schema"].lstrip(schema_prefix[:-1]) if schema_prefix else spec["schema"]
     print(f"\n  Contract {contract_id[:8]}… → {spec['schema']}")
     try:
         c.seed_contract_schemas(
@@ -151,16 +150,20 @@ print("\n── Phase 3b: Creating semantic links ──")
 if links_path.exists():
     links_config = yaml.safe_load(links_path.read_text())
     links = links_config.get("semantic_links", [])
-    ok, fail = 0, 0
+    ok, skip, fail = 0, 0, 0
     for link in links:
         entity_id = link["entity_id"]
         iri = link["iri"]
+        existing = c.get_semantic_links_for_entity("uc_column", entity_id)
+        if any(lnk.get("iri") == iri for lnk in existing):
+            skip += 1
+            continue
         result = c.create_semantic_link("uc_column", entity_id, iri)
         if result:
             ok += 1
         else:
             fail += 1
-    print(f"  [OK] {ok} semantic links created, {fail} failed/skipped")
+    print(f"  [OK] {ok} semantic links created, {skip} already existed, {fail} failed")
 else:
     print(f"  [WARN] semantic_links.yaml not found at {links_path}")
 
