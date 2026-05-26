@@ -211,3 +211,55 @@ def test_get_semantic_links_returns_empty_on_non_list():
         client = _make_client()
         result = client.get_semantic_links_for_entity("uc_column", "bad-id")
         assert result == []
+
+
+# --- Column schema seeding tests --------------------------------------------
+
+def test_seed_contract_schemas_calls_upsert_per_column():
+    """seed_contract_schemas should call upsert_property for each UC column."""
+    from src.setup.ontos_client import OntosClient
+
+    columns = [
+        {"name": "order_id", "type": "bigint", "comment": "PK"},
+        {"name": "channel",  "type": "string",  "comment": "Order channel"},
+    ]
+    pii_columns = {"email", "phone"}
+
+    with patch.object(OntosClient, "fetch_uc_columns", return_value=columns), \
+         patch.object(OntosClient, "get_or_create_schema", return_value="guest_order"), \
+         patch.object(OntosClient, "upsert_property") as mock_upsert:
+
+        client = _make_client()
+        client.seed_contract_schemas(
+            contract_id="cid-1",
+            catalog="jmrdemo",
+            schema="synth_silver",
+            tables=["guest_order"],
+            pii_columns=pii_columns,
+        )
+        assert mock_upsert.call_count == 2
+        prop_names = [c[0][2]["name"] for c in mock_upsert.call_args_list]
+        assert "order_id" in prop_names
+        assert "channel" in prop_names
+
+
+def test_seed_contract_schemas_marks_pii():
+    """Columns in pii_columns set should get classification='pii'."""
+    from src.setup.ontos_client import OntosClient
+
+    columns = [{"name": "email", "type": "string", "comment": "Guest email"}]
+    with patch.object(OntosClient, "fetch_uc_columns", return_value=columns), \
+         patch.object(OntosClient, "get_or_create_schema", return_value="guest_profile"), \
+         patch.object(OntosClient, "upsert_property") as mock_upsert:
+
+        client = _make_client()
+        client.seed_contract_schemas(
+            contract_id="cid-2",
+            catalog="jmrdemo",
+            schema="synth_silver",
+            tables=["guest_profile"],
+            pii_columns={"email", "phone"},
+        )
+        prop = mock_upsert.call_args[0][2]
+        assert prop["classification"] == "pii"
+        assert prop["criticalDataElement"] is True

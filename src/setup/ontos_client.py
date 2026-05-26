@@ -89,6 +89,38 @@ class OntosClient:
             prop,
         )
 
+    def seed_contract_schemas(
+        self,
+        contract_id: str,
+        catalog: str,
+        schema: str,
+        tables: list[str],
+        pii_columns: set[str] | None = None,
+    ):
+        """Fetch columns from UC via ontos catalog API and upsert them onto the contract schema."""
+        pii_columns = pii_columns or set()
+        for table in tables:
+            physical_name = f"{catalog}.{schema}.{table}"
+            schema_name = self.get_or_create_schema(contract_id, table, physical_name, f"QSR silver table {physical_name}")
+            if not schema_name:
+                print(f"  [WARN] Could not create schema for {table}")
+                continue
+            columns = self.fetch_uc_columns(catalog, schema, table)
+            for col in columns:
+                col_name = col.get("name", "")
+                is_pii = col_name in pii_columns
+                prop = {
+                    "name": col_name,
+                    "logicalType": col.get("type", "string"),
+                    "description": col.get("comment") or col_name,
+                    "required": False,
+                    "criticalDataElement": is_pii,
+                    "classification": "pii" if is_pii else None,
+                }
+                self.upsert_property(contract_id, schema_name, prop)
+                if columns:
+                    print(f"    ↳ {col_name} ({col.get('type','?')}){' [PII]' if is_pii else ''}")
+
     def create_semantic_link(self, entity_type: str, entity_id: str, iri: str):
         """POST a semantic link. Returns result dict or None on error."""
         return self._post(
