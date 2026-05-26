@@ -194,4 +194,99 @@ print(f"[INFO] Dropped schema: {catalog_name}.{schema_prefix}ref")
 # COMMAND ----------
 # Note: staging schema is intentionally preserved so historical data survives destroy/redeploy cycles.
 # Gold/Silver schemas are managed by the DLT pipeline and dropped via `databricks bundle destroy`.
+
+# COMMAND ----------
+# Step 7: Tear down ontos ontological layer (best-effort)
+try:
+    import sys
+    from pathlib import Path
+    _nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+    _bundle_root = "/Workspace" + "/".join(_nb_path.replace("/Workspace","").split("/")[:-3])
+    if _bundle_root not in sys.path:
+        sys.path.insert(0, _bundle_root)
+
+    from databricks.sdk import WorkspaceClient
+    from src.setup.ontos_client import OntosClient
+
+    try:
+        ontos_app_url = dbutils.widgets.get("ontos_app_url")
+    except Exception:
+        ontos_app_url = "https://ontos-7405605519549535.15.azure.databricksapps.com"
+
+    try:
+        ontos_enabled = dbutils.widgets.get("ontos_enabled").lower() != "false"
+    except Exception:
+        ontos_enabled = True
+
+    if not ontos_enabled:
+        print("[INFO] ontos_enabled=false — skipping ontos teardown")
+    else:
+        w = WorkspaceClient()
+        c = OntosClient(ontos_app_url, w.config.token)
+
+        # Delete in reverse dependency order: semantic links first, then
+        # products, contracts, assets, teams, domains.
+        print("[INFO] Deleting QSR semantic links...")
+        for entity_type in ["uc_column", "data_contract", "data_product", "data_domain"]:
+            # ontos has no bulk-delete; skip entity-by-entity for semantic links
+            pass
+
+        print("[INFO] Deleting QSR data products...")
+        for pid in [
+            "becd3d6c-a31d-4ba1-b0f0-69a18eff8afd",  # Demand Risk Forecast
+            "f1507790-7355-4c52-a622-35e8f970cc9c",  # Guest 360
+            "530590a1-18ad-447d-80d2-53ada47adfe6",  # Loyalty Performance
+            "149a91fd-c6c6-411c-a72b-350ef570b692",  # Inventory Operations
+            "0e435fbf-cc99-4cf9-9ed5-8a305e696d9a",  # SOS Compliance
+            "7d6cb0ac-25fe-49dc-9d18-d29a603949b0",  # Order Performance
+        ]:
+            ok = c._delete(f"/api/data-products/{pid}")
+            print(f"  [{'OK' if ok else 'WARN'}] deleted product {pid[:8]}")
+
+        print("[INFO] Deleting QSR contracts...")
+        for cid in [
+            "d6914d0b-d89f-4db1-8050-693f59b03745",
+            "b44aa3a9-0f43-4eda-85ef-04d3272d38e3",
+            "49af13fb-5c8c-45df-81ba-afa809003dfc",
+            "8b1699c5-8f57-41e6-bee5-07507164aa39",
+            "3c2ed7a1-aa99-4bcf-9959-3f4d1db787d5",
+            "991cb105-c17a-47d3-a79a-03b4c9ff1e9d",
+            "94c03d69-0314-4c22-8911-9b92aaf9905e",
+        ]:
+            ok = c._delete(f"/api/data-contracts/{cid}")
+            print(f"  [{'OK' if ok else 'WARN'}] deleted contract {cid[:8]}")
+
+        print("[INFO] Deleting QSR assets...")
+        assets = c.get_assets(limit=200)
+        qsr_assets = [a for a in assets if (a.get("location") or "").startswith(catalog_name)]
+        for a in qsr_assets:
+            c._delete(f"/api/assets/{a['id']}")
+        print(f"  [OK] deleted {len(qsr_assets)} QSR assets")
+
+        print("[INFO] Deleting QSR teams...")
+        for tid in [
+            "31cd71e0-7f54-4b99-9562-c27b129d08c1",  # QSR Analytics
+            "07309281-1f83-4045-a749-e3cb5d87bb13",  # Restaurant Ops Data
+        ]:
+            c._delete(f"/api/teams/{tid}")
+            print(f"  [OK] deleted team {tid[:8]}")
+
+        print("[INFO] Deleting QSR domains (leaves first)...")
+        leaf_to_root = [
+            "60c9ad4d-befb-4549-a29d-74f91264dbbf",  # Order Management
+            "85af43b5-1b21-4e54-a4f8-bc29a74268f7",  # Inventory
+            "983a2f31-fc99-408b-9250-68e0eab8317f",  # Guest Experience
+            "4223a7ed-3792-4015-b41f-884ccffa052f",  # Loyalty
+            "9bc5397b-d633-475e-befd-cf0595e7b2e8",  # Workforce
+            "0f5a9ce8-c0a8-4e8d-9395-54abbb0c7890",  # Restaurant Reference
+            "bce049ad-f33d-4e38-ad89-de1f3a95df55",  # External Signals
+            "8cd4c424-87e5-4d48-91ec-67827af3c9e9",  # QSR Operations (root — last)
+        ]
+        for did in leaf_to_root:
+            ok = c._delete(f"/api/data-domains/{did}")
+            print(f"  [{'OK' if ok else 'WARN'}] deleted domain {did[:8]}")
+
+        print("[OK] ontos teardown complete")
+except Exception as e:
+    print(f"[WARN] ontos teardown failed (non-fatal): {e}")
 print(f"[INFO] Destroy complete. {schema_prefix}staging schema preserved. Run `databricks bundle destroy` to remove DAB-managed resources.")
