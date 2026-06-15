@@ -21,17 +21,20 @@ def _missing(v):
 
 class RecommenderModel(mlflow.pyfunc.PythonModel):
     def load_context(self, context):
-        with open(context.artifacts["menu"]) as f:
-            raw = json.load(f)
-        menu = {int(k): tuple(v) for k, v in raw.items()}
-        import yaml
-        with open(context.artifacts["affinity"]) as f:
-            affinity = yaml.safe_load(f)
-        estimator = None
-        if "estimator" in context.artifacts:
-            import joblib
-            estimator = joblib.load(context.artifacts["estimator"])
-        self._load(menu=menu, affinity=affinity, estimator=estimator)
+        artifacts = getattr(context, "artifacts", None) or {}
+        if "menu" in artifacts:
+            with open(artifacts["menu"]) as f:
+                menu = {int(k): tuple(v) for k, v in json.load(f).items()}
+            import yaml
+            with open(artifacts["affinity"]) as f:
+                affinity = yaml.safe_load(f)
+            estimator = None
+            if "estimator" in artifacts:
+                import joblib
+                estimator = joblib.load(artifacts["estimator"])
+            self._load(menu=menu, affinity=affinity, estimator=estimator)
+        # else: the instance was pickled with menu/affinity/estimator already set
+        #       via _load() before logging; nothing to do.
 
     def _load(self, menu, affinity, estimator):
         # test hook + shared init. menu values may be list or tuple.

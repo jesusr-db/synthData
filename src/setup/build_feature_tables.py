@@ -24,9 +24,9 @@ print(f"[INFO] build_feature_tables: catalog={catalog_name}, schema_prefix={sche
 
 # COMMAND ----------
 from datetime import datetime, timezone
+import json
 import pandas as pd
-from pyspark.sql.types import (StructType, StructField, IntegerType, FloatType,
-                               StringType, MapType, LongType)
+from pyspark.sql.types import (StructType, StructField, IntegerType, FloatType, StringType)
 from databricks.feature_engineering import FeatureEngineeringClient
 
 from src.features.customer_features import compute_customer_features, CATEGORIES
@@ -75,8 +75,8 @@ cust_pdf = pd.DataFrame(cust)
 cust_sdf = spark.createDataFrame(cust_pdf)
 store_pdf = pd.DataFrame([{
     **{k: v for k, v in s.items() if k not in ("popularity", "top_item_per_category")},
-    "popularity": {int(k): float(v) for k, v in s["popularity"].items()},
-    "top_item_per_category": {k: int(v) for k, v in s["top_item_per_category"].items()},
+    "popularity": json.dumps({str(k): float(v) for k, v in s["popularity"].items()}),
+    "top_item_per_category": json.dumps({k: int(v) for k, v in s["top_item_per_category"].items()}),
 } for s in store])
 store_schema = StructType([
     StructField("unit_id", IntegerType()),
@@ -85,8 +85,8 @@ store_schema = StructType([
     StructField("franchisee_id", IntegerType()),
     StructField("store_orders", IntegerType()),
     StructField("store_aov", FloatType()),
-    StructField("popularity", MapType(IntegerType(), FloatType())),
-    StructField("top_item_per_category", MapType(StringType(), IntegerType())),
+    StructField("popularity", StringType()),
+    StructField("top_item_per_category", StringType()),
 ])
 store_sdf = spark.createDataFrame(store_pdf, schema=store_schema)
 

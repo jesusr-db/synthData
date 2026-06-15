@@ -3,7 +3,6 @@
 # register in UC, and (re)create the Model Serving endpoint.
 import json
 import random
-import tempfile
 
 import sys
 
@@ -14,10 +13,15 @@ if _bundle_root not in sys.path:
 
 try:
     catalog_name = dbutils.widgets.get("catalog_name")
-    schema_prefix = dbutils.widgets.get("schema_prefix")
 except Exception:
     catalog_name = "jmrdemo"
+
+try:
+    schema_prefix = dbutils.widgets.get("schema_prefix")
+except Exception:
     schema_prefix = "synth_"
+
+print(f"[INFO] train_recommender: catalog={catalog_name}, schema_prefix={schema_prefix}")
 
 sp = f"{catalog_name}.{schema_prefix}"
 features_schema = f"{schema_prefix}features"
@@ -53,6 +57,8 @@ def store_dict(uid):
     if not s:
         return {"popularity": {}, "store_aov": 0.0}
     pop = s.get("popularity") or {}
+    if isinstance(pop, str):
+        pop = json.loads(pop)
     return {"popularity": {int(k): float(v) for k, v in pop.items()},
             "store_aov": float(s.get("store_aov") or 0.0)}
 
@@ -98,6 +104,7 @@ CATS = ["pizza", "wings", "sides", "salads", "drinks", "desserts"]
 import pandas as pd
 keys_pdf = pd.DataFrame([{"profile_id": int(o["profile_id"]) if o["profile_id"] else -1,
                           "store_id": int(o["unit_id"]), "label": 1} for o in orders[:500]])
+print(f"[INFO] FE training_set key sample: {len(keys_pdf)} rows (of {len(orders)} total orders)")
 keys_sdf = spark.createDataFrame(keys_pdf)
 training_set = fe.create_training_set(
     df=keys_sdf,
@@ -111,25 +118,21 @@ training_set = fe.create_training_set(
     exclude_columns=["profile_id", "store_id"],
 )
 
-# Persist artifacts (menu, affinity, estimator) for the pyfunc.
-import joblib, yaml
-tmp = tempfile.mkdtemp()
-menu_path = f"{tmp}/menu.json"; aff_path = f"{tmp}/basket_affinity.yml"; est_path = f"{tmp}/estimator.joblib"
-with open(menu_path, "w") as f:
-    json.dump({str(k): list(v) for k, v in menu.items()}, f)
-with open(aff_path, "w") as f:
-    yaml.safe_dump(cfg, f)
-joblib.dump(clf, est_path)
+# Bake menu/affinity/estimator into the model instance before logging.
+# cloudpickle (used by mlflow) preserves instance attributes set before log_model,
+# so the pyfunc load_context receives a fully-initialized object without needing
+# artifact files. This avoids relying on fe.log_model kwargs forwarding (undocumented).
+rec = RecommenderModel()
+rec._load(menu=menu, affinity=cfg, estimator=clf)
 
 model_name = fq("qsr_recommender")
 with mlflow.start_run(run_name="qsr_recommender"):
     fe.log_model(
-        model=RecommenderModel(),
+        model=rec,
         artifact_path="recommender",
         flavor=mlflow.pyfunc,
         training_set=training_set,
         registered_model_name=model_name,
-        artifacts={"menu": menu_path, "affinity": aff_path, "estimator": est_path},
         pip_requirements=["scikit-learn", "pyyaml", "joblib", "mlflow", "pandas"],
     )
 print(f"[INFO] registered {model_name}")
@@ -148,8 +151,11 @@ try:
                                config=EndpointCoreConfigInput(served_entities=[served]))
     print(f"[INFO] created serving endpoint {endpoint}")
 except Exception as e:
-    print(f"[INFO] endpoint exists, updating config: {e}")
-    w.serving_endpoints.update_config(name=endpoint, served_entities=[served])
+    print(f"[INFO] endpoint exists or create failed, updating config: {e}")
+    try:
+        w.serving_endpoints.update_config(name=endpoint, served_entities=[served])
+    except Exception as e2:
+        print(f"[WARN] update_config also failed: {e2}")
 
 # Grant CAN_QUERY to the website principal (PAT/SP) so PizzaTel can call the endpoint.
 try:
