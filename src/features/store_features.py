@@ -35,7 +35,7 @@ def compute_store_features(orders, items, units, menu):
     for uid, a in order_agg.items():
         attrs = units.get(uid, {})
         item_qty = qty.get(uid, {})
-        max_q = max(item_qty.values()) if item_qty else 1
+        max_q = max(item_qty.values(), default=1) or 1
         popularity = {iid: round(q / max_q, 6) for iid, q in item_qty.items()}
         top_item = {}
         for cat in CATEGORIES:
