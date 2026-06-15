@@ -110,7 +110,7 @@
 | `QSR Generator Live [dev]` | Job (hourly cron) | Generates previous hour of events across all 5 domains; triggers pipeline | Not deployed |
 | `Weather & Events Refresh [dev]` | Job (daily cron, 05:00 UTC) | Refreshes `ref.weather_conditions` and `ref.local_events` from Open-Meteo, NOAA NWS alerts, Nager.Date holidays, Ticketmaster, and SeatGeek. Note: the yml includes an explicit name prefix that causes a duplicate `[dev ...]` prefix when DAB also auto-prepends one — remove the explicit prefix from the yml before merge. | Not deployed |
 | `QSR Feature Refresh [dev]` | Job (weekly cron, Sundays 06:00 UTC) | Rebuilds the customer and store UC feature tables by re-running `src/setup/build_feature_tables.py` (the same notebook the setup job runs). Keeps the recommender's lookup features current as new silver data accumulates. Runs on the `ml` environment (`databricks-feature-engineering`, `scikit-learn`, `joblib`, `pandas`, `pyyaml`). | Not deployed |
-| `QSR Destroy [dev]` | Job (on-demand) | Tears down all non-DAB objects: ontos configuration, feature store + recommender (when `features_enabled`), column masks, UC functions, volume, monitors, metric views, ref schema, metrics schema | Not deployed |
+| `QSR Destroy [dev]` | Job (on-demand) | Tears down all non-DAB objects: ontos configuration (gated on `ontos_enabled`), feature store + recommender (Step 0h runs unconditionally, best-effort), column masks, UC functions, volume, monitors, metric views, ref schema, metrics schema | Not deployed |
 | `QSR MVM Pipeline [dev]` | Lakeflow Declarative Pipeline | Streaming promotion of staging → silver → gold; serverless, triggered mode | Not deployed |
 
 All resources are tagged `project: qsr-synth-data-generator`.
@@ -213,8 +213,9 @@ All IDs are **integers**. `cart_product_ids` may be empty. `viewed_product_id` a
     {
       "personalized": true,
       "recommendations": [
-        {"menu_item_id": 53, "score": 0.94, "item_name": "20oz Coca-Cola", "category": "drinks", "subcategory": "soda", "reason": "complements pizza; no drink in cart"},
-        {"menu_item_id": 61, "score": 0.81, "item_name": "Garlic Dipping Cup", "category": "sides", "subcategory": "dip", "reason": "pairs with wings"}
+        {"menu_item_id": 53, "score": 0.94, "item_name": "20oz Coca-Cola", "category": "drinks", "subcategory": "soda", "reason": "complements your order; no drink in cart; gold-tier favorite"},
+        {"menu_item_id": 61, "score": 0.81, "item_name": "Garlic Dipping Cup", "category": "sides", "subcategory": "dip", "reason": "complements pizza"},
+        {"menu_item_id": 72, "score": 0.67, "item_name": "Cinnamon Dessert Bites", "category": "desserts", "subcategory": "pastry", "reason": "frequently added; gold-tier favorite"}
       ]
     }
   ]
@@ -230,4 +231,4 @@ All IDs are **integers**. `cart_product_ids` may be empty. `viewed_product_id` a
 - **Recommendations light up**: the `synth_qsr-recommender` endpoint returns meaningful results only after the setup job's `build_feature_tables` and `train_recommender` tasks complete. Until then the endpoint may return cold-start (store-popularity) results for all callers.
 
 ### Why `features_enabled` and `recommender_query_principal` are bundle variables
-`features_enabled` (default `true`) lets an environment skip the feature store + recommender setup/destroy steps without altering the task graph — the same pattern as `ontos_enabled`. `recommender_query_principal` (default empty) names the service principal granted `CAN_QUERY` on the recommender endpoint so the PizzaTel app can call it; leaving it empty skips the grant, which is appropriate for workspaces where the consuming principal does not yet exist.
+`features_enabled` (default `true`) is declared for future gating of the feature store + recommender setup/destroy steps. Currently, `destroy_notebook.py` Step 0h runs unconditionally (all deletes are best-effort, wrapped in try/except), so the variable does not yet skip teardown — unlike `ontos_enabled`, which does gate the ontos teardown block. `recommender_query_principal` (default empty) names the service principal granted `CAN_QUERY` on the recommender endpoint so the PizzaTel app can call it; leaving it empty skips the grant, which is appropriate for workspaces where the consuming principal does not yet exist.
