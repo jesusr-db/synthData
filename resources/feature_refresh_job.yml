@@ -1,0 +1,28 @@
+resources:
+  jobs:
+    feature_refresh_job:
+      name: "QSR Feature Refresh [${bundle.target}]"
+      schedule:
+        quartz_cron_expression: ${var.feature_refresh_cron}
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: refresh_features
+          notebook_task:
+            notebook_path: ../src/setup/build_feature_tables.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
+              schema_prefix: ${var.schema_prefix}
+          environment_key: ml
+      environments:
+        - environment_key: ml
+          spec:
+            client: "2"
+            dependencies:
+              - databricks-feature-engineering
+              - scikit-learn
+              - joblib
+              - pandas
+              - pyyaml
+      tags:
+        project: qsr-synth-data-generator

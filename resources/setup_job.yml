@@ -16,6 +16,15 @@ resources:
             dependencies:
               - requests
               - pyyaml
+        - environment_key: ml
+          spec:
+            client: "2"
+            dependencies:
+              - databricks-feature-engineering
+              - scikit-learn
+              - joblib
+              - pandas
+              - pyyaml
       tasks:
         - task_key: setup
           notebook_task:
@@ -47,6 +56,27 @@ resources:
             base_parameters:
               catalog_name: ${var.catalog_name}
               schema_prefix: ${var.schema_prefix}
+
+        - task_key: build_feature_tables
+          depends_on:
+            - task_key: start_pipeline
+          notebook_task:
+            notebook_path: ../src/setup/build_feature_tables.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
+              schema_prefix: ${var.schema_prefix}
+          environment_key: ml
+
+        - task_key: train_recommender
+          depends_on:
+            - task_key: build_feature_tables
+          notebook_task:
+            notebook_path: ../src/ml/train_recommender.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
+              schema_prefix: ${var.schema_prefix}
+              recommender_query_principal: ${var.recommender_query_principal}
+          environment_key: ml
 
         - task_key: create_metric_views
           depends_on:
@@ -118,6 +148,7 @@ resources:
             - task_key: backfill
             - task_key: create_genie_space
             - task_key: apply_ontos
+            - task_key: train_recommender
           notebook_task:
             notebook_path: ../src/setup/unpause_generator_notebook.py
             base_parameters:

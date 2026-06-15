@@ -34,6 +34,15 @@ variables:
   ontos_enabled:
     default: "true"
     description: "Set to 'false' to skip ontos configuration steps in setup/destroy."
+  features_enabled:
+    default: "true"
+    description: "Set to 'false' to skip feature store + recommender setup/destroy steps."
+  feature_refresh_cron:
+    default: "0 0 6 ? * SUN"
+    description: "Quartz cron for weekly feature-table refresh (default Sundays 06:00 UTC)."
+  recommender_query_principal:
+    default: ""
+    description: "Service principal name (or user PAT principal) granted CAN_QUERY on the recommender endpoint so PizzaTel can call it. Empty = skip the grant."
 
 workspace:
   profile: DEFAULT
