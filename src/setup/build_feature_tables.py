@@ -2,20 +2,38 @@
 # Build customer & store feature tables, sync to Online Tables, expose a Feature Serving endpoint.
 # Reads silver/ref tables, computes features via the pure transforms in src.features.*,
 # writes UC Delta feature tables, and (re)creates online tables + a feature serving endpoint.
-from datetime import datetime, timezone
+# COMMAND ----------
+import sys
+
+_notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+_bundle_root = "/Workspace" + "/".join(_notebook_path.replace("/Workspace", "").split("/")[:-3])
+if _bundle_root not in sys.path:
+    sys.path.insert(0, _bundle_root)
 
 try:
     catalog_name = dbutils.widgets.get("catalog_name")
-    schema_prefix = dbutils.widgets.get("schema_prefix")
 except Exception:
     catalog_name = "jmrdemo"
+
+try:
+    schema_prefix = dbutils.widgets.get("schema_prefix")
+except Exception:
     schema_prefix = "synth_"
 
-features_schema = f"{schema_prefix}features"
-fq = lambda t: f"{catalog_name}.{features_schema}.{t}"  # noqa: E731
+print(f"[INFO] build_feature_tables: catalog={catalog_name}, schema_prefix={schema_prefix}")
+
+# COMMAND ----------
+from datetime import datetime, timezone
+import pandas as pd
+from pyspark.sql.types import (StructType, StructField, IntegerType, FloatType,
+                               StringType, MapType, LongType)
+from databricks.feature_engineering import FeatureEngineeringClient
 
 from src.features.customer_features import compute_customer_features, CATEGORIES
 from src.features.store_features import compute_store_features
+
+features_schema = f"{schema_prefix}features"
+fq = lambda t: f"{catalog_name}.{features_schema}.{t}"  # noqa: E731
 
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog_name}.{features_schema}")
 
@@ -51,10 +69,8 @@ store = compute_store_features(orders, items, units, menu)
 print(f"[INFO] computed {len(cust)} customer rows, {len(store)} store rows")
 
 # --- Write UC feature tables via Feature Engineering ---
-from databricks.feature_engineering import FeatureEngineeringClient
 fe = FeatureEngineeringClient()
 
-import pandas as pd
 cust_pdf = pd.DataFrame(cust)
 cust_sdf = spark.createDataFrame(cust_pdf)
 store_pdf = pd.DataFrame([{
@@ -62,7 +78,17 @@ store_pdf = pd.DataFrame([{
     "popularity": {int(k): float(v) for k, v in s["popularity"].items()},
     "top_item_per_category": {k: int(v) for k, v in s["top_item_per_category"].items()},
 } for s in store])
-store_sdf = spark.createDataFrame(store_pdf)
+store_schema = StructType([
+    StructField("unit_id", IntegerType()),
+    StructField("metro_area", StringType()),
+    StructField("region_id", IntegerType()),
+    StructField("franchisee_id", IntegerType()),
+    StructField("store_orders", IntegerType()),
+    StructField("store_aov", FloatType()),
+    StructField("popularity", MapType(IntegerType(), FloatType())),
+    StructField("top_item_per_category", MapType(StringType(), IntegerType())),
+])
+store_sdf = spark.createDataFrame(store_pdf, schema=store_schema)
 
 for name, sdf, pk in [("customer_features", cust_sdf, "guest_profile_id"),
                       ("store_features", store_sdf, "unit_id")]:
@@ -73,7 +99,10 @@ for name, sdf, pk in [("customer_features", cust_sdf, "guest_profile_id"),
         print(f"[INFO] created feature table {table}")
     except Exception as e:
         print(f"[INFO] feature table {table} exists, writing merge: {e}")
-        fe.write_table(name=table, df=sdf, mode="merge")
+        try:
+            fe.write_table(name=table, df=sdf, mode="merge")
+        except Exception as e2:
+            print(f"[WARN] write_table merge failed for {table}: {e2}")
 
 # --- Online tables (idempotent) ---
 from databricks.sdk import WorkspaceClient
@@ -97,7 +126,7 @@ def ensure_online_table(source_table: str, online_name: str, pk: str):
         print(f"[INFO] online table {online_fq} exists ({e}); triggering pipeline refresh")
         try:
             ot = w.online_tables.get(name=online_fq)
-            if ot.spec and ot.spec.pipeline_id:
+            if ot.spec and ot.spec.pipeline_id:  # best-effort; verify pipeline_id path at deploy time
                 w.pipelines.start_update(pipeline_id=ot.spec.pipeline_id, full_refresh=True)
         except Exception as e2:
             print(f"[WARN] online refresh skipped: {e2}")
