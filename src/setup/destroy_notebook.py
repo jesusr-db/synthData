@@ -183,13 +183,31 @@ try:
 except Exception as e:
     print(f"[WARN] delete feature spec skipped: {e}")
 
-# 0h-3: online tables
+# 0h-3: online feature store (Lakebase, billable) — drop published tables, then the store
+_online_store_name = f"{schema_prefix.replace('_', '-')}qsr-online-store"
+try:
+    from databricks.feature_engineering import FeatureEngineeringClient
+    _fe = FeatureEngineeringClient()
+    _os = _fe.get_online_store(name=_online_store_name)
+    if _os is not None:
+        for _otfq in [ffq("customer_features_online"), ffq("store_features_online")]:
+            try:
+                _fe.drop_online_table(name=_otfq, online_store=_os)
+                print(f"[INFO] dropped published online table {_otfq}")
+            except Exception as e:
+                print(f"[WARN] drop_online_table {_otfq} skipped: {e}")
+        _fe.delete_online_store(name=_online_store_name)
+        print(f"[INFO] deleted online store {_online_store_name}")
+    else:
+        print(f"[INFO] online store {_online_store_name} not found; nothing to delete")
+except Exception as e:
+    print(f"[WARN] online store teardown skipped: {e}")
+# belt-and-suspenders: drop any leftover published UC tables
 for _ot in ["customer_features_online", "store_features_online"]:
     try:
-        w.online_tables.delete(name=ffq(_ot))
-        print(f"[INFO] deleted online table {ffq(_ot)}")
+        spark.sql(f"DROP TABLE IF EXISTS {ffq(_ot)}")
     except Exception as e:
-        print(f"[WARN] delete online table {ffq(_ot)} skipped: {e}")
+        print(f"[WARN] drop leftover {ffq(_ot)} skipped: {e}")
 
 # 0h-4: registered model (all versions)
 try:

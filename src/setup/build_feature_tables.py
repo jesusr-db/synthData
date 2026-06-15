@@ -107,35 +107,53 @@ for name, sdf, pk in [("customer_features", cust_sdf, "profile_id"),
         except Exception as e2:
             print(f"[WARN] write_table merge failed for {table}: {e2}")
 
-# --- Online tables (idempotent) ---
-from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.catalog import (
-    OnlineTable, OnlineTableSpec, OnlineTableSpecTriggeredSchedulingPolicy)
-w = WorkspaceClient()
-
-def ensure_online_table(source_table: str, online_name: str, pk: str):
-    online_fq = fq(online_name)
-    spec = OnlineTableSpec(
-        source_table_full_name=source_table,
-        primary_key_columns=[pk],
-        run_triggered=OnlineTableSpecTriggeredSchedulingPolicy.from_dict({"triggered": "true"}),
-        perform_full_copy=True,
-    )
+# --- Enable Change Data Feed (required for TRIGGERED publish to the online store) ---
+for _name in ("customer_features", "store_features"):
     try:
-        w.online_tables.create(table=OnlineTable(name=online_fq, spec=spec))
-        print(f"[INFO] created online table {online_fq}")
+        spark.sql(f"ALTER TABLE {fq(_name)} SET TBLPROPERTIES (delta.enableChangeDataFeed = 'true')")
+        print(f"[INFO] enabled CDF on {fq(_name)}")
     except Exception as e:
-        # already exists -> trigger a refresh to pick up new feature values
-        print(f"[INFO] online table {online_fq} exists ({e}); triggering pipeline refresh")
-        try:
-            ot = w.online_tables.get(name=online_fq)
-            if ot.spec and ot.spec.pipeline_id:  # best-effort; verify pipeline_id path at deploy time
-                w.pipelines.start_update(pipeline_id=ot.spec.pipeline_id, full_refresh=True)
-        except Exception as e2:
-            print(f"[WARN] online refresh skipped: {e2}")
+        print(f"[WARN] enable CDF on {fq(_name)} skipped: {e}")
 
-ensure_online_table(fq("customer_features"), "customer_features_online", "profile_id")
-ensure_online_table(fq("store_features"), "store_features_online", "unit_id")
+# --- Online feature store (Lakebase-backed; replaces deprecated Online Tables) ---
+# Online Tables are deprecated/blocked; the GA path is a Lakebase-backed Online Feature
+# Store. Create-or-get the store, wait until AVAILABLE, then publish each feature table.
+# Model-serving automatic lookup + the feature-serving endpoint resolve against it.
+import time
+# Lakebase resource ids allow only [a-z][a-z0-9-]* (<=63 bytes) — no underscores.
+online_store_name = f"{schema_prefix.replace('_', '-')}qsr-online-store"
+# get_online_store returns None (does not raise) when the store does not exist.
+online_store = fe.get_online_store(name=online_store_name)
+if online_store is None:
+    print(f"[INFO] creating online store {online_store_name} (capacity CU_1)")
+    fe.create_online_store(name=online_store_name, capacity="CU_1")
+    online_store = fe.get_online_store(name=online_store_name)
+else:
+    print(f"[INFO] online store {online_store_name} exists (state={getattr(online_store, 'state', None)})")
+
+# Lakebase provisioning can take several minutes; wait until AVAILABLE before publishing.
+for _ in range(80):
+    online_store = fe.get_online_store(name=online_store_name)
+    _state = str(getattr(online_store, "state", ""))
+    if "AVAILABLE" in _state:
+        break
+    if any(b in _state for b in ("FAIL", "ERROR", "DELET")):
+        raise RuntimeError(f"online store entered terminal bad state: {_state}")
+    print(f"[INFO] online store state={_state}; waiting 15s...")
+    time.sleep(15)
+print(f"[INFO] online store ready: state={getattr(online_store, 'state', None)}")
+
+# Publish feature tables to the online store (default publish_mode TRIGGERED = incremental
+# sync; re-running this notebook weekly re-triggers the sync to refresh online values).
+for _src, _online in [("customer_features", "customer_features_online"),
+                      ("store_features", "store_features_online")]:
+    try:
+        fe.publish_table(online_store=online_store,
+                         source_table_name=fq(_src),
+                         online_table_name=fq(_online))
+        print(f"[INFO] published {fq(_src)} -> {fq(_online)}")
+    except Exception as e:
+        print(f"[WARN] publish {fq(_src)} failed: {e}")
 
 # --- Feature Serving endpoint (fold #1: real-time customer look) ---
 from databricks.feature_engineering import FeatureLookup

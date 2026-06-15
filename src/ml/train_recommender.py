@@ -155,7 +155,10 @@ w = WorkspaceClient()
 latest = max(int(v.version) for v in w.model_versions.list(full_name=model_name))
 endpoint = f"{schema_prefix}qsr-recommender"
 served = ServedEntityInput(entity_name=model_name, entity_version=str(latest),
-                           scale_to_zero_enabled=True, workload_size="Small")
+                           scale_to_zero_enabled=True, workload_size="Small",
+                           # Route automatic feature lookup to the Lakebase online feature
+                           # store (Online Tables are deprecated). Required post-migration.
+                           environment_vars={"FEATURE_SOURCE": "DATABRICKS_ONLINE_STORE"})
 try:
     w.serving_endpoints.create(name=endpoint,
                                config=EndpointCoreConfigInput(served_entities=[served]))
