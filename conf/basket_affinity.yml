@@ -1,0 +1,21 @@
+# Curated category complementarity weights for QSR baskets.
+# The generator draws basket items independently, so co-occurrence signal is weak;
+# this matrix supplies the "what goes with what" prior used as a model feature AND
+# a serving-time signal. Weight = strength of "if basket has <row>, recommend <col>".
+# Categories must match ref.menu_item.category values:
+#   pizza, wings, sides, salads, drinks, desserts
+complements:
+  pizza:    {drinks: 0.9, sides: 0.7, desserts: 0.5, wings: 0.4, salads: 0.2}
+  wings:    {drinks: 0.8, sides: 0.8, desserts: 0.3, pizza: 0.4, salads: 0.2}
+  sides:    {drinks: 0.7, pizza: 0.4, desserts: 0.3, wings: 0.3, salads: 0.1}
+  salads:   {drinks: 0.7, pizza: 0.3, sides: 0.2, desserts: 0.2, wings: 0.1}
+  drinks:   {pizza: 0.3, desserts: 0.4, sides: 0.3, wings: 0.2, salads: 0.1}
+  desserts: {drinks: 0.6, pizza: 0.2, sides: 0.1, wings: 0.1, salads: 0.1}
+
+# Empty-cart default: which categories to surface when the cart is empty,
+# in priority order (anchor items first).
+empty_cart_priority: [pizza, wings, salads, sides, drinks, desserts]
+
+# Same-subcategory suppression: if the cart already contains an item whose
+# subcategory is listed here, do not recommend another item of that subcategory.
+suppress_duplicate_subcategories: [soda, water, pepperoni, cheese, boneless, traditional]
