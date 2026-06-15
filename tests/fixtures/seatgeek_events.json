@@ -1,0 +1,11 @@
+{
+  "events": [
+    {
+      "title": "New York Knicks vs Boston Celtics",
+      "datetime_local": "2026-10-15T19:30:00",
+      "type": "nba",
+      "venue": {"name": "Madison Square Garden", "state": "NY"},
+      "stats": {"average_price": 180}
+    }
+  ]
+}

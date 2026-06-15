@@ -1,0 +1,28 @@
+resources:
+  jobs:
+    weather_events_refresh_job:
+      name: "[${bundle.target} ${workspace.current_user.userName}] Weather & Events Refresh [${bundle.target}]"
+      description: "Daily refresh of ref.weather_conditions and ref.local_events from Open-Meteo, NOAA alerts, Nager.Date, Ticketmaster, and SeatGeek."
+      schedule:
+        quartz_cron_expression: "${var.weather_refresh_cron}"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+      environments:
+        - environment_key: refresh
+          spec:
+            client: "1"
+            dependencies:
+              - requests
+              - pyyaml
+      tasks:
+        - task_key: refresh_weather_events
+          environment_key: refresh
+          notebook_task:
+            notebook_path: ../src/refresh/refresh_notebook.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
+              schema_prefix: ${var.schema_prefix}
+              ticketmaster_secret_scope: ${var.ticketmaster_secret_scope}
+              ticketmaster_secret_key: "ticketmaster_consumer_key"
+              seatgeek_secret_scope: ${var.seatgeek_secret_scope}
+              seatgeek_secret_key: "seatgeek_client_id"

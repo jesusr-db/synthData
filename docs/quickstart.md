@@ -22,6 +22,11 @@ All configuration lives in `databricks.yml` as bundle variables. Override at dep
 | `base_orders_per_unit_per_hour` | `18` | Base hourly order volume per unit. |
 | `start_dt_override` | `""` | ISO datetime override for backfill start. Empty = auto from staging MAX(event_ts). |
 | `schema_prefix` | `synth_` | Prefix for all UC schemas. Use `""` for no prefix. |
+| `weather_refresh_cron` | `0 0 5 * * ?` | Quartz cron for daily weather/events refresh job (default 05:00 UTC). |
+| `ticketmaster_secret_scope` | `qsr-synth` | Databricks secret scope containing `ticketmaster_consumer_key`. Omit if not using Ticketmaster. |
+| `seatgeek_secret_scope` | `qsr-synth` | Databricks secret scope containing `seatgeek_client_id`. Omit if not using SeatGeek. |
+| `ontos_app_url` | `https://ontos-7405605519549535.15.azure.databricksapps.com` | Base URL of the deployed ontos Databricks App. |
+| `ontos_enabled` | `true` | Set to `false` to skip ontos configuration steps in setup/destroy. |
 
 ## Deploy Steps
 
@@ -44,7 +49,13 @@ databricks bundle run setup_job --target dev
 databricks jobs run-now <setup_job_id>
 ```
 
-The setup job handles everything in order: catalog check → schemas → staging tables → ref seed → backfill → pipeline start → (parallel) metric views + governance → Genie Space + monitoring → unpause generator.
+The setup job handles everything in order: catalog check → schemas → staging tables → ref seed → (parallel) initial weather/events refresh → backfill → pipeline start → (parallel) metric views + governance → Genie Space + monitoring → ontos ontology layer → unpause generator.
+
+If deploying to a workspace without the ontos app, add `--var ontos_enabled=false` to skip the ontology steps:
+
+```bash
+databricks bundle deploy --target dev --var ontos_enabled=false
+```
 
 ## Common Commands
 
@@ -58,9 +69,15 @@ databricks bundle deploy --target dev
 # Run setup from scratch (safe to re-run — IF NOT EXISTS throughout)
 databricks bundle run setup_job --target dev
 
+# Run setup without ontos (e.g. ontos app not deployed in target workspace)
+databricks bundle run setup_job --target dev --var ontos_enabled=false
+
 # Run just the generator once (backfill mode, custom date range)
 databricks jobs run-now <generator_job_id> \
   --job-parameters '{"mode":"backfill","start_dt_override":"2026-05-01T00:00:00"}'
+
+# Manually trigger a weather/events refresh (e.g. after adding API keys)
+databricks bundle run weather_events_refresh_job --target dev
 
 # Repair a failed setup_job run (preferred over restarting)
 databricks jobs repair-run --run-id <run_id> --rerun-all-failed-tasks
@@ -122,6 +139,27 @@ WHERE catalog_name = 'jmrdemo'
 -- Verify PII masking is active (per-table SET MASK on email/phone columns)
 SELECT email, phone FROM jmrdemo.synth_silver.guest_profile LIMIT 5;
 -- email shows as j***@example.com, phone as *******1234
+
+-- Check weather/events ref tables were populated by initial refresh
+SELECT COUNT(*), MIN(forecast_date), MAX(forecast_date)
+FROM jmrdemo.synth_ref.weather_conditions;
+-- Expected: ~880 rows (20 metros × ~44 days: ~30 days back + ~14 days forward)
+
+SELECT COUNT(*) FROM jmrdemo.synth_ref.local_events;
+-- Expected: at minimum 28 rows for US federal holidays (current + next year via Nager.Date)
+-- Additional Ticketmaster/SeatGeek rows if those API keys are configured
+
+SELECT event_category, COUNT(*)
+FROM jmrdemo.synth_ref.local_events
+GROUP BY 1 ORDER BY 2 DESC;
+
+-- Check demand_risk_forecast view (populated after initial_weather_refresh completes)
+SELECT risk_level, COUNT(*), AVG(demand_multiplier)
+FROM jmrdemo.synth_metrics.demand_risk_forecast
+GROUP BY 1 ORDER BY 1;
+-- Expected: ~3,250 rows total (num_units × 13 forecast days)
+-- normal: ~3,191 rows (avg multiplier ~0.97), demand_risk: ~59 rows (avg multiplier ~0.61)
+-- Returns 0 rows if initial_weather_refresh has not yet run
 ```
 
 ## Known Failure Modes

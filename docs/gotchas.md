@@ -15,6 +15,15 @@ All bundle variables arrive as strings in notebook widgets (e.g. `num_units` com
 **`pipeline.catalog` and `pipeline.schema_prefix` must be read from `spark.conf`, not widgets.**
 DLT notebooks do not have access to `dbutils.widgets`. Pipeline-level config is injected via `spark.conf.get("pipeline.catalog")` and `spark.conf.get("pipeline.schema_prefix")` — these are declared in `resources/pipeline.yml` under `configuration:`.
 
+**Serverless tasks cannot use task-level `libraries:` — declare dependencies in `environments:` instead.**
+The Databricks Terraform provider rejects any serverless notebook task that includes a `libraries:` field at the task level with: `"Libraries field is not supported for serverless task, please specify libraries in environment."` This error only appears at `bundle deploy` time — `databricks bundle validate` (schema-only) passes without catching it. The fix: add an `environments:` block at the job level with an `environment_key` name and a `spec.dependencies` list; then set `environment_key: <name>` on the task instead of `libraries:`. Both `setup_job.yml` and `refresh_weather_events.yml` declare a `refresh` environment for `requests` and `pyyaml` using this pattern.
+
+**DAB auto-prepends `[dev <short_user>]` to all job names — adding an explicit prefix in the yml produces a duplicate.**
+If a yml `name:` field includes `[${bundle.target} ${workspace.current_user.userName}]` (or any explicit prefix), and DAB's `presets` also adds an auto-prefix, the deployed job name will show two `[dev ...]` prefixes. To avoid this, rely solely on DAB's auto-prefix, or suppress it in `databricks.yml` with `presets.name_prefix: ""` and use only the explicit yml prefix.
+
+**`ontos_enabled: false` skips ontos steps in both setup and destroy — set it before deploying if the ontos app is unavailable.**
+Both `apply_ontos.py` (setup) and `destroy_notebook.py` (destroy) check the `ontos_enabled` widget. If the ontos Databricks App is not deployed in the target workspace, set `--var ontos_enabled=false` at deploy time to suppress all ontos API calls. The task graph is unchanged — the `apply_ontos` task still runs, but exits immediately when `ontos_enabled` is `false`. Forgetting this flag in an environment without the ontos app causes `apply_ontos` to fail with a connection error against `ontos_app_url`.
+
 ---
 
 ## Lakeflow Declarative Pipelines (DLT)
@@ -42,6 +51,34 @@ Unity Catalog ABAC policies at the catalog level apply to non-DLT tables. When a
 
 ---
 
+## Weather & Events Refresh
+
+**Missing Ticketmaster or SeatGeek secrets silently skip those providers — this is expected.**
+`refresh_notebook.py` wraps each third-party secret fetch in a bare `except` block. If `dbutils.secrets.get(scope=..., key=...)` raises (scope missing, key missing, or insufficient permissions), that provider is skipped and the notebook logs `[INFO] ... secret not configured — skipping`. The job still completes successfully with holidays from Nager.Date populated. Only configure secret scopes/keys if you have API credentials; do not treat the `[INFO]` skip message as an error.
+
+**NOAA alert `onset` and `expires` fields can be `None` — date-range matching requires a null guard.**
+The NOAA NWS API occasionally returns alerts where `onset` or `expires` is `None` (e.g., alerts with no defined expiry). `refresh_notebook.py` guards this with `alert["onset"][:10] if alert["onset"] else ""`. A row-level comparison `"" <= date_str <= ""` always evaluates to `False`, so null-bounded alerts are simply not applied. If NOAA alerts appear to have no effect on a date range, verify the raw alert has non-null `onset`/`expires` values.
+
+**`ref.weather_conditions` and `ref.local_events` must exist before the MERGE — setup_notebook.py creates them.**
+`refresh_notebook.py` uses `MERGE INTO {catalog}.{prefix}ref.weather_conditions` without a CREATE-if-not-exists guard. If the ref schema or tables don't exist, the notebook fails. The setup job task ordering enforces this: `initial_weather_refresh` depends on `setup`, which runs `setup_notebook.py` to create the ref schema and empty tables. Running `refresh_notebook.py` standalone against a workspace where setup has not completed will fail with a table-not-found error.
+
+**The weather refresh job reads distinct metros from `ref.unit` — an empty or missing `ref.unit` produces zero weather rows.**
+The notebook opens with `spark.sql("SELECT DISTINCT metro_area, state, AVG(lat) AS lat, AVG(lon) AS lon FROM {catalog}.{prefix}ref.unit GROUP BY metro_area, state")`. Note: `ref.unit` stores coordinates as `lat` and `lon` (not `latitude`/`longitude`). If `ref.unit` is empty (setup never seeded it) or the table doesn't exist, `metro_rows` is empty and all subsequent API calls are skipped silently. Weather and events tables will remain empty. This is why `initial_weather_refresh` in the setup job depends on `setup` (which seeds `ref.unit`) rather than running in parallel with it.
+
+**Ticketmaster and SeatGeek events are deduplicated by `event_id` — SeatGeek cannot overwrite Ticketmaster rows.**
+`event_rows_by_id` is keyed on `event_id`. The SeatGeek loop only inserts rows where `r["event_id"] not in event_rows_by_id`, so SeatGeek events that share an ID with a Ticketmaster event are silently dropped. Cross-provider deduplication is intentional (to avoid duplicate event rows in `ref.local_events`) but means SeatGeek data for any event already fetched by Ticketmaster will never appear.
+
+**`demand_risk_forecast` view returns zero rows until the first refresh job completes.**
+The view's `CASE` expression joins against `ref.weather_conditions`. Until `initial_weather_refresh` runs during setup and populates that table, the join produces no matches and the view returns an empty result set. This is not a bug — the view "lights up" automatically once the setup job's `initial_weather_refresh` task finishes. If the view is empty after a fresh deploy, check whether the setup job completed all 10 tasks including `initial_weather_refresh`.
+
+**WMO weather code → condition mapping overrides for extreme temperatures may mask the raw code.**
+`openmeteo_client.py` maps WMO codes 0–3 to `clear` by default, but overrides to `extreme_heat` when `temp_max > 100°F` or `extreme_cold` when `temp_min < 15°F`. If you observe a `clear`-coded day being stored as `extreme_heat`, this override is intentional — it catches summer heatwaves and winter cold snaps that WMO would otherwise classify as fair weather. Debugging weather condition values requires checking both the raw WMO code and the daily temperature bounds from Open-Meteo.
+
+**`CausalContext.build_context()` silently ignores `weather_event_data=None` — passing `None` is safe.**
+The `weather_event_data` parameter added in Phase 3 defaults to `None` and is guarded by an `if weather_event_data:` check. Any caller (including backfill tasks that predate Phase 3) that omits the parameter or passes `None` gets identical behavior to the pre-Phase-3 baseline. This guard is the reason the 75 existing tests stayed green without modification.
+
+---
+
 ## Destroy Job
 
 **`destroy_notebook.py` METRIC_VIEWS list targets the wrong schema.**
@@ -62,6 +99,9 @@ Column masks (Step 0a) must precede function drops (Step 0b): if the mask functi
 
 **`staging` schema is intentionally preserved by the destroy job.**
 The destroy job does not drop `{prefix}staging`. This allows historical data to survive destroy/redeploy cycles so backfill doesn't need to regenerate from scratch. To fully wipe staging, manually run `DROP SCHEMA {catalog}.{prefix}staging CASCADE` after the destroy job completes.
+
+**Ontos teardown requires the ontos app to be reachable — set `ontos_enabled=false` if it is not.**
+`destroy_notebook.py` receives `ontos_app_url` and `ontos_enabled` as parameters (passed from `destroy_job.yml`). When `ontos_enabled` is `true`, the notebook calls the ontos REST API to remove registered schemas, data products, and semantic links before the schema drops proceed. If the ontos app is unreachable or has already been decommissioned, the destroy job will fail at the ontos teardown step. Run with `--var ontos_enabled=false` (or update the variable default) to skip ontos teardown in those cases.
 
 ---
 

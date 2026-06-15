@@ -44,15 +44,32 @@
 │  └─────────────────────────────────────────────────────────┘               │
 │                                                                             │
 │  ┌─────────────────────────────────────────┐                               │
+│  │  weather_events_refresh_job  (daily cron)│                               │
+│  │  src/refresh/refresh_notebook.py         │                               │
+│  │  ├── Open-Meteo → weather_conditions     │                               │
+│  │  ├── NOAA NWS alerts (overlaid on rows)  │                               │
+│  │  ├── Nager.Date holidays → local_events  │                               │
+│  │  ├── Ticketmaster (optional, key-gated)  │                               │
+│  │  └── SeatGeek    (optional, key-gated)  │                               │
+│  │  MERGE INTO ref.weather_conditions       │                               │
+│  │  MERGE INTO ref.local_events             │                               │
+│  │  env: refresh (requests, pyyaml)         │                               │
+│  └─────────────────────────────────────────┘                               │
+│                                                                             │
+│  ┌─────────────────────────────────────────┐                               │
 │  │  setup_job  (one-time or on-demand)      │                               │
-│  │  8 tasks: setup → backfill →             │                               │
-│  │           start_pipeline →               │                               │
-│  │             create_metric_views →        │                               │
-│  │               create_genie_space ────────┐                              │
-│  │             apply_governance →           │                              │
-│  │               configure_monitoring ──────┤                              │
-│  │           backfill + create_genie_space  │                              │
-│  │           + configure_monitoring ────────┴→ unpause_generator           │
+│  │  10 tasks: setup →                       │                               │
+│  │            initial_weather_refresh ───┐  │                               │
+│  │            (both) → backfill →        │  │                               │
+│  │            start_pipeline →           │  │                               │
+│  │              create_metric_views →    │  │                               │
+│  │                create_genie_space ────────┐                              │
+│  │              apply_governance →       │   │                              │
+│  │                configure_monitoring → │   │                              │
+│  │                  apply_ontos ─────────────┤                              │
+│  │            backfill + create_genie_space  │                              │
+│  │            + apply_ontos ─────────────────┴→ unpause_generator           │
+│  │  envs: generator (faker), refresh (requests, pyyaml)                     │
 │  └─────────────────────────────────────────┘                               │
 │                                                                             │
 │  ┌─────────────────────┐   ┌────────────────────────────────────────────┐  │
@@ -73,9 +90,10 @@
 
 | Name | Type | Purpose | Status |
 |---|---|---|---|
-| `QSR Setup [dev]` | Job (8 tasks) | Full one-time setup: schemas, staging tables, ref seed, backfill, pipeline start, metric views, Genie Space, governance, monitoring, unpause | Not deployed (run `bundle deploy` first) |
+| `QSR Setup [dev]` | Job (10 tasks) | Full one-time setup: schemas, staging tables, ref seed, initial weather/events refresh, backfill, pipeline start, metric views, Genie Space, governance, monitoring, ontos ontology layer, unpause | Not deployed (run `bundle deploy` first) |
 | `QSR Generator Live [dev]` | Job (hourly cron) | Generates previous hour of events across all 5 domains; triggers pipeline | Not deployed |
-| `QSR Destroy [dev]` | Job (on-demand) | Tears down all non-DAB objects: column masks, UC functions, volume, monitors, metric views, ref schema, metrics schema | Not deployed |
+| `Weather & Events Refresh [dev]` | Job (daily cron, 05:00 UTC) | Refreshes `ref.weather_conditions` and `ref.local_events` from Open-Meteo, NOAA NWS alerts, Nager.Date holidays, Ticketmaster, and SeatGeek. Note: the yml includes an explicit name prefix that causes a duplicate `[dev ...]` prefix when DAB also auto-prepends one — remove the explicit prefix from the yml before merge. | Not deployed |
+| `QSR Destroy [dev]` | Job (on-demand) | Tears down all non-DAB objects: ontos configuration, column masks, UC functions, volume, monitors, metric views, ref schema, metrics schema | Not deployed |
 | `QSR MVM Pipeline [dev]` | Lakeflow Declarative Pipeline | Streaming promotion of staging → silver → gold; serverless, triggered mode | Not deployed |
 
 All resources are tagged `project: qsr-synth-data-generator`.
@@ -105,3 +123,15 @@ Unity Catalog ABAC catalog-level `CREATE POLICY` is not supported on tables owne
 
 ### Why `start_pipeline` depends on `backfill`, not `setup`
 The DLT pipeline reads from staging tables. If `start_pipeline` ran immediately after `setup` (before `backfill`), the pipeline would process an empty staging layer and produce zero silver rows. Depending on `backfill` ensures the pipeline has data to process on its first full refresh. `apply_governance` also depends on `start_pipeline` so silver tables exist before column masks and row filters are attached.
+
+### Why `backfill` depends on both `setup` and `initial_weather_refresh`
+The backfill generator reads `ref.weather_conditions` and `ref.local_events` to compute demand multipliers for historical ticks. Running backfill before those tables are populated produces ticks with no weather or event context — effectively generating flat demand curves. Gating `backfill` on `initial_weather_refresh` ensures the ref tables are populated with real forward-looking data (±30 days) before any synthetic history is written.
+
+### Why Ticketmaster and SeatGeek are optional in the refresh notebook
+Both event APIs require API keys stored in Databricks secrets. The refresh notebook wraps each provider's secret fetch in a bare `except` — if the secret scope or key doesn't exist, the provider is silently skipped and the job continues. Holidays from Nager.Date always run unconditionally. This makes the job functional in environments that haven't configured third-party keys, without requiring conditional bundle config.
+
+### Why serverless tasks declare dependencies in `environments:` rather than task-level `libraries:`
+Databricks serverless notebook tasks do not support the `libraries:` field at the task level. The Terraform provider rejects a bundle deploy with `"Libraries field is not supported for serverless task, please specify libraries in environment."` Notably, `databricks bundle validate` (a schema-only check) passes locally without catching this — the error only surfaces at deploy time. The correct pattern: declare an `environments:` block at the job level with a named `spec.dependencies` list, then reference it on each task via `environment_key: <name>`. Both `setup_job.yml` and `refresh_weather_events.yml` use a `refresh` environment spec (`requests`, `pyyaml`) for this reason.
+
+### Why `apply_ontos` depends on `configure_monitoring` and blocks `unpause_generator`
+The ontos ontology layer is applied after all silver tables exist and governance metadata is fully settled (column tags, masks, monitors). Depending on `configure_monitoring` (the last governance step) ensures `apply_ontos` sees a stable, fully-classified table inventory when it registers schemas and semantic links. Blocking `unpause_generator` on `apply_ontos` (alongside `backfill` and `create_genie_space`) ensures the generator is not unpaused until the complete semantic layer — data, governance, Genie, and ontology — is in place. Setting `ontos_enabled: false` skips the ontos steps without altering the task graph structure.

@@ -10,6 +10,12 @@ resources:
             client: "1"
             dependencies:
               - faker>=20.0.0
+        - environment_key: refresh
+          spec:
+            client: "1"
+            dependencies:
+              - requests
+              - pyyaml
       tasks:
         - task_key: setup
           notebook_task:
@@ -18,6 +24,20 @@ resources:
               catalog_name: ${var.catalog_name}
               num_units: ${var.num_units}
               schema_prefix: ${var.schema_prefix}
+
+        - task_key: initial_weather_refresh
+          depends_on:
+            - task_key: setup
+          environment_key: refresh
+          notebook_task:
+            notebook_path: ../src/refresh/refresh_notebook.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
+              schema_prefix: ${var.schema_prefix}
+              ticketmaster_secret_scope: ${var.ticketmaster_secret_scope}
+              ticketmaster_secret_key: "ticketmaster_consumer_key"
+              seatgeek_secret_scope: ${var.seatgeek_secret_scope}
+              seatgeek_secret_key: "seatgeek_client_id"
 
         - task_key: start_pipeline
           depends_on:
@@ -64,9 +84,22 @@ resources:
               catalog_name: ${var.catalog_name}
               schema_prefix: ${var.schema_prefix}
 
+        - task_key: apply_ontos
+          depends_on:
+            - task_key: configure_monitoring
+          environment_key: refresh
+          notebook_task:
+            notebook_path: ../src/setup/apply_ontos.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
+              schema_prefix: ${var.schema_prefix}
+              ontos_app_url: ${var.ontos_app_url}
+              ontos_enabled: ${var.ontos_enabled}
+
         - task_key: backfill
           depends_on:
             - task_key: setup
+            - task_key: initial_weather_refresh
           environment_key: generator
           notebook_task:
             notebook_path: ../src/generator/main.py
@@ -84,7 +117,7 @@ resources:
           depends_on:
             - task_key: backfill
             - task_key: create_genie_space
-            - task_key: configure_monitoring
+            - task_key: apply_ontos
           notebook_task:
             notebook_path: ../src/setup/unpause_generator_notebook.py
             base_parameters:

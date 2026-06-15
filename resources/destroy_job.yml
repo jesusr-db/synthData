@@ -8,6 +8,8 @@ resources:
         - environment_key: default
           spec:
             client: "1"
+            dependencies:
+              - pyyaml
       tasks:
         - task_key: destroy
           environment_key: default
@@ -16,3 +18,5 @@ resources:
             base_parameters:
               catalog_name: ${var.catalog_name}
               schema_prefix: ${var.schema_prefix}
+              ontos_app_url: ${var.ontos_app_url}
+              ontos_enabled: ${var.ontos_enabled}

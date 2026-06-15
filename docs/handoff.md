@@ -48,6 +48,44 @@ RETURN IS_MEMBER(CONCAT('franchisee_', CAST(franchisee_id AS STRING)))
 
 ---
 
+## Weather & Events Integration
+
+### Refresh Job
+`Weather & Events Refresh` runs daily at 05:00 UTC. It fetches:
+- **Open-Meteo** (no key): 30-day historical + 14-day forecast per metro — temperature, precipitation, WMO weather code
+- **NOAA NWS alerts** (no key): active advisory/watch/warning per state, applied to matching forecast dates
+- **Nager.Date** (no key): US federal + state holidays
+- **Ticketmaster** (optional, `secrets/qsr-synth/ticketmaster_consumer_key`): major sports + concerts
+- **SeatGeek** (optional, `secrets/qsr-synth/seatgeek_client_id`): supplemental sports + music events
+
+Results are MERGEd into `ref.weather_conditions` (keyed by metro+date) and `ref.local_events` (keyed by event_id). Missing keys gracefully skip the source and retain prior data.
+
+### Multiplier Config
+`conf/weather_event_multipliers.yml` controls all demand adjustments. Edit it to tune weather sensitivity without code changes.
+
+### Demand Model
+The generator loads a `(metro_area, date) → dict` lookup from the ref tables at startup. Each unit tick looks up its metro+date and applies `demand_multiplier` (overall volume shift) and `channel_shift_delivery` (carryout → delivery share shift). The lookup falls back to multiplier=1.0 if the tables are empty.
+
+### Risk Forecast View
+`metrics.demand_risk_forecast` provides a 14-day forward risk signal:
+- `demand_risk`: combined multiplier < 0.8 (storm, blizzard warning, holiday closure)
+- `capacity_risk`: combined multiplier > 1.4 (playoff game + clear weather, NYE)
+- `normal`: everything else
+
+Genie Space prompt: *"Which units have the highest capacity risk next 7 days?"*
+
+### Adding Event API Keys (One-Time)
+```bash
+# Ticketmaster
+databricks secrets create-scope qsr-synth -p DEFAULT 2>/dev/null || true
+databricks secrets put-secret qsr-synth ticketmaster_consumer_key -p DEFAULT
+
+# SeatGeek
+databricks secrets put-secret qsr-synth seatgeek_client_id -p DEFAULT
+```
+
+---
+
 ## Deployed Resources
 
 | Resource | Type | Notes |

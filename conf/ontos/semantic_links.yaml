@@ -1,0 +1,126 @@
+# conf/ontos/semantic_links.yaml
+# Maps Unity Catalog columns to QSR ontology concepts.
+# entity_id format: catalog.schema.table.column
+# iri: full URI from qsr-ontology.ttl
+
+semantic_links:
+  # ── Order Management ───────────────────────────────────────────────────────
+  - entity_id: "jmrdemo.synth_silver.guest_order.guest_order_id"
+    iri: "http://qsr.synth/ontology#Order"
+    note: "primary key of an Order"
+
+  - entity_id: "jmrdemo.synth_silver.guest_order.unit_id"
+    iri: "http://qsr.synth/ontology#Restaurant"
+    note: "FK to restaurant where order was placed"
+
+  - entity_id: "jmrdemo.synth_silver.guest_order.profile_id"
+    iri: "http://qsr.synth/ontology#Guest"
+    note: "FK to guest profile (null for anonymous)"
+
+  - entity_id: "jmrdemo.synth_silver.guest_order.franchisee_id"
+    iri: "http://qsr.synth/ontology#Franchisee"
+    note: "denormalized franchisee from unit"
+
+  - entity_id: "jmrdemo.synth_silver.order_item.guest_order_id"
+    iri: "http://qsr.synth/ontology#Order"
+    note: "FK back to order (hasOrderItem relation)"
+
+  - entity_id: "jmrdemo.synth_silver.order_item.menu_item_id"
+    iri: "http://qsr.synth/ontology#MenuItem"
+    note: "FK to menu item (includes relation)"
+
+  # ── Guest Experience ───────────────────────────────────────────────────────
+  - entity_id: "jmrdemo.synth_silver.guest_profile.profile_id"
+    iri: "http://qsr.synth/ontology#Guest"
+    note: "primary key of a Guest"
+
+  - entity_id: "jmrdemo.synth_silver.guest_profile.email"
+    iri: "http://qsr.synth/ontology#Guest"
+    note: "PII contact field identifying the Guest"
+
+  - entity_id: "jmrdemo.synth_silver.digital_account.profile_id"
+    iri: "http://qsr.synth/ontology#Guest"
+    note: "FK linking digital account to Guest"
+
+  # ── Loyalty & Marketing ────────────────────────────────────────────────────
+  - entity_id: "jmrdemo.synth_silver.loyalty_transaction.member_id"
+    iri: "http://qsr.synth/ontology#LoyaltyMember"
+    note: "primary key of a LoyaltyMember"
+
+  - entity_id: "jmrdemo.synth_silver.loyalty_transaction.guest_order_id"
+    iri: "http://qsr.synth/ontology#Order"
+    note: "order that triggered the loyalty transaction"
+
+  - entity_id: "jmrdemo.synth_silver.loyalty_cohort_metrics.member_id"
+    iri: "http://qsr.synth/ontology#LoyaltyMember"
+
+  - entity_id: "jmrdemo.synth_silver.reward_redemption.member_id"
+    iri: "http://qsr.synth/ontology#LoyaltyMember"
+
+  # ── Inventory & Supply Chain ───────────────────────────────────────────────
+  - entity_id: "jmrdemo.synth_silver.on_hand_balance.unit_id"
+    iri: "http://qsr.synth/ontology#Restaurant"
+
+  - entity_id: "jmrdemo.synth_silver.on_hand_balance.menu_item_id"
+    iri: "http://qsr.synth/ontology#Ingredient"
+    note: "on-hand balance is tracked at ingredient/item level"
+
+  - entity_id: "jmrdemo.synth_ref.recipe_ingredient.menu_item_id"
+    iri: "http://qsr.synth/ontology#MenuItem"
+
+  - entity_id: "jmrdemo.synth_ref.recipe_ingredient.ingredient_id"
+    iri: "http://qsr.synth/ontology#Ingredient"
+
+  # ── Workforce Operations ───────────────────────────────────────────────────
+  - entity_id: "jmrdemo.synth_silver.shift.unit_id"
+    iri: "http://qsr.synth/ontology#Restaurant"
+
+  - entity_id: "jmrdemo.synth_silver.shift.shift_id"
+    iri: "http://qsr.synth/ontology#Shift"
+    note: "primary key of a Shift"
+
+  - entity_id: "jmrdemo.synth_silver.time_punch.shift_id"
+    iri: "http://qsr.synth/ontology#Shift"
+    note: "FK to shift; each punch belongs to a Shift"
+
+  - entity_id: "jmrdemo.synth_silver.sos_compliance_summary.unit_id"
+    iri: "http://qsr.synth/ontology#Restaurant"
+
+  # ── Restaurant Reference ───────────────────────────────────────────────────
+  - entity_id: "jmrdemo.synth_ref.unit.unit_id"
+    iri: "http://qsr.synth/ontology#Restaurant"
+    note: "primary key of a Restaurant"
+
+  - entity_id: "jmrdemo.synth_ref.unit.franchisee_id"
+    iri: "http://qsr.synth/ontology#Franchisee"
+
+  - entity_id: "jmrdemo.synth_ref.franchisee.franchisee_id"
+    iri: "http://qsr.synth/ontology#Franchisee"
+    note: "primary key of a Franchisee"
+
+  - entity_id: "jmrdemo.synth_ref.menu_item.menu_item_id"
+    iri: "http://qsr.synth/ontology#MenuItem"
+    note: "primary key of a MenuItem"
+
+  - entity_id: "jmrdemo.synth_ref.item_price.menu_item_id"
+    iri: "http://qsr.synth/ontology#MenuItem"
+
+  # ── External Signals ──────────────────────────────────────────────────────
+  - entity_id: "jmrdemo.synth_ref.weather_conditions.weather_condition"
+    iri: "http://qsr.synth/ontology#WeatherCondition"
+    note: "categorical weather state field"
+
+  - entity_id: "jmrdemo.synth_ref.weather_conditions.metro_area"
+    iri: "http://qsr.synth/ontology#Restaurant"
+    note: "metro area groups restaurants for weather lookup"
+
+  - entity_id: "jmrdemo.synth_ref.local_events.event_id"
+    iri: "http://qsr.synth/ontology#LocalEvent"
+    note: "primary key of a LocalEvent"
+
+  - entity_id: "jmrdemo.synth_metrics.demand_risk_forecast.demand_multiplier"
+    iri: "http://qsr.synth/ontology#DemandRiskScore"
+    note: "the composite demand multiplier value"
+
+  - entity_id: "jmrdemo.synth_metrics.demand_risk_forecast.unit_id"
+    iri: "http://qsr.synth/ontology#Restaurant"

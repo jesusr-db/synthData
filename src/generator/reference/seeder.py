@@ -86,10 +86,32 @@ def seed_all(spark, catalog: str, num_units: int = 250, backfill_months: int = 1
     write(build_suppliers_data(), "supplier")
     write(get_menu_items(), "menu_item")
     write(get_recipe_ingredients(), "recipe_ingredient")
-    # Phase 2 stubs — empty tables
-    for stub_table in ("weather_conditions", "local_events"):
-        spark.sql(f"""
-            CREATE TABLE IF NOT EXISTS {catalog}.{schema_prefix}ref.{stub_table}
-            (stub_id BIGINT, placeholder STRING)
-            USING DELTA
-        """)
+    spark.sql(f"""
+        CREATE TABLE IF NOT EXISTS {catalog}.{schema_prefix}ref.weather_conditions (
+            metro_area             STRING,
+            forecast_date          DATE,
+            observation_type       STRING,
+            high_temp_f            DOUBLE,
+            low_temp_f             DOUBLE,
+            precipitation_inches   DOUBLE,
+            weather_condition      STRING,
+            alert_level            STRING,
+            demand_multiplier      DOUBLE,
+            channel_shift_delivery DOUBLE,
+            refreshed_at           TIMESTAMP
+        ) USING DELTA
+    """)
+    spark.sql(f"""
+        CREATE TABLE IF NOT EXISTS {catalog}.{schema_prefix}ref.local_events (
+            metro_area            STRING,
+            event_date            DATE,
+            event_id              STRING,
+            event_name             STRING,
+            event_category        STRING,
+            venue                 STRING,
+            est_attendance        INT,
+            est_demand_multiplier DOUBLE,
+            source                STRING,
+            refreshed_at          TIMESTAMP
+        ) USING DELTA
+    """)

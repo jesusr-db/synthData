@@ -168,4 +168,50 @@ $$
 print("[OK] metrics.staff_hours")
 
 # COMMAND ----------
-print("[INFO] create_metric_views complete — 4 metric views created in metrics schema")
+# 5. Demand Risk Forecast — (unit, date) risk signal for next 14 days based on weather + events
+spark.sql(f"""
+    CREATE OR REPLACE VIEW {c}.{schema_prefix}metrics.demand_risk_forecast AS
+    SELECT
+        u.unit_id,
+        u.metro_area,
+        u.franchisee_id,
+        u.region_id,
+        w.forecast_date,
+        w.observation_type,
+        w.weather_condition,
+        w.alert_level,
+        w.high_temp_f,
+        w.low_temp_f,
+        w.precipitation_inches,
+        w.demand_multiplier                             AS weather_demand_multiplier,
+        w.channel_shift_delivery,
+        e.event_name,
+        e.event_category,
+        e.venue,
+        e.est_attendance,
+        e.est_demand_multiplier                         AS event_demand_multiplier,
+        e.source                                        AS event_source,
+        ROUND(LEAST(2.5, GREATEST(0.3,
+            COALESCE(w.demand_multiplier, 1.0) * COALESCE(e.est_demand_multiplier, 1.0)
+        )), 4)                                          AS combined_demand_multiplier,
+        CASE
+            WHEN LEAST(2.5, GREATEST(0.3,
+                COALESCE(w.demand_multiplier, 1.0) * COALESCE(e.est_demand_multiplier, 1.0)
+            )) < 0.8  THEN 'demand_risk'
+            WHEN LEAST(2.5, GREATEST(0.3,
+                COALESCE(w.demand_multiplier, 1.0) * COALESCE(e.est_demand_multiplier, 1.0)
+            )) > 1.4  THEN 'capacity_risk'
+            ELSE 'normal'
+        END                                             AS risk_level
+    FROM {c}.{schema_prefix}ref.unit u
+    JOIN {c}.{schema_prefix}ref.weather_conditions w
+        ON  u.metro_area   = w.metro_area
+        AND w.forecast_date BETWEEN CURRENT_DATE AND DATE_ADD(CURRENT_DATE, 14)
+    LEFT JOIN {c}.{schema_prefix}ref.local_events e
+        ON  u.metro_area = e.metro_area
+        AND w.forecast_date = e.event_date
+""")
+print(f"[INFO] View ready: {c}.{schema_prefix}metrics.demand_risk_forecast")
+
+# COMMAND ----------
+print("[INFO] create_metric_views complete — 5 metric views created in metrics schema")

@@ -1,0 +1,27 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "event": "Heat Advisory",
+        "severity": "Moderate",
+        "urgency": "Expected",
+        "onset": "2026-05-23T14:00:00-04:00",
+        "expires": "2026-05-23T20:00:00-04:00",
+        "description": "Heat index values up to 100 degrees."
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "event": "Rip Current Statement",
+        "severity": "Unknown",
+        "urgency": "Future",
+        "onset": "2026-05-24T06:00:00-04:00",
+        "expires": "2026-05-24T20:00:00-04:00",
+        "description": "Dangerous rip currents."
+      }
+    }
+  ]
+}

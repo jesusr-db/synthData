@@ -1,0 +1,32 @@
+[
+  {
+    "date": "2026-07-04",
+    "localName": "Independence Day",
+    "name": "Independence Day",
+    "countryCode": "US",
+    "fixed": true,
+    "global": true,
+    "counties": null,
+    "types": ["Public"]
+  },
+  {
+    "date": "2026-11-26",
+    "localName": "Thanksgiving Day",
+    "name": "Thanksgiving Day",
+    "countryCode": "US",
+    "fixed": false,
+    "global": true,
+    "counties": null,
+    "types": ["Public"]
+  },
+  {
+    "date": "2026-06-19",
+    "localName": "Juneteenth National Independence Day",
+    "name": "Juneteenth",
+    "countryCode": "US",
+    "fixed": true,
+    "global": true,
+    "counties": null,
+    "types": ["Public"]
+  }
+]

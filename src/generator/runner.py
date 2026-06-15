@@ -26,10 +26,18 @@ def build_tick_rows(
     registry: EntityRegistry,
     tick_seconds: int = 60,
     base_orders_per_hour: int = 18,
+    weather_event_lookup: dict | None = None,
 ) -> list[dict]:
     """All domain rows for one unit, one tick."""
     unit = registry.unit_by_id(unit_id)
-    ctx = build_context(unit_id, timestamp, unit["unit_volume_bias"], base_orders_per_hour)
+
+    weather_event_data = None
+    if weather_event_lookup:
+        key = (unit.get("metro_area"), timestamp.date())
+        weather_event_data = weather_event_lookup.get(key)
+
+    ctx = build_context(unit_id, timestamp, unit["unit_volume_bias"], base_orders_per_hour,
+                        weather_event_data)
     order_rows = generate_orders_for_tick(ctx, registry, tick_seconds)
     inv_rows = generate_inventory_events(ctx, registry, order_rows)
     loyalty_rows = generate_loyalty_events(ctx, registry, order_rows)
@@ -43,6 +51,7 @@ def backfill_ticks(
     base_orders_per_hour: int = 18,
     start_dt: datetime | None = None,
     end_dt: datetime | None = None,
+    weather_event_lookup: dict | None = None,
 ) -> Iterator[list[dict]]:
     """Yield batches of rows for all units, one tick at a time, from start_dt up to (but not including) end_dt."""
     from dateutil.relativedelta import relativedelta
@@ -55,7 +64,8 @@ def backfill_ticks(
         batch = []
         for unit in registry.all_units():
             uid = unit["unit_id"]
-            batch.extend(build_tick_rows(uid, current, registry, tick_seconds, base_orders_per_hour))
+            batch.extend(build_tick_rows(uid, current, registry, tick_seconds,
+                                         base_orders_per_hour, weather_event_lookup))
             # Daily events on the first tick of each day (10:00 AM, minute==0 guards against sub-hour ticks firing multiple times)
             if current.hour == 10 and current.minute == 0:
                 batch.extend(
