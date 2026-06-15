@@ -166,13 +166,15 @@ except Exception as _e:
     print(f"[WARN] WorkspaceClient init for 0h skipped: {_e}")
     w = None
 
-# 0h-1: serving endpoints
+# 0h-1: serving endpoints (billable) — delete via raw REST. The SDK serving_endpoints
+# wrapper is unreliable in the serverless job env (it broke create/update); raw REST
+# matches the working CLI delete and avoids leaking billable endpoints on teardown.
 for _ep in [_model_endpoint, _fs_endpoint]:
     try:
-        w.serving_endpoints.delete(name=_ep)
+        w.api_client.do("DELETE", f"/api/2.0/serving-endpoints/{_ep}")
         print(f"[INFO] deleted serving endpoint {_ep}")
     except Exception as e:
-        print(f"[WARN] delete serving endpoint {_ep} skipped: {e}")
+        print(f"[WARN] delete serving endpoint {_ep} skipped: {repr(e)}")
 
 # 0h-2: feature spec
 try:
