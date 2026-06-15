@@ -39,11 +39,21 @@ cfg = load_affinity()
 all_item_ids = list(menu.keys())
 
 # --- Build training examples from historical orders (positives = items in order;
-#     negatives = sampled items not in order, scored against the partial basket). ---
-orders = spark.read.table(f"{sp}silver.guest_order").select(
-    "guest_order_id", "profile_id", "unit_id").collect()
+#     negatives = sampled items not in order). The order history is large (millions of
+#     rows), so cap to a sample of orders — plenty for a demo-grade ranker, and it keeps
+#     the driver-side vector build + sklearn fit fast and repeatable. Training on the full
+#     history would produce ~10M rows and run for hours / risk driver OOM. ---
+MAX_TRAIN_ORDERS = 8000
+orders = (spark.read.table(f"{sp}silver.guest_order")
+          .select("guest_order_id", "profile_id", "unit_id")
+          .limit(MAX_TRAIN_ORDERS).collect())
+print(f"[INFO] training on {len(orders)} sampled orders (cap {MAX_TRAIN_ORDERS})")
+# Collect only the order_items for the sampled orders (join keeps the collect small).
+_ids_sdf = spark.createDataFrame([(o["guest_order_id"],) for o in orders], ["guest_order_id"])
 items_by_order = {}
-for r in spark.read.table(f"{sp}silver.order_item").select("guest_order_id", "menu_item_id").collect():
+for r in (spark.read.table(f"{sp}silver.order_item")
+          .select("guest_order_id", "menu_item_id")
+          .join(_ids_sdf, "guest_order_id").collect()):
     items_by_order.setdefault(r["guest_order_id"], []).append(int(r["menu_item_id"]))
 
 # customer + store feature lookups (read feature tables to driver; small dataset)
