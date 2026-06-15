@@ -111,12 +111,22 @@ mlflow.set_registry_uri("databricks-uc")
 fe = FeatureEngineeringClient()
 CATS = ["pizza", "wings", "sides", "salads", "drinks", "desserts"]
 
-# Build a tiny training_set DF carrying the lookup keys so FE records the lookups.
-# Lookup-key column names match the live request fields (profile_id, store_id);
-# FE maps them positionally to the feature-table PKs (profile_id, unit_id).
+# Build the training_set DF. It carries the lookup KEYS (profile_id, store_id) used for the
+# online feature lookup, PLUS the runtime REQUEST columns (member_id, cart_product_ids,
+# viewed_product_id, num_recommendations) as scalar pass-throughs. These pass-through columns
+# are NOT feature lookups and NOT excluded, so FE includes them in the served model's input
+# signature and passes them straight to predict() at inference. Without them, Model Serving
+# strips them as "extra inputs not in the signature" and the recommender never sees the cart.
+# cart_product_ids is a JSON STRING (e.g. "[1,14]") so every request field is a scalar — this
+# avoids array-typed signature inference issues; the pyfunc's _parse_cart handles JSON strings.
 import pandas as pd
 keys_pdf = pd.DataFrame([{"profile_id": int(o["profile_id"]) if o["profile_id"] else -1,
-                          "store_id": int(o["unit_id"]), "label": 1} for o in orders[:500]])
+                          "member_id": int(o["profile_id"]) if o["profile_id"] else -1,
+                          "store_id": int(o["unit_id"]),
+                          "cart_product_ids": "[]",
+                          "viewed_product_id": -1,
+                          "num_recommendations": 5,
+                          "label": 1} for o in orders[:500]])
 print(f"[INFO] FE training_set key sample: {len(keys_pdf)} rows (of {len(orders)} total orders)")
 keys_sdf = spark.createDataFrame(keys_pdf)
 training_set = fe.create_training_set(
@@ -128,6 +138,9 @@ training_set = fe.create_training_set(
                       feature_names=["store_aov", "popularity"]),
     ],
     label="label",
+    # Exclude only the lookup keys from the feature matrix (they drive the lookup, then drop).
+    # member_id/cart_product_ids/viewed_product_id/num_recommendations are kept -> they flow
+    # into the signature and through to predict().
     exclude_columns=["profile_id", "store_id"],
 )
 
@@ -179,13 +192,15 @@ served = ServedEntityInput(entity_name=model_name, entity_version=str(latest),
                            # Route automatic feature lookup to the Lakebase online feature
                            # store (Online Tables are deprecated). Required post-migration.
                            environment_vars={"FEATURE_SOURCE": "DATABRICKS_ONLINE_STORE"})
-# Retry create/update with backoff: right after publish_table, the online feature store
-# binding can transiently reject the served model until the initial sync settles. Retry
-# rather than swallow — and fail LOUDLY if it never succeeds, so the setup job surfaces
-# the problem (a silent success with no endpoint breaks the automation guarantee).
+# Submit the endpoint create/update WITHOUT blocking on readiness. serving_endpoints.create
+# is a non-blocking submit; the endpoint provisions asynchronously and reaches READY a few
+# minutes after this task finishes (during/after unpause_generator). We do NOT poll for READY
+# here — blocking on provisioning is what made earlier runs time out and churn. Idempotent:
+# update_config if the endpoint already exists. Retry only transient submit errors; raise
+# loudly if the submit itself never succeeds so the setup job surfaces a real problem.
 import time as _t
 _ok = False
-for _attempt in range(6):
+for _attempt in range(3):
     try:
         try:
             _exists = w.serving_endpoints.get(name=endpoint) is not None
@@ -193,19 +208,21 @@ for _attempt in range(6):
             _exists = False
         if _exists:
             w.serving_endpoints.update_config(name=endpoint, served_entities=[served])
-            print(f"[INFO] updated serving endpoint {endpoint} (attempt {_attempt + 1})")
+            print(f"[INFO] submitted config update for {endpoint} (attempt {_attempt + 1})")
         else:
             w.serving_endpoints.create(name=endpoint,
                                        config=EndpointCoreConfigInput(served_entities=[served]))
-            print(f"[INFO] created serving endpoint {endpoint} (attempt {_attempt + 1})")
+            print(f"[INFO] submitted create for {endpoint} (attempt {_attempt + 1})")
         _ok = True
         break
     except Exception as e:
-        print(f"[WARN] serving endpoint create/update attempt {_attempt + 1} failed: {e}")
-        _t.sleep(60)
+        print(f"[WARN] serving endpoint submit attempt {_attempt + 1} failed: {e}")
+        _t.sleep(30)
 if not _ok:
-    raise RuntimeError(f"failed to create serving endpoint {endpoint} after retries; "
-                       "check that the online store is AVAILABLE and tables are published")
+    raise RuntimeError(f"failed to submit serving endpoint {endpoint}; check online store "
+                       "AVAILABLE + tables published + model registered")
+print(f"[INFO] {endpoint} submitted; provisions to READY asynchronously (model loads via "
+      "pinned stack + code_paths; auto-lookup via FEATURE_SOURCE online store)")
 
 # Grant CAN_QUERY to the website principal (PAT/SP) so PizzaTel can call the endpoint.
 try:

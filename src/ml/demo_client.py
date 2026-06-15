@@ -17,10 +17,11 @@ def recommend(profile_id, store_id, cart_product_ids, viewed_product_id=None, nu
         name=endpoint,
         dataframe_records=[{
             "profile_id": int(profile_id),
-            "member_id": int(profile_id) if profile_id and int(profile_id) > 0 else None,
+            "member_id": int(profile_id) if profile_id and int(profile_id) > 0 else -1,
             "store_id": int(store_id),
-            "cart_product_ids": [int(c) for c in cart_product_ids],
-            "viewed_product_id": int(viewed_product_id) if viewed_product_id else None,
+            # cart is a JSON string (scalar) so the model signature stays all-scalar.
+            "cart_product_ids": json.dumps([int(c) for c in cart_product_ids]),
+            "viewed_product_id": int(viewed_product_id) if viewed_product_id else -1,
             "num_recommendations": num_recommendations,
         }],
     )
