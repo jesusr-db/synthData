@@ -152,6 +152,66 @@ except Exception as e:
     print(f"[WARN] Drop volume assets skipped: {e}")
 
 # COMMAND ----------
+# Step 0h: Tear down feature store + recommender (billable endpoints first).
+features_schema = f"{schema_prefix}features"
+ffq = lambda t: f"{catalog_name}.{features_schema}.{t}"  # noqa: E731
+_fs_endpoint = f"{schema_prefix}qsr-customer-features"
+_model_endpoint = f"{schema_prefix}qsr-recommender"
+_model_name = ffq("qsr_recommender")
+
+try:
+    from databricks.sdk import WorkspaceClient as _WSC
+    w = _WSC()
+except Exception as _e:
+    print(f"[WARN] WorkspaceClient init for 0h skipped: {_e}")
+    w = None
+
+# 0h-1: serving endpoints
+for _ep in [_model_endpoint, _fs_endpoint]:
+    try:
+        w.serving_endpoints.delete(name=_ep)
+        print(f"[INFO] deleted serving endpoint {_ep}")
+    except Exception as e:
+        print(f"[WARN] delete serving endpoint {_ep} skipped: {e}")
+
+# 0h-2: feature spec
+try:
+    from databricks.feature_engineering import FeatureEngineeringClient
+    _fe = FeatureEngineeringClient()
+    _fe.delete_feature_spec(name=ffq("customer_store_spec"))
+    print("[INFO] deleted feature spec")
+except Exception as e:
+    print(f"[WARN] delete feature spec skipped: {e}")
+
+# 0h-3: online tables
+for _ot in ["customer_features_online", "store_features_online"]:
+    try:
+        w.online_tables.delete(name=ffq(_ot))
+        print(f"[INFO] deleted online table {ffq(_ot)}")
+    except Exception as e:
+        print(f"[WARN] delete online table {ffq(_ot)} skipped: {e}")
+
+# 0h-4: registered model (all versions)
+try:
+    w.registered_models.delete(full_name=_model_name)
+    print(f"[INFO] deleted registered model {_model_name}")
+except Exception as e:
+    print(f"[WARN] delete registered model {_model_name} skipped: {e}")
+
+# 0h-5: feature tables + schema
+for _t in ["customer_features", "store_features"]:
+    try:
+        spark.sql(f"DROP TABLE IF EXISTS {ffq(_t)}")
+        print(f"[INFO] dropped feature table {ffq(_t)}")
+    except Exception as e:
+        print(f"[WARN] drop feature table {ffq(_t)} skipped: {e}")
+try:
+    spark.sql(f"DROP SCHEMA IF EXISTS {catalog_name}.{features_schema} CASCADE")
+    print(f"[INFO] dropped schema {catalog_name}.{features_schema}")
+except Exception as e:
+    print(f"[WARN] drop features schema skipped: {e}")
+
+# COMMAND ----------
 # Step 1: Drop UC Metric Views
 METRIC_VIEWS = [
     "order_performance",
