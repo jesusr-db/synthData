@@ -128,6 +128,64 @@ See `docs/handoff.md` for full deploy + test instructions. Summary:
 
 ---
 
+## Phase 4 — Driver Tracking & Last-Mile Delivery
+
+> Status: Proposed (brainstorm complete — see `research/driver-data-integration_2026-06-15.md`)
+
+Add a **driver entity** (profiles) plus **driver location during delivery** (GPS ping tracks) and blend it into the existing tick-based, deterministic, domain-based model. Goal: a last-mile / delivery-ops narrative (live driver map, ETA accuracy, on-time %, driver utilization) that can also feed the **twins** digital-twin app.
+
+### Architectural fit — validated by the twins app
+
+The twins app (`gitrepos_FY27/twins`) already implements driver tracking on the *same* stateless pattern this generator uses. `twins/datagen/generators/generate_canonical_dataset.py` eagerly emits a delivery's **entire** event sequence in one pass with forward timestamps:
+
+```
+order_created → started → finished → ready → driver_arrived
+   → picked_up (carries route_json polyline)
+   → N × driver_ping  (lat/lon interpolated along route at PING_INTERVAL_SEC)
+   → delivered
+```
+
+There is **no stateful tick simulator** — the "real-time map" is a serving-layer illusion (Lakebase continuous sync + a FastAPI endpoint filtering pings by `ts` where `delivered_at IS NULL`). This is exactly the "eager full-track generation at order-creation time" approach, which keeps synthData's stateless / idempotent (`make_id`) per-tick contract intact. **Twins' geo helpers (`generate_jittered_route`, `random_customer_location`, `haversine_miles`, Manhattan road-factor, land-polygon rejection sampling) can be ported directly** rather than reinvented.
+
+### What the deliveries route between (real entities vs. synthesized)
+
+| Leg | Today in synthData | Action |
+|---|---|---|
+| **Store origin** | ✅ Real — `us_locations.py` units have `lat`/`lon`, `unit_name`, `metro_area` | Use as-is (note: metro centroid + ±0.3° jitter, not literal street address) |
+| **Customer identity** | ✅ Real — orders carry `profile_id` + `member_id` (`orders.py:30-31`) | Ride on existing linkage |
+| **Customer destination** | ❌ Gap — `guest_profile` has only `zip_code`, and it's a raw `Faker.zipcode()` not geo-consistent with the store metro (`guest.py:27`) | **Prerequisite:** persist a stable `lat`/`lon` (+ realistic address, metro-consistent zip) on `guest_profile`, derived deterministically from the home store + seeded offset via `make_id` |
+
+Persisting a stable customer location makes deliveries coherent (real store → real customer → that customer's fixed address) *and* fixes the today-broken random zip as a side benefit.
+
+### Recommended approach — Option A (new `drivers.py` domain, profiles + interpolated GPS pings)
+
+- New `src/generator/domains/drivers.py` — `generate_driver_profiles()` on the daily 10:00 hook (like `generate_shift_events`); `generate_driver_pings_for_delivery()` emits the eager ping track per `own_delivery` order.
+- **Scope driver/GPS to `own_delivery` only** (~16% of channel mix) — leave opaque `3pd_delivery` alone. Realistic *and* controls ping-table volume.
+- New event types `driver_profile` + `driver_location` routed via `DOMAIN_TABLE_MAP` to a **dedicated `staging.driver_events` table** (don't widen the sparse `order_events`).
+- New silver tables in `mvm_pipeline.py`: `driver_profile` (CDC SCD-1, like `guest_profile`), `driver_location` (streaming append, partition by date). Optional gold: `delivery_tracking_summary` (ping count, distance, ETA error, on-time flag), `driver_utilization_daily`.
+- `entity_registry.py` gains a per-unit `driver_pool` + `random_driver_id(unit_id)`, analogous to the guest pool.
+
+### Suggested phasing
+
+- **Phase 4.1** — Customer geo prerequisite (`guest.py` + seeder) + ported `geo.py` + `drivers.py` profiles + `driver_id` on `delivery_order` + eager ping track with a coarse cadence + `driver`/`driver_profile`/`driver_location` plumbing. Shippable, demoable from Delta tables.
+- **Phase 4.2** — Richer interpolation, ETA-error gold table, geofence-arrival events, Genie space / metric view for the delivery-ops narrative.
+- **Phase 4.3 (optional)** — Lakebase sync target (`orders_current_state` / `driver_locations`) + wall-clock live alignment so the existing twins app can point directly at synthData. synthData already syncs to Lakebase (`build_feature_tables.py`), so this reuses an established path.
+- **Deferred** — stateful in-flight deliveries, multi-order batching, real road-network routing (breaks the stateless tick contract; YAGNI for a synthetic demo).
+
+### Top risks
+
+1. **Ping-table row-volume blow-up** — `driver_location` will be the largest table. Mitigate: cap pings/delivery (~8–15), `own_delivery` scope, date partitioning, possibly reduced ping density in backfill vs. live. Decide cadence in the spec, not in code.
+2. **Determinism / staging-routing seam** — put pings in their own staging table; match `orders.py`'s existing "idempotent IDs (`make_id`), plausible unseeded content" convention rather than inventing a new per-ping seeding scheme.
+
+### Key files
+
+- **New:** `src/generator/domains/drivers.py`, `src/generator/geo.py` (ported from twins), `tests/test_drivers.py`.
+- **Edit:** `src/generator/domains/guest.py` (+ stable customer geo), `reference/seeder.py`, `reference/us_locations.py`, `entity_registry.py`, `runner.py`, `domains/orders.py` (`driver_id` on `delivery_order`), `main.py` (`DOMAIN_TABLE_MAP`), `src/pipeline/mvm_pipeline.py`.
+- **DAB / setup:** `resources/destroy_job.yml`, `src/setup/setup_notebook.py` (staging DDL), `src/setup/apply_governance.py` (driver PII masking), `databricks.yml` (`driver_count_per_unit` var).
+- **Tests to extend:** `test_orders.py`, `test_entity_registry.py`, `test_runner.py`, `test_seeder.py`, `test_guest_loyalty_workforce.py`, `test_us_locations.py`.
+
+---
+
 ## Open Issues / Known Gaps
 
 | Issue | Status |
