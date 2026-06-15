@@ -105,3 +105,22 @@ def test_scores_within_unit_interval():
     recs = rank_recommendations(cart=[1], cust=CUST, store=STORE, menu=MENU, cfg=CFG, max_results=10)
     for r in recs:
         assert 0.0 <= r["score"] <= 1.0
+
+
+from src.ml.features_vector import build_feature_vector, FEATURE_NAMES
+
+
+def test_feature_vector_length_matches_names():
+    cust = {"tier": "gold", "aov": 22.0, "affinity_pizza": 0.5, "affinity_drinks": 0.1,
+            "affinity_wings": 0.0, "affinity_sides": 0.0, "affinity_salads": 0.0,
+            "affinity_desserts": 0.0}
+    store = {"popularity": {53: 0.8}, "store_aov": 20.0}
+    x = build_feature_vector(53, "drinks", {"pizza"}, cust, store, CFG, MENU)
+    assert len(x) == len(FEATURE_NAMES)
+    assert all(isinstance(v, float) for v in x)
+
+
+def test_feature_vector_cold_start_no_customer():
+    store = {"popularity": {53: 0.8}, "store_aov": 20.0}
+    x = build_feature_vector(53, "drinks", set(), None, store, CFG, MENU)
+    assert len(x) == len(FEATURE_NAMES)
