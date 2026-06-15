@@ -15,6 +15,10 @@ FEATURE_NAMES = (
 
 
 def build_feature_vector(cand_id, cand_cat, basket_cats, cust, store, cfg, menu):
+    """Build the feature vector for a single candidate item.
+
+    Note: 'menu' is currently unused; it is accepted for signature symmetry with the scoring hook.
+    """
     comp = complement_score(basket_cats, cand_cat, cfg)
     cust_aff = float(cust.get(f"affinity_{cand_cat}", 0.0)) if cust else 0.0
     pop = float((store or {}).get("popularity", {}).get(int(cand_id), 0.0))

@@ -1,4 +1,5 @@
 from src.features.affinity import load_affinity
+from src.ml.features_vector import build_feature_vector, FEATURE_NAMES
 from src.ml.scoring import rank_recommendations
 
 CFG = load_affinity()
@@ -107,9 +108,6 @@ def test_scores_within_unit_interval():
         assert 0.0 <= r["score"] <= 1.0
 
 
-from src.ml.features_vector import build_feature_vector, FEATURE_NAMES
-
-
 def test_feature_vector_length_matches_names():
     cust = {"tier": "gold", "aov": 22.0, "affinity_pizza": 0.5, "affinity_drinks": 0.1,
             "affinity_wings": 0.0, "affinity_sides": 0.0, "affinity_salads": 0.0,
@@ -124,3 +122,22 @@ def test_feature_vector_cold_start_no_customer():
     store = {"popularity": {53: 0.8}, "store_aov": 20.0}
     x = build_feature_vector(53, "drinks", set(), None, store, CFG, MENU)
     assert len(x) == len(FEATURE_NAMES)
+    assert all(isinstance(v, float) for v in x)
+
+
+def test_feature_vector_positions_match_names():
+    cust = {"tier": "gold", "aov": 22.0, "affinity_pizza": 0.5, "affinity_drinks": 0.1,
+            "affinity_wings": 0.0, "affinity_sides": 0.0, "affinity_salads": 0.0,
+            "affinity_desserts": 0.0}
+    store = {"popularity": {53: 0.8}, "store_aov": 20.0}
+    x = build_feature_vector(53, "drinks", {"pizza"}, cust, store, CFG, MENU)
+    idx = {name: i for i, name in enumerate(FEATURE_NAMES)}
+    # the candidate is a drink -> its one-hot must be the only category flag set
+    assert x[idx["is_cat_drinks"]] == 1.0
+    assert x[idx["is_cat_pizza"]] == 0.0
+    # store popularity for item 53 lands in the store_popularity slot
+    assert x[idx["store_popularity"]] == 0.8
+    # gold tier ordinal lands in tier_ord slot (gold=3 per _TIERS)
+    assert x[idx["tier_ord"]] == 3.0
+    # customer drink-affinity lands in cust_cat_affinity slot
+    assert x[idx["cust_cat_affinity"]] == 0.1
