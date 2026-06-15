@@ -159,16 +159,33 @@ served = ServedEntityInput(entity_name=model_name, entity_version=str(latest),
                            # Route automatic feature lookup to the Lakebase online feature
                            # store (Online Tables are deprecated). Required post-migration.
                            environment_vars={"FEATURE_SOURCE": "DATABRICKS_ONLINE_STORE"})
-try:
-    w.serving_endpoints.create(name=endpoint,
-                               config=EndpointCoreConfigInput(served_entities=[served]))
-    print(f"[INFO] created serving endpoint {endpoint}")
-except Exception as e:
-    print(f"[INFO] endpoint exists or create failed, updating config: {e}")
+# Retry create/update with backoff: right after publish_table, the online feature store
+# binding can transiently reject the served model until the initial sync settles. Retry
+# rather than swallow — and fail LOUDLY if it never succeeds, so the setup job surfaces
+# the problem (a silent success with no endpoint breaks the automation guarantee).
+import time as _t
+_ok = False
+for _attempt in range(6):
     try:
-        w.serving_endpoints.update_config(name=endpoint, served_entities=[served])
-    except Exception as e2:
-        print(f"[WARN] update_config also failed: {e2}")
+        try:
+            _exists = w.serving_endpoints.get(name=endpoint) is not None
+        except Exception:
+            _exists = False
+        if _exists:
+            w.serving_endpoints.update_config(name=endpoint, served_entities=[served])
+            print(f"[INFO] updated serving endpoint {endpoint} (attempt {_attempt + 1})")
+        else:
+            w.serving_endpoints.create(name=endpoint,
+                                       config=EndpointCoreConfigInput(served_entities=[served]))
+            print(f"[INFO] created serving endpoint {endpoint} (attempt {_attempt + 1})")
+        _ok = True
+        break
+    except Exception as e:
+        print(f"[WARN] serving endpoint create/update attempt {_attempt + 1} failed: {e}")
+        _t.sleep(60)
+if not _ok:
+    raise RuntimeError(f"failed to create serving endpoint {endpoint} after retries; "
+                       "check that the online store is AVAILABLE and tables are published")
 
 # Grant CAN_QUERY to the website principal (PAT/SP) so PizzaTel can call the endpoint.
 try:
