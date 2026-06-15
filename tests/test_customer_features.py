@@ -26,7 +26,7 @@ AS_OF = datetime(2026, 6, 14)
 def test_computes_one_record_per_customer():
     recs = compute_customer_features(ORDERS, ITEMS, TIERS, MENU, as_of=AS_OF)
     assert len(recs) == 1
-    assert recs[0]["guest_profile_id"] == 10
+    assert recs[0]["profile_id"] == 10
 
 
 def test_rfm_fields():
@@ -56,4 +56,4 @@ def test_skips_orders_with_null_profile():
     orders = ORDERS + [{"profile_id": None, "guest_order_id": 200, "total_amount": 9.0,
                         "placed_at": datetime(2026, 6, 10)}]
     recs = compute_customer_features(orders, ITEMS, TIERS, MENU, as_of=AS_OF)
-    assert {r["guest_profile_id"] for r in recs} == {10}
+    assert {r["profile_id"] for r in recs} == {10}

@@ -90,7 +90,7 @@ store_schema = StructType([
 ])
 store_sdf = spark.createDataFrame(store_pdf, schema=store_schema)
 
-for name, sdf, pk in [("customer_features", cust_sdf, "guest_profile_id"),
+for name, sdf, pk in [("customer_features", cust_sdf, "profile_id"),
                       ("store_features", store_sdf, "unit_id")]:
     table = fq(name)
     try:
@@ -131,7 +131,7 @@ def ensure_online_table(source_table: str, online_name: str, pk: str):
         except Exception as e2:
             print(f"[WARN] online refresh skipped: {e2}")
 
-ensure_online_table(fq("customer_features"), "customer_features_online", "guest_profile_id")
+ensure_online_table(fq("customer_features"), "customer_features_online", "profile_id")
 ensure_online_table(fq("store_features"), "store_features_online", "unit_id")
 
 # --- Feature Serving endpoint (fold #1: real-time customer look) ---

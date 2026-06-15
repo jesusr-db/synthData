@@ -10,7 +10,7 @@ CATEGORIES = ["pizza", "wings", "sides", "salads", "drinks", "desserts"]
 
 
 def compute_customer_features(orders, items, tiers, menu, as_of: datetime):
-    """Return one feature record per non-null guest_profile_id.
+    """Return one feature record per non-null profile_id (== guest_order.profile_id, the order-history join key; NOT the disjoint guest_profile.guest_profile_id).
 
     orders: rows with profile_id, guest_order_id, total_amount, placed_at
     items:  rows with guest_order_id, menu_item_id, quantity, line_net_amount
@@ -49,7 +49,7 @@ def compute_customer_features(orders, items, tiers, menu, as_of: datetime):
     for pid, a in agg.items():
         total_cat = sum(a["cat_spend"].values())
         rec = {
-            "guest_profile_id": int(pid),
+            "profile_id": int(pid),
             "total_orders": a["orders"],
             "monetary_total": round(a["monetary"], 4),
             "aov": round(a["monetary"] / a["orders"], 4) if a["orders"] else 0.0,
