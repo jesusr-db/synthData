@@ -7,8 +7,6 @@ the blended-heuristic score with a learned probability via the `score_fn` hook.
 """
 from src.features.affinity import complement_score, cart_categories, is_suppressed_subcategory
 
-CATEGORIES = ["pizza", "wings", "sides", "salads", "drinks", "desserts"]
-
 
 def _reason(cand_cat, basket_cats, comp, cust):
     if comp >= 0.5 and basket_cats:
@@ -18,10 +16,10 @@ def _reason(cand_cat, basket_cats, comp, cust):
         base = "popular at this store"
     else:
         base = "frequently added"
-    if cust and cust.get("tier") in ("gold", "platinum"):
-        base += f"; {cust['tier']}-tier favorite"
     if cand_cat == "drinks" and basket_cats and "drinks" not in basket_cats:
         base = "complements your order; no drink in cart"
+    if cust and cust.get("tier") in ("gold", "platinum"):
+        base += f"; {cust['tier']}-tier favorite"
     return base
 
 
@@ -59,14 +57,16 @@ def rank_recommendations(cart, cust, store, menu, cfg, max_results=5, score_fn=N
             continue
         if is_suppressed_subcategory(subcat, cart, menu, cfg):
             continue
+        comp = complement_score(basket_cats, cat, cfg)
         score = scorer(cand_id, cat, basket_cats, cust, store, cfg)
+        score = max(0.0, min(1.0, float(score)))
         scored.append({
             "menu_item_id": int(cand_id),
             "item_name": name,
             "category": cat,
             "subcategory": subcat,
-            "score": float(round(score, 6)),
-            "reason": _reason(cat, basket_cats, complement_score(basket_cats, cat, cfg), cust),
+            "score": round(score, 6),
+            "reason": _reason(cat, basket_cats, comp, cust),
         })
 
     scored.sort(key=lambda r: (r["score"], -r["menu_item_id"]), reverse=True)

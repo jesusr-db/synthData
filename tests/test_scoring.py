@@ -65,3 +65,43 @@ def test_every_rec_has_contract_fields():
     for r in recs:
         assert set(r.keys()) >= {"menu_item_id", "item_name", "category", "subcategory", "score", "reason"}
         assert isinstance(r["score"], float)
+
+
+def test_score_fn_hook_is_used_and_clamped():
+    # out-of-range high: clamp to 1.0
+    recs_high = rank_recommendations(
+        cart=[1], cust=CUST, store=STORE, menu=MENU, cfg=CFG,
+        max_results=10, score_fn=lambda *a: 5.0
+    )
+    assert len(recs_high) > 0
+    for r in recs_high:
+        assert r["score"] == 1.0
+    # cart-exclusion still applies
+    assert 1 not in _ids(recs_high)
+    # suppression still applies (soda in cart → other soda suppressed)
+    recs_sup = rank_recommendations(
+        cart=[1, 53], cust=CUST, store=STORE, menu=MENU, cfg=CFG,
+        max_results=10, score_fn=lambda *a: 5.0
+    )
+    assert 54 not in _ids(recs_sup)
+
+    # out-of-range low: clamp to 0.0
+    recs_low = rank_recommendations(
+        cart=[1], cust=CUST, store=STORE, menu=MENU, cfg=CFG,
+        max_results=10, score_fn=lambda *a: -2.0
+    )
+    assert len(recs_low) > 0
+    for r in recs_low:
+        assert r["score"] == 0.0
+
+
+def test_store_none_does_not_crash():
+    recs = rank_recommendations(cart=[1], cust=CUST, store=None, menu=MENU, cfg=CFG, max_results=5)
+    assert isinstance(recs, list)
+    assert len(recs) > 0
+
+
+def test_scores_within_unit_interval():
+    recs = rank_recommendations(cart=[1], cust=CUST, store=STORE, menu=MENU, cfg=CFG, max_results=10)
+    for r in recs:
+        assert 0.0 <= r["score"] <= 1.0
