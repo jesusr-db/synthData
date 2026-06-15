@@ -19,16 +19,15 @@ def load_affinity(path: str | None = None) -> dict:
 
 
 def complement_score(basket_cats: Iterable[str], candidate_cat: str, cfg: dict) -> float:
-    """Mean complement weight of candidate_cat given the categories in the basket.
-
-    Returns 0.0 for an empty basket. Result is clamped to [0, 1].
+    """Maximum complement weight of candidate_cat over the categories in the basket
+    (strongest anchor wins). Returns 0.0 for an empty basket. Clamped to [0,1].
     """
     basket_cats = list(basket_cats)
     if not basket_cats:
         return 0.0
     comp = cfg["complements"]
     weights = [comp.get(bc, {}).get(candidate_cat, 0.0) for bc in basket_cats]
-    score = sum(weights) / len(weights)
+    score = max(weights)
     return max(0.0, min(1.0, score))
 
 
@@ -46,7 +45,7 @@ def cart_categories(cart_item_ids: Iterable[int], menu: dict) -> set[str]:
     return cats
 
 
-def is_suppressed_subcategory(candidate_subcat: str, cart_item_ids, menu: dict, cfg: dict) -> bool:
+def is_suppressed_subcategory(candidate_subcat: str, cart_item_ids: Iterable[int], menu: dict, cfg: dict) -> bool:
     """True if candidate_subcat is in the suppression list AND the cart already
     contains an item of that subcategory."""
     suppress = set(cfg.get("suppress_duplicate_subcategories", []))
