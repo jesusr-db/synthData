@@ -180,49 +180,50 @@ with mlflow.start_run(run_name="qsr_recommender"):
     )
 print(f"[INFO] registered {model_name}")
 
-# --- (Re)create Model Serving endpoint pointing at latest version ---
+# --- (Re)create Model Serving endpoint pointing at the latest version ---
+# Use the raw REST API via api_client.do — the SAME endpoint the working
+# `databricks serving-endpoints create` CLI hits. The SDK serving_endpoints.create/
+# update_config wrapper consistently raised in this serverless job env (while the identical
+# CLI/REST call succeeds), so we bypass the wrapper. POST/PUT are non-blocking: the endpoint
+# provisions to READY asynchronously after this task (during/after unpause_generator).
 from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.serving import (
-    EndpointCoreConfigInput, ServedEntityInput)
+import time as _t
 w = WorkspaceClient()
 latest = max(int(v.version) for v in w.model_versions.list(full_name=model_name))
 endpoint = f"{schema_prefix}qsr-recommender"
-served = ServedEntityInput(entity_name=model_name, entity_version=str(latest),
-                           scale_to_zero_enabled=True, workload_size="Small",
-                           # Route automatic feature lookup to the Lakebase online feature
-                           # store (Online Tables are deprecated). Required post-migration.
-                           environment_vars={"FEATURE_SOURCE": "DATABRICKS_ONLINE_STORE"})
-# Submit the endpoint create/update WITHOUT blocking on readiness. serving_endpoints.create
-# is a non-blocking submit; the endpoint provisions asynchronously and reaches READY a few
-# minutes after this task finishes (during/after unpause_generator). We do NOT poll for READY
-# here — blocking on provisioning is what made earlier runs time out and churn. Idempotent:
-# update_config if the endpoint already exists. Retry only transient submit errors; raise
-# loudly if the submit itself never succeeds so the setup job surfaces a real problem.
-import time as _t
+served_entity = {
+    "entity_name": model_name,
+    "entity_version": str(latest),
+    "scale_to_zero_enabled": True,
+    "workload_size": "Small",
+    # Route automatic feature lookup to the Lakebase online feature store (Online Tables
+    # are deprecated). Required post-migration.
+    "environment_vars": {"FEATURE_SOURCE": "DATABRICKS_ONLINE_STORE"},
+}
+try:
+    w.api_client.do("GET", f"/api/2.0/serving-endpoints/{endpoint}")
+    _exists = True
+except Exception:
+    _exists = False
 _ok = False
 for _attempt in range(3):
     try:
-        try:
-            _exists = w.serving_endpoints.get(name=endpoint) is not None
-        except Exception:
-            _exists = False
         if _exists:
-            w.serving_endpoints.update_config(name=endpoint, served_entities=[served])
+            w.api_client.do("PUT", f"/api/2.0/serving-endpoints/{endpoint}/config",
+                            body={"served_entities": [served_entity]})
             print(f"[INFO] submitted config update for {endpoint} (attempt {_attempt + 1})")
         else:
-            w.serving_endpoints.create(name=endpoint,
-                                       config=EndpointCoreConfigInput(served_entities=[served]))
+            w.api_client.do("POST", "/api/2.0/serving-endpoints",
+                            body={"name": endpoint, "config": {"served_entities": [served_entity]}})
             print(f"[INFO] submitted create for {endpoint} (attempt {_attempt + 1})")
         _ok = True
         break
     except Exception as e:
-        print(f"[WARN] serving endpoint submit attempt {_attempt + 1} failed: {e}")
-        _t.sleep(30)
+        print(f"[WARN] serving endpoint REST submit attempt {_attempt + 1} failed: {repr(e)}")
+        _t.sleep(20)
 if not _ok:
-    raise RuntimeError(f"failed to submit serving endpoint {endpoint}; check online store "
-                       "AVAILABLE + tables published + model registered")
-print(f"[INFO] {endpoint} submitted; provisions to READY asynchronously (model loads via "
-      "pinned stack + code_paths; auto-lookup via FEATURE_SOURCE online store)")
+    raise RuntimeError(f"failed to submit serving endpoint {endpoint} via REST API")
+print(f"[INFO] {endpoint} submitted via REST; provisions to READY asynchronously")
 
 # Grant CAN_QUERY to the website principal (PAT/SP) so PizzaTel can call the endpoint.
 try:
