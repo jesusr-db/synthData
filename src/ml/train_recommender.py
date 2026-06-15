@@ -144,6 +144,11 @@ with mlflow.start_run(run_name="qsr_recommender"):
         training_set=training_set,
         registered_model_name=model_name,
         pip_requirements=["scikit-learn", "pyyaml", "joblib", "mlflow", "pandas"],
+        # Package the project source with the model so the pyfunc's `from src.*` imports
+        # (scoring, features_vector, affinity, recommender_model) resolve in the serving
+        # container. Without this the model loads in the notebook but fails at serving with
+        # "Model server failed to load the model" (ModuleNotFoundError: src).
+        code_paths=[f"{_bundle_root}/src"],
     )
 print(f"[INFO] registered {model_name}")
 
