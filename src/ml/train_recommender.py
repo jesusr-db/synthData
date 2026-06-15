@@ -94,7 +94,9 @@ for o in orders:
 
 print(f"[INFO] training rows: {len(X)} (pos={sum(y)})")
 
+import sklearn
 from sklearn.ensemble import GradientBoostingClassifier
+print(f"[INFO] training sklearn version {sklearn.__version__} (will pin in pip_requirements)")
 clf = GradientBoostingClassifier(random_state=42, n_estimators=100, max_depth=3)
 clf.fit(X, y)
 print(f"[INFO] train accuracy: {clf.score(X, y):.3f}")
@@ -143,7 +145,11 @@ with mlflow.start_run(run_name="qsr_recommender"):
         flavor=mlflow.pyfunc,
         training_set=training_set,
         registered_model_name=model_name,
-        pip_requirements=["scikit-learn", "pyyaml", "joblib", "mlflow", "pandas"],
+        # Pin scikit-learn to the EXACT training version. The pickled GBT references
+        # internal sklearn modules (e.g. sklearn.ensemble._gb_losses) that differ across
+        # versions; an unpinned "scikit-learn" installs latest at serving and fails to load
+        # the pickle ("No module named 'sklearn.ensemble._gb_losses'").
+        pip_requirements=[f"scikit-learn=={sklearn.__version__}", "pyyaml", "joblib", "mlflow", "pandas"],
         # Package the project source with the model so the pyfunc's `from src.*` imports
         # (scoring, features_vector, affinity, recommender_model) resolve in the serving
         # container. Without this the model loads in the notebook but fails at serving with
