@@ -1,6 +1,8 @@
 # API Reference
 
-This project has no HTTP REST API. "API" here covers three surfaces: **job parameters** (how to configure the four Databricks jobs), **metric view interface** (how to query the UC metric views), and **governance functions** (UC scalar and row filter functions callable from SQL).
+This project has no HTTP REST API of its own (aside from the Databricks Model Serving endpoints described below). "API" here covers four surfaces: **job parameters** (how to configure the Databricks jobs), **metric view interface** (how to query the UC metric views), **governance functions** (UC scalar and row filter functions callable from SQL), and the **recommender / feature serving endpoints**.
+
+> This project does not expose application routers — there are no FastAPI/Flask router modules in the source tree. The serving endpoints below are Databricks Model Serving / Feature Serving endpoints, not in-repo routers.
 
 ---
 
@@ -8,12 +10,12 @@ This project has no HTTP REST API. "API" here covers three surfaces: **job param
 
 All parameters are declared as Databricks Asset Bundle variables in `databricks.yml` and passed to notebooks as job widgets.
 
-### Common Parameters (all jobs)
+### Common Parameters (most jobs)
 
 | Parameter | Default | Description |
 |---|---|---|
 | `catalog_name` | `jmrdemo` | Unity Catalog catalog. Must exist before setup runs. |
-| `schema_prefix` | `synth_` | Prefix for all UC schemas: `{prefix}staging`, `{prefix}ref`, `{prefix}silver`, `{prefix}metrics`. Use `""` for no prefix. |
+| `schema_prefix` | `synth_` | Prefix for all UC schemas: `{prefix}staging`, `{prefix}ref`, `{prefix}silver`, `{prefix}metrics`, `{prefix}features`. Use `""` for no prefix. |
 
 ### `setup_job` — task: `setup`
 
@@ -37,8 +39,21 @@ Source: `src/generator/main.py`
 | `live_tick_seconds` | `60` | Sub-tick granularity within each hour. `60` = one sub-tick per minute, matching per-minute historical cadence. |
 | `base_orders_per_unit_per_hour` | `18` | Base order rate per unit; modified by `unit_volume_bias` and demand model. |
 | `start_dt_override` | `""` | ISO datetime to force backfill start (e.g. `2026-05-19T00:00:00`). Empty = auto-detect from staging MAX(event_ts). |
-| `mode` | `live` | `backfill` or `live`. Backfill generates a historical window; live generates the previous hour. |
+| `mode` | `live` / `backfill` | `backfill` (setup task) generates a historical window; `live` (generator task) generates the previous hour. |
 | `schema_prefix` | `synth_` | |
+
+### `setup_job` — task: `initial_weather_refresh` (and `weather_events_refresh_job` — task: `refresh_weather_events`)
+
+Source: `src/refresh/refresh_notebook.py`
+
+| Parameter | Default | Description |
+|---|---|---|
+| `catalog_name` | `jmrdemo` | |
+| `schema_prefix` | `synth_` | |
+| `ticketmaster_secret_scope` | `qsr-synth` | Secret scope holding `ticketmaster_consumer_key`. Skipped silently if missing. |
+| `ticketmaster_secret_key` | `ticketmaster_consumer_key` | Secret key name. |
+| `seatgeek_secret_scope` | `qsr-synth` | Secret scope holding `seatgeek_client_id`. Skipped silently if missing. |
+| `seatgeek_secret_key` | `seatgeek_client_id` | Secret key name. |
 
 ### `setup_job` — task: `start_pipeline`
 
@@ -48,6 +63,25 @@ Source: `src/setup/start_pipeline_notebook.py`
 |---|---|---|
 | `catalog_name` | `jmrdemo` | |
 | `schema_prefix` | `synth_` | |
+
+### `setup_job` — task: `build_feature_tables` (and `feature_refresh_job` — task: `refresh_features`)
+
+Source: `src/setup/build_feature_tables.py` (env: `ml`)
+
+| Parameter | Default | Description |
+|---|---|---|
+| `catalog_name` | `jmrdemo` | |
+| `schema_prefix` | `synth_` | |
+
+### `setup_job` — task: `train_recommender`
+
+Source: `src/ml/train_recommender.py` (env: `ml`)
+
+| Parameter | Default | Description |
+|---|---|---|
+| `catalog_name` | `jmrdemo` | |
+| `schema_prefix` | `synth_` | |
+| `recommender_query_principal` | `""` | SP/principal granted `CAN_QUERY` on the recommender endpoint. Empty = skip the grant. |
 
 ### `setup_job` — task: `create_metric_views`
 
@@ -85,6 +119,17 @@ Source: `src/setup/configure_monitoring.py`
 | `catalog_name` | `jmrdemo` | |
 | `schema_prefix` | `synth_` | |
 
+### `setup_job` — task: `apply_ontos`
+
+Source: `src/setup/apply_ontos.py` (env: `refresh`)
+
+| Parameter | Default | Description |
+|---|---|---|
+| `catalog_name` | `jmrdemo` | |
+| `schema_prefix` | `synth_` | |
+| `ontos_app_url` | `https://ontos-7405605519549535.15.azure.databricksapps.com` | Base URL of the deployed ontos app. |
+| `ontos_enabled` | `true` | `false` → notebook exits immediately, no ontos API calls. |
+
 ### `setup_job` — task: `unpause_generator`
 
 Source: `src/setup/unpause_generator_notebook.py`
@@ -101,6 +146,8 @@ Source: `src/setup/destroy_notebook.py`
 |---|---|---|
 | `catalog_name` | `jmrdemo` | |
 | `schema_prefix` | `synth_` | |
+| `ontos_app_url` | `https://ontos-...` | ontos base URL for teardown of registered schemas/links. |
+| `ontos_enabled` | `true` | `false` → skip ontos teardown. Feature store/recommender teardown (Step 0h) runs unconditionally. |
 
 ---
 
@@ -171,6 +218,10 @@ Source: `silver.time_punch`
 | Unique Employees | `COUNT(DISTINCT employee_id)` |
 | Average Hours per Shift | `SUM(hours_worked) / COUNT(1)` |
 
+### `{catalog}.{prefix}metrics.demand_risk_forecast` (standard view)
+
+Source: `ref.weather_conditions` joined against unit/forecast. Standard view (`SELECT`-able as raw rows), not a metric view. Returns 0 rows until `initial_weather_refresh` populates the weather table. Key columns: `risk_level` (`normal` / `demand_risk`), `demand_multiplier`.
+
 ---
 
 ## Governance Functions (`{catalog}.{prefix}ref`)
@@ -210,3 +261,61 @@ Row filter function. Returns `TRUE` if the calling user is a member of the `fran
 SELECT * FROM jmrdemo.synth_silver.guest_order
 -- Returns only rows where franchisee_id matches caller's group membership
 ```
+
+---
+
+## Serving Endpoints
+
+Two Databricks serving endpoints are provisioned during setup (names track `schema_prefix`; default prefix `synth_`).
+
+### `synth_qsr-customer-features` — Feature Serving
+
+Online lookup for `{prefix}features.customer_features` (key `profile_id`) and `{prefix}features.store_features` (key `unit_id`). Called internally by the recommender pyfunc at inference time; not intended for direct external calls.
+
+### `synth_qsr-recommender` — Model Serving
+
+PizzaTel-facing recommendation endpoint.
+
+**Method / path:** `POST https://<workspace-host>/serving-endpoints/synth_qsr-recommender/invocations`
+**Auth:** `Authorization: Bearer <PAT or OAuth token with CAN_QUERY>`
+
+**Request** — `dataframe_records` envelope, one record per call:
+
+```json
+{
+  "dataframe_records": [
+    {
+      "profile_id": 1234,
+      "member_id": 5678,
+      "store_id": 42,
+      "cart_product_ids": [1, 14],
+      "viewed_product_id": 8,
+      "num_recommendations": 5
+    }
+  ]
+}
+```
+
+All IDs are integers. `cart_product_ids` may be empty. `viewed_product_id` and `member_id` are nullable. `num_recommendations` defaults to 5 (clamped 1–10). Unknown `profile_id` → cold-start (store-popularity fallback, `personalized: false`).
+
+**Response** — `predictions` envelope:
+
+```json
+{
+  "predictions": [
+    {
+      "personalized": true,
+      "recommendations": [
+        {"menu_item_id": 53, "score": 0.94, "item_name": "20oz Coca-Cola", "category": "drinks", "subcategory": "soda", "reason": "..."}
+      ]
+    }
+  ]
+}
+```
+
+`recommendations` excludes any item in `cart_product_ids` (and `viewed_product_id`), is sorted by `score` descending, and has length ≤ `num_recommendations`. The website consumes `predictions[0].recommendations[*].menu_item_id` + `score`.
+
+**Notes:**
+- The serving signature includes FE `RequestSource` columns (scalar only); `cart_product_ids`/`member_id`/`viewed_product_id`/`num_recommendations` are threaded through the feature training set so the basket signal reaches the pyfunc.
+- Endpoint create/update and delete use **raw REST via `api_client.do()`**, not the SDK `serving_endpoints` wrapper (unreliable in serverless). See [gotchas.md](gotchas.md).
+- `CAN_QUERY` is granted only when `recommender_query_principal` is non-empty.

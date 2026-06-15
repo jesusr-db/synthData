@@ -86,32 +86,35 @@
 │  ┌─────────────────────┐   ┌────────────────────────────────────────────┐  │
 │  │  metrics schema      │   │  governance (applied by apply_governance)  │  │
 │  │  4 UC Metric Views   │   │  ├── UC column tags (class.*/financial/sc) │  │
-│  │  (WITH METRICS YAML) │   │  ├── Per-table column masks (SET MASK)     │  │
-│  └─────────────────────┘   │  ├── Row filters  (filter_by_franchisee)   │  │
-│                             │  ├── UC Volume  (ref.assets)               │  │
-│  ┌─────────────────────┐   │  └── Lakehouse Monitors (3 snap + 1 ts)    │  │
-│  │  Genie Space         │   └────────────────────────────────────────────┘  │
-│  │  10 seed questions   │                                                    │
-│  │  all silver+metrics  │   ┌────────────────────────────────────────────┐  │
-│  └─────────────────────┘   │  Feature Store + Recommender               │  │
-│                             │  ├── customer + store UC feature tables    │  │
-│  ┌─────────────────────┐   │  │   (build_feature_tables.py)             │  │
-│  │  Genie Space         │   │  └── recommender model serving endpoint    │  │
-│  │  10 seed questions   │   │      (train_recommender.py → UC + serving) │  │
+│  │  + demand_risk_view  │   │  ├── Per-table column masks (SET MASK)     │  │
+│  │  (WITH METRICS YAML) │   │  ├── Row filters  (filter_by_franchisee)   │  │
+│  └─────────────────────┘   │  ├── UC Volume  (ref.assets)               │  │
+│                             │  └── Lakehouse Monitors (3 staging tables) │  │
+│  ┌─────────────────────┐   └────────────────────────────────────────────┘  │
+│  │  Genie Space         │                                                    │
+│  │  10 seed questions   │   ┌────────────────────────────────────────────┐  │
+│  │  all silver+metrics  │   │  Feature Store + Recommender               │  │
+│  └─────────────────────┘   │  ├── customer + store UC feature tables    │  │
+│                             │  │   (build_feature_tables.py)             │  │
+│  ┌─────────────────────┐   │  ├── feature serving endpoint (online)     │  │
+│  │  ontos ontology      │   │  └── recommender model serving endpoint    │  │
+│  │  schemas + links     │   │      (train_recommender.py → UC + serving) │  │
 │  └─────────────────────┘   └────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Deployed Resources
 
+Live bundle summary (target `dev`, workspace `adb-7405605519549535.15.azuredatabricks.net`, user `jesus.rodriguez@databricks.com`). All resources are currently **deployed**.
+
 | Name | Type | Purpose | Status |
 |---|---|---|---|
-| `QSR Setup [dev]` | Job (12 tasks) | Full one-time setup: schemas, staging tables, ref seed, initial weather/events refresh, backfill, pipeline start, feature tables, recommender training, metric views, Genie Space, governance, monitoring, ontos ontology layer, unpause | Not deployed (run `bundle deploy` first) |
-| `QSR Generator Live [dev]` | Job (hourly cron) | Generates previous hour of events across all 5 domains; triggers pipeline | Not deployed |
-| `Weather & Events Refresh [dev]` | Job (daily cron, 05:00 UTC) | Refreshes `ref.weather_conditions` and `ref.local_events` from Open-Meteo, NOAA NWS alerts, Nager.Date holidays, Ticketmaster, and SeatGeek. Note: the yml includes an explicit name prefix that causes a duplicate `[dev ...]` prefix when DAB also auto-prepends one — remove the explicit prefix from the yml before merge. | Not deployed |
-| `QSR Feature Refresh [dev]` | Job (weekly cron, Sundays 06:00 UTC) | Rebuilds the customer and store UC feature tables by re-running `src/setup/build_feature_tables.py` (the same notebook the setup job runs). Keeps the recommender's lookup features current as new silver data accumulates. Runs on the `ml` environment (`databricks-feature-engineering`, `scikit-learn`, `joblib`, `pandas`, `pyyaml`). | Not deployed |
-| `QSR Destroy [dev]` | Job (on-demand) | Tears down all non-DAB objects: ontos configuration (gated on `ontos_enabled`), feature store + recommender (Step 0h runs unconditionally, best-effort), column masks, UC functions, volume, monitors, metric views, ref schema, metrics schema | Not deployed |
-| `QSR MVM Pipeline [dev]` | Lakeflow Declarative Pipeline | Streaming promotion of staging → silver → gold; serverless, triggered mode | Not deployed |
+| `[dev jesus_rodriguez] QSR Setup [dev]` | Job (12 tasks) — id `460616743434988` | Full one-time setup: schemas, staging tables, ref seed, initial weather/events refresh, backfill, pipeline start, feature tables, recommender training, metric views, Genie Space, governance, monitoring, ontos ontology layer, unpause | Deployed |
+| `[dev jesus_rodriguez] QSR Generator Live [dev]` | Job (hourly cron) — id `768279326010470` | Generates previous hour of events across all 5 domains; triggers pipeline | Deployed |
+| `[dev jesus_rodriguez] [dev jesus.rodriguez@databricks.com] Weather & Events Refresh [dev]` | Job (daily cron, 05:00 UTC) — id `758101952763021` | Refreshes `ref.weather_conditions` and `ref.local_events` from Open-Meteo, NOAA NWS alerts, Nager.Date holidays, Ticketmaster, and SeatGeek. **Note:** the deployed name shows a duplicate `[dev …]` prefix because the yml `name:` includes an explicit prefix on top of DAB's auto-prefix — see [gotchas.md](gotchas.md); remove the explicit prefix from `refresh_weather_events.yml` to clean this up. | Deployed |
+| `[dev jesus_rodriguez] QSR Feature Refresh [dev]` | Job (weekly cron, Sundays 06:00 UTC) — id `976112294331709` | Rebuilds the customer and store UC feature tables by re-running `src/setup/build_feature_tables.py` (the same notebook the setup job runs). Keeps the recommender's lookup features current as new silver data accumulates. Runs on the `ml` environment (`databricks-feature-engineering`, `scikit-learn`, `joblib`, `pandas`, `pyyaml`). | Deployed |
+| `[dev jesus_rodriguez] QSR Destroy [dev]` | Job (on-demand) — id `810986334464403` | Tears down all non-DAB objects: ontos configuration (gated on `ontos_enabled`), feature store + recommender endpoints/online tables (Step 0h runs unconditionally, best-effort), column masks, UC functions, volume, monitors, metric views, ref schema, metrics schema. Intentionally preserves `{prefix}staging`. | Deployed |
+| `[dev jesus_rodriguez] QSR MVM Pipeline [dev]` | Lakeflow Declarative Pipeline — id `dbdf84d9-b3fd-4ea4-82ba-02d26659b13b` | Streaming promotion of staging → silver → gold; serverless, triggered (non-continuous) mode, `channel: PREVIEW` | Deployed |
 
 All resources are tagged `project: qsr-synth-data-generator`.
 
@@ -180,7 +183,7 @@ Schema: `{catalog}.{prefix}features`
 | Table | PK | Content |
 |---|---|---|
 | `customer_features` | `profile_id` | Per-guest aggregates from silver: order frequency, avg spend, category mix, loyalty tier. **Join key is `guest_order.profile_id`** (not `guest_profile.guest_profile_id` — the column names differ). |
-| `store_features` | `unit_id` | Per-store aggregates: avg daily volume, top items, popularity scores, category distribution |
+| `store_features` | `unit_id` | Per-store aggregates: avg daily volume, top items, popularity scores (JSON string), category distribution |
 
 Each table is backed by an Online Table (Delta → low-latency key-value store) created by `build_feature_tables.py`. Both online tables are billable and are torn down in `destroy_notebook.py` Step 0h.
 
@@ -204,6 +207,8 @@ Each table is backed by an Online Table (Delta → low-latency key-value store) 
 ```
 
 All IDs are **integers**. `cart_product_ids` may be empty. `viewed_product_id` and `member_id` are nullable. `num_recommendations` defaults to 5 (clamped 1–10). An unknown `profile_id` triggers cold-start (store-popularity fallback, `personalized: false`).
+
+> **Serving signature note:** the FE `log_model` flow adds `RequestSource` columns to the serving signature, and `cart_product_ids`/`member_id`/`viewed_product_id`/`num_recommendations` are passed through the feature training set as scalar columns so the basket signal reaches the pyfunc. `RequestSource` supports only scalar types — array columns are not natively part of the training set.
 
 **Response** — standard Model Serving `predictions` envelope:
 
@@ -229,6 +234,9 @@ All IDs are **integers**. `cart_product_ids` may be empty. `viewed_product_id` a
 - **Weekly feature refresh**: `feature_refresh_job` re-runs `build_feature_tables.py` every Sunday at 06:00 UTC (`feature_refresh_cron`) to keep lookup features current as new silver accumulates. Model retraining remains a setup-time operation.
 - **No generator changes**: the synthetic data generator is unmodified. Complementarity signals come from `conf/basket_affinity.yml` — a curated category→category complement weight map with a same-subcategory suppression list.
 - **Recommendations light up**: the `synth_qsr-recommender` endpoint returns meaningful results only after the setup job's `build_feature_tables` and `train_recommender` tasks complete. Until then the endpoint may return cold-start (store-popularity) results for all callers.
+
+#### Endpoint creation workaround (serverless)
+The model-serving endpoint create/update path uses **raw REST via `api_client.do()`**, not the SDK `serving_endpoints` wrapper, which is unreliable in serverless notebooks (SDK submit retries were observed to exhaust and fail). `destroy_notebook.py` Step 0h-1 uses the same raw-REST pattern for endpoint deletion. See [gotchas.md](gotchas.md).
 
 ### Why `features_enabled` and `recommender_query_principal` are bundle variables
 `features_enabled` (default `true`) is declared for future gating of the feature store + recommender setup/destroy steps. Currently, `destroy_notebook.py` Step 0h runs unconditionally (all deletes are best-effort, wrapped in try/except), so the variable does not yet skip teardown — unlike `ontos_enabled`, which does gate the ontos teardown block. `recommender_query_principal` (default empty) names the service principal granted `CAN_QUERY` on the recommender endpoint so the PizzaTel app can call it; leaving it empty skips the grant, which is appropriate for workspaces where the consuming principal does not yet exist.

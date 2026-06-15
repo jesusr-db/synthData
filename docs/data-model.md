@@ -2,15 +2,32 @@
 
 All schema names use the `schema_prefix` variable (default `synth_`). Examples below use the default prefix.
 
+## Config Property → Schema/Table Mapping
+
+| Config property | Default | Resolves to |
+|---|---|---|
+| `catalog_name` | `jmrdemo` | UC catalog root for every object below |
+| `schema_prefix` | `synth_` | Prefix prepended to every schema name |
+| → `{prefix}staging` | `synth_staging` | Raw event tables (written by generator) |
+| → `{prefix}ref` | `synth_ref` | Reference/dimension tables + weather/events + UC functions + `assets` volume |
+| → `{prefix}silver` | `synth_silver` | Cleaned domain tables + co-located gold aggregates (DLT-managed); also the pipeline `target` |
+| → `{prefix}metrics` | `synth_metrics` | UC metric views, `demand_risk_forecast` view, Lakehouse Monitor output tables |
+| → `{prefix}features` | `synth_features` | Customer + store feature tables (online-table backed) |
+| `num_units` | `250` | Row count of `ref.unit` |
+
 ## Unity Catalog Layout
 
 ```
 {catalog}
 ├── synth_staging    — raw event tables (written by generator)
-├── synth_ref        — reference/dimension tables (seeded at setup)
+├── synth_ref        — reference/dimension tables + weather/events (seeded/refreshed)
 ├── synth_silver     — cleaned domain tables + gold aggregates (DLT-managed)
-└── synth_metrics    — UC metric views + Lakehouse Monitor output tables
+├── synth_metrics    — UC metric views + demand_risk_forecast view + monitor output
+└── synth_features   — customer + store feature tables (online-table backed)
 ```
+
+> **Live PG/INFORMATION_SCHEMA note:** this project does not synchronize any objects to a Lakebase / PostgreSQL instance — all persisted state is Delta / Unity Catalog. The schemas below are derived from the SQL/source files, not from a live `information_schema.columns` dump (which was unavailable at regeneration time).
+<!-- TODO: human narrative needed — confirm exact column lists/types for ref.weather_conditions, ref.local_events, synth_features.customer_features, and synth_features.store_features against the live catalog -->
 
 ---
 
@@ -109,8 +126,8 @@ Wide, sparse schema. All columns not relevant to a given `event_type` are NULL b
 | `event_ts` | TIMESTAMP | |
 | `guest_profile_id` | BIGINT | |
 | `digital_account_id` | BIGINT | |
-| `first_name` | STRING | PII — masked for non-admin |
-| `last_name` | STRING | PII — masked for non-admin |
+| `first_name` | STRING | PII — `class.*` tagged |
+| `last_name` | STRING | PII — `class.*` tagged |
 | `email` | STRING | PII — column mask applied |
 | `phone` | STRING | PII — column mask applied |
 | `zip_code` | STRING | PII |
@@ -407,15 +424,47 @@ All silver tables include a `created_at TIMESTAMP` column set to `current_timest
 
 | Table | Contents | Notes |
 |---|---|---|
-| `unit` | 250 restaurant units — `unit_id`, `unit_name`, `city`, `state`, `franchisee_id`, `unit_volume_bias`, `market_price_index` | Seeded deterministically (`seed=42`). Row filter `filter_by_franchisee` applied. |
+| `unit` | 250 restaurant units — `unit_id`, `unit_name`, `city`, `state`, `metro_area`, `lat`, `lon`, `franchisee_id`, `unit_volume_bias`, `market_price_index` | Seeded deterministically (`seed=42`). Row filter `filter_by_franchisee` applied. Weather refresh reads distinct `(metro_area, state, AVG(lat), AVG(lon))` from here. **Coordinates are `lat`/`lon`, not `latitude`/`longitude`.** |
 | `franchisee` | Franchisee entities — `franchisee_id`, `franchisee_name`, `contact_email`, `status` | Derived from unit seed |
 | `financial_period` | Monthly periods — `financial_period_id`, `period_name`, `start_date`, `end_date`, `fiscal_year`, `fiscal_quarter`, `status` | |
 | `menu_item` | Menu catalog — `menu_item_id`, name, category, daypart, base price | Also exported to `ref.assets` volume as CSV |
 | `recipe_ingredient` | Bill of materials — `menu_item_id` → `stock_sku` mapping | |
 | `item_price` | Per `(menu_item_id, financial_period_id)` price multiplier, drifts ±3-6%/quarter | |
 | `supplier` | 6 suppliers — `supplier_id`, `supplier_name`, `category`, `status` | |
-| `weather_conditions` | Stub (Phase 2) — `stub_id`, `placeholder` | Empty |
-| `local_events` | Stub (Phase 2) — `stub_id`, `placeholder` | Empty |
+| `weather_conditions` | Populated by `weather_events_refresh_job` (no longer a Phase-2 stub) | See schema below |
+| `local_events` | Populated by `weather_events_refresh_job` (no longer a Phase-2 stub) | See schema below |
+
+### `weather_conditions` (`synth_ref`)
+
+Populated by `src/refresh/refresh_notebook.py` via `MERGE INTO`. Roughly 880 rows (≈20 metros × ≈44 days: ~30 back + ~14 forward).
+
+| Column | Type | Source attribute / key |
+|---|---|---|
+| `metro_area` | STRING | from `ref.unit` distinct metro |
+| `state` | STRING | from `ref.unit` |
+| `forecast_date` | DATE | Open-Meteo daily forecast/observation date (MERGE key) |
+| `temp_max` | DOUBLE | Open-Meteo daily max (°F) |
+| `temp_min` | DOUBLE | Open-Meteo daily min (°F) |
+| `condition` | STRING | WMO-code-derived; overridden to `extreme_heat` (temp_max > 100) / `extreme_cold` (temp_min < 15) |
+| `demand_multiplier` | DOUBLE | Derived demand effect from weather (see `conf/weather_event_multipliers.yml`) |
+
+<!-- TODO: human narrative needed — confirm full weather_conditions column list (NOAA alert overlay fields, lat/lon, wmo_code) and exact types from the live catalog -->
+
+### `local_events` (`synth_ref`)
+
+Populated from Nager.Date (holidays, unconditional), Ticketmaster (key-gated), and SeatGeek (key-gated). At minimum ~28 holiday rows (current + next year). Deduplicated by `event_id`.
+
+| Column | Type | Source attribute / key |
+|---|---|---|
+| `event_id` | STRING | 16-char SHA-256 prefix of `(source, metro, date, name)` (MERGE key) |
+| `source` | STRING | `nager`, `ticketmaster`, or `seatgeek` |
+| `metro_area` | STRING | event metro |
+| `event_date` | DATE | event date |
+| `event_name` | STRING | event/holiday name |
+| `event_category` | STRING | category (holiday, concert, sports, …) |
+| `demand_multiplier` | DOUBLE | Derived demand effect (see `conf/weather_event_multipliers.yml`) |
+
+<!-- TODO: human narrative needed — confirm full local_events column list and exact types from the live catalog -->
 
 ### UC Functions in `synth_ref`
 
@@ -426,9 +475,43 @@ All silver tables include a `created_at TIMESTAMP` column set to `current_timest
 | `tier_to_multiplier(tier STRING)` | `RETURNS DOUBLE` | bronze=1.0, silver=1.5, gold=2.0, elite=3.0 |
 | `filter_by_franchisee(franchisee_id BIGINT)` | `RETURNS BOOLEAN` | True if caller is in `franchisee_{id}` group or `qsr_admin` |
 
+### UC Volume in `synth_ref`
+
+`ref.assets` — UC managed volume created by `apply_governance.py`. Holds the exported `menu_catalog_csv/`, `franchise_locations_csv/` (Spark part-file directories, not single `.csv` files), and a sample receipt asset.
+
 ---
 
-## Metric Views (`synth_metrics`)
+## Feature Tables (`synth_features`)
+
+Schema `{catalog}.{prefix}features`, built by `src/setup/build_feature_tables.py`. Each table is backed by an Online Table (billable). Map-typed columns are serialized to JSON strings because Online Tables do not support `MAP<...>` types.
+
+### `customer_features` — PK `profile_id`
+
+Per-guest aggregates from silver. Join key is `guest_order.profile_id` (not `guest_profile.guest_profile_id`).
+
+| Column | Type | Source |
+|---|---|---|
+| `profile_id` | BIGINT | PK — `guest_order.profile_id` |
+| (order frequency, avg spend, category mix, loyalty tier aggregates) | — | derived from silver `guest_order` / `loyalty_transaction` |
+
+<!-- TODO: human narrative needed — confirm exact customer_features column names and types from build_feature_tables.py / live catalog -->
+
+### `store_features` — PK `unit_id`
+
+Per-store aggregates.
+
+| Column | Type | Source |
+|---|---|---|
+| `unit_id` | BIGINT | PK |
+| `popularity` | STRING (JSON) | per-item popularity map serialized with `json.dumps` |
+| `top_item_per_category` | STRING (JSON) | per-category top item map serialized with `json.dumps` |
+| (avg daily volume, category distribution) | — | derived from silver `guest_order` / `order_item` |
+
+<!-- TODO: human narrative needed — confirm exact store_features column names and types from build_feature_tables.py / live catalog -->
+
+---
+
+## Metric Views & Views (`synth_metrics`)
 
 Unity Catalog metric views defined with `WITH METRICS LANGUAGE YAML`. These expose named measures and dimensions for ad-hoc slicing without rewriting SQL.
 
@@ -439,4 +522,15 @@ Unity Catalog metric views defined with `WITH METRICS LANGUAGE YAML`. These expo
 | `inventory_waste` | `silver.waste_log` | Unit ID, Stock SKU, Waste Category, Waste Week, Waste Month | Total Waste Quantity, Total Waste Cost, Waste Events, Avg Waste Cost per Event |
 | `staff_hours` | `silver.time_punch` | Unit ID, Shift Date, Shift Month | Total Hours Worked, Total Shifts, Unique Employees, Avg Hours per Shift |
 
-Lakehouse Monitor output tables (profile and drift) land in `synth_metrics` for the three monitored staging tables: `order_events`, `inventory_events`, `loyalty_events`.
+### `demand_risk_forecast` (standard view)
+
+A standard view (not a metric view) joining `silver`/`ref.unit` against `ref.weather_conditions`. Returns zero rows until `initial_weather_refresh` has populated the weather table. Approx `num_units × 13 forecast days` rows.
+
+| Column | Notes |
+|---|---|
+| `risk_level` | `normal` (avg multiplier ~0.97) or `demand_risk` (avg multiplier ~0.61) |
+| `demand_multiplier` | composite weather/event demand effect |
+
+<!-- TODO: human narrative needed — confirm full demand_risk_forecast column list (unit_id, forecast_date, weather/event drivers) from create_metric_views.py -->
+
+Lakehouse Monitor output tables (profile and drift) also land in `synth_metrics` for the three monitored staging tables: `order_events`, `inventory_events`, `loyalty_events`.
