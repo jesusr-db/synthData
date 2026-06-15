@@ -723,7 +723,7 @@ store_pdf = pd.DataFrame([{
 } for s in store])
 store_sdf = spark.createDataFrame(store_pdf)
 
-for name, sdf, pk in [("customer_features", cust_sdf, "guest_profile_id"),
+for name, sdf, pk in [("customer_features", cust_sdf, "profile_id"),
                       ("store_features", store_sdf, "unit_id")]:
     table = fq(name)
     try:
@@ -761,7 +761,7 @@ def ensure_online_table(source_table: str, online_name: str, pk: str):
         except Exception as e2:
             print(f"[WARN] online refresh skipped: {e2}")
 
-ensure_online_table(fq("customer_features"), "customer_features_online", "guest_profile_id")
+ensure_online_table(fq("customer_features"), "customer_features_online", "profile_id")
 ensure_online_table(fq("store_features"), "store_features_online", "unit_id")
 
 # --- Feature Serving endpoint (fold #1: real-time customer look) ---
@@ -1356,7 +1356,7 @@ for r in spark.read.table(f"{sp}silver.order_item").select("guest_order_id", "me
     items_by_order.setdefault(r["guest_order_id"], []).append(int(r["menu_item_id"]))
 
 # customer + store feature lookups (read feature tables to driver; small dataset)
-cust_feat = {int(r["guest_profile_id"]): r.asDict()
+cust_feat = {int(r["profile_id"]): r.asDict()
              for r in spark.read.table(fq("customer_features")).collect()}
 store_feat = {int(r["unit_id"]): r.asDict()
               for r in spark.read.table(fq("store_features")).collect()}
@@ -1407,7 +1407,7 @@ CATS = ["pizza", "wings", "sides", "salads", "drinks", "desserts"]
 
 # Build a tiny training_set DF carrying the lookup keys so FE records the lookups.
 # Lookup-key column names match the live request fields (profile_id, store_id);
-# FE maps them positionally to the feature-table PKs (guest_profile_id, unit_id).
+# FE maps them positionally to the feature-table PKs (profile_id, unit_id).
 import pandas as pd
 keys_pdf = pd.DataFrame([{"profile_id": int(o["profile_id"]) if o["profile_id"] else -1,
                           "store_id": int(o["unit_id"]), "label": 1} for o in orders[:500]])
