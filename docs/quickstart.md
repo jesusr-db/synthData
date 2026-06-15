@@ -27,6 +27,9 @@ All configuration lives in `databricks.yml` as bundle variables. Override at dep
 | `seatgeek_secret_scope` | `qsr-synth` | Databricks secret scope containing `seatgeek_client_id`. Omit if not using SeatGeek. |
 | `ontos_app_url` | `https://ontos-7405605519549535.15.azure.databricksapps.com` | Base URL of the deployed ontos Databricks App. |
 | `ontos_enabled` | `true` | Set to `false` to skip ontos configuration steps in setup/destroy. |
+| `features_enabled` | `true` | Set to `false` to skip feature store + recommender setup/destroy steps. |
+| `feature_refresh_cron` | `0 0 6 ? * SUN` | Quartz cron for the weekly feature-table refresh job (default Sundays 06:00 UTC). |
+| `recommender_query_principal` | `""` | Service principal (or user PAT principal) granted `CAN_QUERY` on the recommender endpoint so PizzaTel can call it. Empty = skip the grant. |
 
 ## Deploy Steps
 
@@ -42,19 +45,25 @@ databricks bundle deploy --target dev
 databricks bundle run setup_job --target dev --dry-run
 # or: databricks jobs list | grep "QSR Setup"
 
-# 4. Run the setup job (fully automated, ~15-25 min)
+# 4. Run the setup job (fully automated, ~20-30 min)
 databricks bundle run setup_job --target dev
 
 # Alternatively, run the job by ID:
 databricks jobs run-now <setup_job_id>
 ```
 
-The setup job handles everything in order: catalog check → schemas → staging tables → ref seed → (parallel) initial weather/events refresh → backfill → pipeline start → (parallel) metric views + governance → Genie Space + monitoring → ontos ontology layer → unpause generator.
+The setup job (12 tasks) handles everything in order: catalog check → schemas → staging tables → ref seed → (parallel) initial weather/events refresh → backfill → pipeline start → (parallel after pipeline) feature tables + metric views + governance → recommender training (after feature tables) + Genie Space + monitoring → ontos ontology layer → unpause generator.
 
 If deploying to a workspace without the ontos app, add `--var ontos_enabled=false` to skip the ontology steps:
 
 ```bash
 databricks bundle deploy --target dev --var ontos_enabled=false
+```
+
+If deploying to a workspace where the feature store + recommender are not needed (or the `ml` environment dependencies cannot be installed), add `--var features_enabled=false` to skip the feature-table build and recommender training:
+
+```bash
+databricks bundle deploy --target dev --var features_enabled=false
 ```
 
 ## Common Commands
@@ -72,12 +81,18 @@ databricks bundle run setup_job --target dev
 # Run setup without ontos (e.g. ontos app not deployed in target workspace)
 databricks bundle run setup_job --target dev --var ontos_enabled=false
 
+# Run setup without feature store + recommender
+databricks bundle run setup_job --target dev --var features_enabled=false
+
 # Run just the generator once (backfill mode, custom date range)
 databricks jobs run-now <generator_job_id> \
   --job-parameters '{"mode":"backfill","start_dt_override":"2026-05-01T00:00:00"}'
 
 # Manually trigger a weather/events refresh (e.g. after adding API keys)
 databricks bundle run weather_events_refresh_job --target dev
+
+# Manually trigger a feature-table refresh (rebuilds customer + store features)
+databricks bundle run feature_refresh_job --target dev
 
 # Repair a failed setup_job run (preferred over restarting)
 databricks jobs repair-run --run-id <run_id> --rerun-all-failed-tasks

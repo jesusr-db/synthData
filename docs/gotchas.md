@@ -16,13 +16,16 @@ All bundle variables arrive as strings in notebook widgets (e.g. `num_units` com
 DLT notebooks do not have access to `dbutils.widgets`. Pipeline-level config is injected via `spark.conf.get("pipeline.catalog")` and `spark.conf.get("pipeline.schema_prefix")` — these are declared in `resources/pipeline.yml` under `configuration:`.
 
 **Serverless tasks cannot use task-level `libraries:` — declare dependencies in `environments:` instead.**
-The Databricks Terraform provider rejects any serverless notebook task that includes a `libraries:` field at the task level with: `"Libraries field is not supported for serverless task, please specify libraries in environment."` This error only appears at `bundle deploy` time — `databricks bundle validate` (schema-only) passes without catching it. The fix: add an `environments:` block at the job level with an `environment_key` name and a `spec.dependencies` list; then set `environment_key: <name>` on the task instead of `libraries:`. Both `setup_job.yml` and `refresh_weather_events.yml` declare a `refresh` environment for `requests` and `pyyaml` using this pattern.
+The Databricks Terraform provider rejects any serverless notebook task that includes a `libraries:` field at the task level with: `"Libraries field is not supported for serverless task, please specify libraries in environment."` This error only appears at `bundle deploy` time — `databricks bundle validate` (schema-only) passes without catching it. The fix: add an `environments:` block at the job level with an `environment_key` name and a `spec.dependencies` list; then set `environment_key: <name>` on the task instead of `libraries:`. `setup_job.yml` declares three environments — `generator` (`faker`), `refresh` (`requests`, `pyyaml`), and `ml` (`databricks-feature-engineering`, `scikit-learn`, `joblib`, `pandas`, `pyyaml`) — and `refresh_weather_events.yml` and `feature_refresh_job.yml` declare `refresh` and `ml` respectively using this same pattern.
 
 **DAB auto-prepends `[dev <short_user>]` to all job names — adding an explicit prefix in the yml produces a duplicate.**
 If a yml `name:` field includes `[${bundle.target} ${workspace.current_user.userName}]` (or any explicit prefix), and DAB's `presets` also adds an auto-prefix, the deployed job name will show two `[dev ...]` prefixes. To avoid this, rely solely on DAB's auto-prefix, or suppress it in `databricks.yml` with `presets.name_prefix: ""` and use only the explicit yml prefix.
 
 **`ontos_enabled: false` skips ontos steps in both setup and destroy — set it before deploying if the ontos app is unavailable.**
 Both `apply_ontos.py` (setup) and `destroy_notebook.py` (destroy) check the `ontos_enabled` widget. If the ontos Databricks App is not deployed in the target workspace, set `--var ontos_enabled=false` at deploy time to suppress all ontos API calls. The task graph is unchanged — the `apply_ontos` task still runs, but exits immediately when `ontos_enabled` is `false`. Forgetting this flag in an environment without the ontos app causes `apply_ontos` to fail with a connection error against `ontos_app_url`.
+
+**`features_enabled: false` skips feature store + recommender steps in both setup and destroy.**
+The `features_enabled` variable (default `true`) gates the `build_feature_tables` and `train_recommender` setup tasks and their destroy-side teardown. Set `--var features_enabled=false` at deploy time to provision the core data platform without the feature store or recommender — for example, in a workspace that does not need the PizzaTel recommendation endpoint, or where the `ml` environment dependencies cannot be installed. As with `ontos_enabled`, the gating is inside the notebooks; the task graph structure does not change.
 
 ---
 
@@ -69,13 +72,32 @@ The notebook opens with `spark.sql("SELECT DISTINCT metro_area, state, AVG(lat) 
 `event_rows_by_id` is keyed on `event_id`. The SeatGeek loop only inserts rows where `r["event_id"] not in event_rows_by_id`, so SeatGeek events that share an ID with a Ticketmaster event are silently dropped. Cross-provider deduplication is intentional (to avoid duplicate event rows in `ref.local_events`) but means SeatGeek data for any event already fetched by Ticketmaster will never appear.
 
 **`demand_risk_forecast` view returns zero rows until the first refresh job completes.**
-The view's `CASE` expression joins against `ref.weather_conditions`. Until `initial_weather_refresh` runs during setup and populates that table, the join produces no matches and the view returns an empty result set. This is not a bug — the view "lights up" automatically once the setup job's `initial_weather_refresh` task finishes. If the view is empty after a fresh deploy, check whether the setup job completed all 10 tasks including `initial_weather_refresh`.
+The view's `CASE` expression joins against `ref.weather_conditions`. Until `initial_weather_refresh` runs during setup and populates that table, the join produces no matches and the view returns an empty result set. This is not a bug — the view "lights up" automatically once the setup job's `initial_weather_refresh` task finishes. If the view is empty after a fresh deploy, check whether the setup job completed all 12 tasks including `initial_weather_refresh`.
 
 **WMO weather code → condition mapping overrides for extreme temperatures may mask the raw code.**
 `openmeteo_client.py` maps WMO codes 0–3 to `clear` by default, but overrides to `extreme_heat` when `temp_max > 100°F` or `extreme_cold` when `temp_min < 15°F`. If you observe a `clear`-coded day being stored as `extreme_heat`, this override is intentional — it catches summer heatwaves and winter cold snaps that WMO would otherwise classify as fair weather. Debugging weather condition values requires checking both the raw WMO code and the daily temperature bounds from Open-Meteo.
 
 **`CausalContext.build_context()` silently ignores `weather_event_data=None` — passing `None` is safe.**
 The `weather_event_data` parameter added in Phase 3 defaults to `None` and is guarded by an `if weather_event_data:` check. Any caller (including backfill tasks that predate Phase 3) that omits the parameter or passes `None` gets identical behavior to the pre-Phase-3 baseline. This guard is the reason the 75 existing tests stayed green without modification.
+
+---
+
+## Feature Store / Recommender
+
+**`build_feature_tables.py` runs in two jobs — keep it idempotent.**
+The same notebook (`src/setup/build_feature_tables.py`) is invoked by both the `build_feature_tables` task in `setup_job` and the standalone weekly `feature_refresh_job`. Any change to it affects both the initial build and every weekly refresh. It must be safe to re-run against existing feature tables (overwrite/MERGE, not append-and-duplicate), because the refresh job re-executes it on a schedule with no setup-time guard.
+
+**Feature tables depend on the silver layer — the build task is gated on `start_pipeline`.**
+`build_feature_tables` derives customer- and store-level features from silver tables, so it depends on `start_pipeline` having materialized them. Running the feature build before the pipeline has produced silver rows yields empty or zero-row feature tables. The standalone `feature_refresh_job` assumes the silver layer already exists (setup has completed at least once) — running it against a fresh workspace where setup has not run produces empty features.
+
+**`train_recommender` depends on `build_feature_tables`, not just `start_pipeline`.**
+The training notebook reads the customer and store feature tables to assemble per-candidate feature vectors. Its `depends_on` is `build_feature_tables` (which in turn depends on `start_pipeline`), so the feature tables are guaranteed present before training. Do not re-point this dependency at `start_pipeline` directly — that would race the feature build and train on missing tables.
+
+**Empty `recommender_query_principal` skips the `CAN_QUERY` grant — the endpoint deploys, but PizzaTel cannot call it.**
+`train_recommender` only grants `CAN_QUERY` on the serving endpoint when `recommender_query_principal` is non-empty. With the default empty value the endpoint is created without the grant, so the consuming PizzaTel principal will get a permission error when it calls the endpoint. Set `--var recommender_query_principal=<sp_name>` at deploy time once the consuming principal exists, or grant `CAN_QUERY` manually afterward.
+
+**The `ml` environment must install successfully or `build_feature_tables`/`train_recommender` fail at deploy/run.**
+Both tasks use the `ml` serverless environment (`databricks-feature-engineering`, `scikit-learn`, `joblib`, `pandas`, `pyyaml`). If the workspace cannot resolve these dependencies, the tasks fail. In environments where the recommender is not needed, set `--var features_enabled=false` to skip these tasks rather than fighting the dependency install.
 
 ---
 
@@ -102,6 +124,9 @@ The destroy job does not drop `{prefix}staging`. This allows historical data to 
 
 **Ontos teardown requires the ontos app to be reachable — set `ontos_enabled=false` if it is not.**
 `destroy_notebook.py` receives `ontos_app_url` and `ontos_enabled` as parameters (passed from `destroy_job.yml`). When `ontos_enabled` is `true`, the notebook calls the ontos REST API to remove registered schemas, data products, and semantic links before the schema drops proceed. If the ontos app is unreachable or has already been decommissioned, the destroy job will fail at the ontos teardown step. Run with `--var ontos_enabled=false` (or update the variable default) to skip ontos teardown in those cases.
+
+**Feature store + recommender teardown is gated on `features_enabled`.**
+The destroy side of the feature store and recommender (feature tables and serving endpoint) is only torn down when `features_enabled` is `true`. If setup was run with `features_enabled=false`, run destroy with the same flag so the teardown does not attempt to delete objects that were never created.
 
 ---
 

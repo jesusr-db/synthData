@@ -56,20 +56,31 @@
 │  │  env: refresh (requests, pyyaml)         │                               │
 │  └─────────────────────────────────────────┘                               │
 │                                                                             │
+│  ┌──────────────────────────────────────────────┐                          │
+│  │  feature_refresh_job  (weekly cron, Sun 06:00) │                          │
+│  │  src/setup/build_feature_tables.py             │                          │
+│  │  └── rebuilds customer + store feature tables  │                          │
+│  │  env: ml (databricks-feature-engineering,      │                          │
+│  │       scikit-learn, joblib, pandas, pyyaml)    │                          │
+│  └──────────────────────────────────────────────┘                          │
+│                                                                             │
 │  ┌─────────────────────────────────────────┐                               │
 │  │  setup_job  (one-time or on-demand)      │                               │
-│  │  10 tasks: setup →                       │                               │
+│  │  12 tasks: setup →                       │                               │
 │  │            initial_weather_refresh ───┐  │                               │
 │  │            (both) → backfill →        │  │                               │
 │  │            start_pipeline →           │  │                               │
-│  │              create_metric_views →    │  │                               │
-│  │                create_genie_space ────────┐                              │
-│  │              apply_governance →       │   │                              │
-│  │                configure_monitoring → │   │                              │
-│  │                  apply_ontos ─────────────┤                              │
-│  │            backfill + create_genie_space  │                              │
-│  │            + apply_ontos ─────────────────┴→ unpause_generator           │
-│  │  envs: generator (faker), refresh (requests, pyyaml)                     │
+│  │              build_feature_tables →   │  │                               │
+│  │                train_recommender ─────────┐                             │
+│  │              create_metric_views →    │   │                             │
+│  │                create_genie_space ────────┤                             │
+│  │              apply_governance →       │   │                             │
+│  │                configure_monitoring → │   │                             │
+│  │                  apply_ontos ─────────────┤                             │
+│  │            backfill + create_genie_space  │                             │
+│  │            + apply_ontos + train_recommender ─┴→ unpause_generator       │
+│  │  envs: generator (faker), refresh (requests, pyyaml),                    │
+│  │        ml (databricks-feature-engineering, scikit-learn, …)              │
 │  └─────────────────────────────────────────┘                               │
 │                                                                             │
 │  ┌─────────────────────┐   ┌────────────────────────────────────────────┐  │
@@ -81,8 +92,13 @@
 │  ┌─────────────────────┐   │  └── Lakehouse Monitors (3 snap + 1 ts)    │  │
 │  │  Genie Space         │   └────────────────────────────────────────────┘  │
 │  │  10 seed questions   │                                                    │
-│  │  all silver+metrics  │                                                    │
-│  └─────────────────────┘                                                    │
+│  │  all silver+metrics  │   ┌────────────────────────────────────────────┐  │
+│  └─────────────────────┘   │  Feature Store + Recommender               │  │
+│                             │  ├── customer + store UC feature tables    │  │
+│  ┌─────────────────────┐   │  │   (build_feature_tables.py)             │  │
+│  │  Genie Space         │   │  └── recommender model serving endpoint    │  │
+│  │  10 seed questions   │   │      (train_recommender.py → UC + serving) │  │
+│  └─────────────────────┘   └────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -90,10 +106,11 @@
 
 | Name | Type | Purpose | Status |
 |---|---|---|---|
-| `QSR Setup [dev]` | Job (10 tasks) | Full one-time setup: schemas, staging tables, ref seed, initial weather/events refresh, backfill, pipeline start, metric views, Genie Space, governance, monitoring, ontos ontology layer, unpause | Not deployed (run `bundle deploy` first) |
+| `QSR Setup [dev]` | Job (12 tasks) | Full one-time setup: schemas, staging tables, ref seed, initial weather/events refresh, backfill, pipeline start, feature tables, recommender training, metric views, Genie Space, governance, monitoring, ontos ontology layer, unpause | Not deployed (run `bundle deploy` first) |
 | `QSR Generator Live [dev]` | Job (hourly cron) | Generates previous hour of events across all 5 domains; triggers pipeline | Not deployed |
 | `Weather & Events Refresh [dev]` | Job (daily cron, 05:00 UTC) | Refreshes `ref.weather_conditions` and `ref.local_events` from Open-Meteo, NOAA NWS alerts, Nager.Date holidays, Ticketmaster, and SeatGeek. Note: the yml includes an explicit name prefix that causes a duplicate `[dev ...]` prefix when DAB also auto-prepends one — remove the explicit prefix from the yml before merge. | Not deployed |
-| `QSR Destroy [dev]` | Job (on-demand) | Tears down all non-DAB objects: ontos configuration, column masks, UC functions, volume, monitors, metric views, ref schema, metrics schema | Not deployed |
+| `QSR Feature Refresh [dev]` | Job (weekly cron, Sundays 06:00 UTC) | Rebuilds the customer and store UC feature tables by re-running `src/setup/build_feature_tables.py` (the same notebook the setup job runs). Keeps the recommender's lookup features current as new silver data accumulates. Runs on the `ml` environment (`databricks-feature-engineering`, `scikit-learn`, `joblib`, `pandas`, `pyyaml`). | Not deployed |
+| `QSR Destroy [dev]` | Job (on-demand) | Tears down all non-DAB objects: ontos configuration, feature store + recommender (when `features_enabled`), column masks, UC functions, volume, monitors, metric views, ref schema, metrics schema | Not deployed |
 | `QSR MVM Pipeline [dev]` | Lakeflow Declarative Pipeline | Streaming promotion of staging → silver → gold; serverless, triggered mode | Not deployed |
 
 All resources are tagged `project: qsr-synth-data-generator`.
@@ -131,7 +148,19 @@ The backfill generator reads `ref.weather_conditions` and `ref.local_events` to 
 Both event APIs require API keys stored in Databricks secrets. The refresh notebook wraps each provider's secret fetch in a bare `except` — if the secret scope or key doesn't exist, the provider is silently skipped and the job continues. Holidays from Nager.Date always run unconditionally. This makes the job functional in environments that haven't configured third-party keys, without requiring conditional bundle config.
 
 ### Why serverless tasks declare dependencies in `environments:` rather than task-level `libraries:`
-Databricks serverless notebook tasks do not support the `libraries:` field at the task level. The Terraform provider rejects a bundle deploy with `"Libraries field is not supported for serverless task, please specify libraries in environment."` Notably, `databricks bundle validate` (a schema-only check) passes locally without catching this — the error only surfaces at deploy time. The correct pattern: declare an `environments:` block at the job level with a named `spec.dependencies` list, then reference it on each task via `environment_key: <name>`. Both `setup_job.yml` and `refresh_weather_events.yml` use a `refresh` environment spec (`requests`, `pyyaml`) for this reason.
+Databricks serverless notebook tasks do not support the `libraries:` field at the task level. The Terraform provider rejects a bundle deploy with `"Libraries field is not supported for serverless task, please specify libraries in environment."` Notably, `databricks bundle validate` (a schema-only check) passes locally without catching this — the error only surfaces at deploy time. The correct pattern: declare an `environments:` block at the job level with a named `spec.dependencies` list, then reference it on each task via `environment_key: <name>`. `setup_job.yml` declares three environments — `generator` (`faker`), `refresh` (`requests`, `pyyaml`), and `ml` (`databricks-feature-engineering`, `scikit-learn`, `joblib`, `pandas`, `pyyaml`) — and `refresh_weather_events.yml` and `feature_refresh_job.yml` declare `refresh` and `ml` respectively for the same reason.
 
 ### Why `apply_ontos` depends on `configure_monitoring` and blocks `unpause_generator`
-The ontos ontology layer is applied after all silver tables exist and governance metadata is fully settled (column tags, masks, monitors). Depending on `configure_monitoring` (the last governance step) ensures `apply_ontos` sees a stable, fully-classified table inventory when it registers schemas and semantic links. Blocking `unpause_generator` on `apply_ontos` (alongside `backfill` and `create_genie_space`) ensures the generator is not unpaused until the complete semantic layer — data, governance, Genie, and ontology — is in place. Setting `ontos_enabled: false` skips the ontos steps without altering the task graph structure.
+The ontos ontology layer is applied after all silver tables exist and governance metadata is fully settled (column tags, masks, monitors). Depending on `configure_monitoring` (the last governance step) ensures `apply_ontos` sees a stable, fully-classified table inventory when it registers schemas and semantic links. Blocking `unpause_generator` on `apply_ontos` (alongside `backfill`, `create_genie_space`, and `train_recommender`) ensures the generator is not unpaused until the complete semantic layer — data, governance, Genie, ontology, and recommender — is in place. Setting `ontos_enabled: false` skips the ontos steps without altering the task graph structure.
+
+### Why `build_feature_tables` depends on `start_pipeline` and `train_recommender` depends on `build_feature_tables`
+The feature tables are computed from silver data (customer order history, store-level aggregates), so `build_feature_tables` must run after `start_pipeline` has materialized the silver layer — running it earlier would compute features over empty tables. `train_recommender` reads the customer and store feature tables to build per-candidate feature vectors for training, so it depends on `build_feature_tables`. This is the same dependency chain the feature-serving path relies on at inference time: feature tables first, model second.
+
+### Why `unpause_generator` also depends on `train_recommender`
+The recommender endpoint and its backing feature tables are part of the complete demo surface that should be live before the hourly generator resumes writing new data. Adding `train_recommender` to `unpause_generator`'s `depends_on` (alongside `backfill`, `create_genie_space`, and `apply_ontos`) holds the unpause until the model is registered and the serving endpoint is created, so the first live tick lands against a fully provisioned environment rather than one where the recommender is still training.
+
+### Why a separate weekly `feature_refresh_job`
+The customer and store feature tables drift as new silver data accumulates from the hourly generator. Rather than retraining the recommender on every refresh, `feature_refresh_job` re-runs only `build_feature_tables.py` on a weekly cron (Sundays 06:00 UTC, `feature_refresh_cron`) to keep the lookup features current for online serving. It reuses the exact notebook the setup job runs, so the refresh path and the initial-build path can never diverge. Model retraining remains a setup-time (or manual) operation.
+
+### Why `features_enabled` and `recommender_query_principal` are bundle variables
+`features_enabled` (default `true`) lets an environment skip the feature store + recommender setup/destroy steps without altering the task graph — the same pattern as `ontos_enabled`. `recommender_query_principal` (default empty) names the service principal granted `CAN_QUERY` on the recommender endpoint so the PizzaTel app can call it; leaving it empty skips the grant, which is appropriate for workspaces where the consuming principal does not yet exist.
