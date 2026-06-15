@@ -26,7 +26,7 @@ print(f"[INFO] build_feature_tables: catalog={catalog_name}, schema_prefix={sche
 from datetime import datetime, timezone
 import json
 import pandas as pd
-from pyspark.sql.types import (StructType, StructField, IntegerType, FloatType, StringType)
+from pyspark.sql.types import (StructType, StructField, LongType, DoubleType, StringType)
 from databricks.feature_engineering import FeatureEngineeringClient
 
 from src.features.customer_features import compute_customer_features, CATEGORIES
@@ -79,12 +79,15 @@ store_pdf = pd.DataFrame([{
     "top_item_per_category": json.dumps({k: int(v) for k, v in s["top_item_per_category"].items()}),
 } for s in store])
 store_schema = StructType([
-    StructField("unit_id", IntegerType()),
+    # unit_id is the FE join key — must be LongType (bigint) to match the LONG
+    # store_id lookup key (int -> pandas int64 -> Spark LONG) at train/serve time.
+    # IntegerType here triggers "primary key type INTEGER but lookup key LONG" join errors.
+    StructField("unit_id", LongType()),
     StructField("metro_area", StringType()),
-    StructField("region_id", IntegerType()),
-    StructField("franchisee_id", IntegerType()),
-    StructField("store_orders", IntegerType()),
-    StructField("store_aov", FloatType()),
+    StructField("region_id", LongType()),
+    StructField("franchisee_id", LongType()),
+    StructField("store_orders", LongType()),
+    StructField("store_aov", DoubleType()),
     StructField("popularity", StringType()),
     StructField("top_item_per_category", StringType()),
 ])
