@@ -99,6 +99,18 @@ The training notebook reads the customer and store feature tables to assemble pe
 **The `ml` environment must install successfully or `build_feature_tables`/`train_recommender` fail at deploy/run.**
 Both tasks use the `ml` serverless environment (`databricks-feature-engineering`, `scikit-learn`, `joblib`, `pandas`, `pyyaml`). If the workspace cannot resolve these dependencies, the tasks fail. In environments where the recommender is not needed, set `--var features_enabled=false` to skip these tasks rather than fighting the dependency install.
 
+**Store MAP columns (`popularity`, `top_item_per_category`) are stored as JSON strings in Online Tables.**
+Online Tables do not support `MAP<string, float>` or `MAP<string, string>` column types — writing them causes a schema validation error at sync time. `store_features.py` serializes these maps to JSON strings (`json.dumps(...)`) before writing to the feature table. The recommender pyfunc deserializes them at inference time with `json.loads(...)`. If you add new map-typed columns to the store feature table, apply the same JSON serialization or the Online Table sync will fail.
+
+**Model artifacts are baked into the pickled pyfunc instance — not stored as `artifacts` in `fe.log_model`.**
+`recommender_model.py` stores `scoring_params`, the affinity config, and all lookup state directly on `self` inside the `RecommenderModel` pyfunc class. When MLflow serializes the model via `fe.log_model`, the pickled instance carries everything. There is no `artifacts=` kwarg in the log call. This means the model is self-contained: loading it from the registry does not require any additional file or config lookup. The downside is that the model binary grows slightly (~1–2 MB for the affinities + menu catalog); this is acceptable at demo scale.
+
+**Online Tables and Feature Serving / Model Serving endpoints are billable — they are torn down by `destroy_notebook.py` Step 0h.**
+Unlike Delta tables (which persist until schema drop), Online Tables and serving endpoints incur ongoing costs while active. The destroy notebook's Step 0h explicitly deletes both online tables (`customer_features_online`, `store_features_online`) and the serving endpoints (`synth_qsr-customer-features`, `synth_qsr-recommender`) via SDK calls before any schema drops. If `features_enabled` is `false`, Step 0h is skipped and no teardown is attempted. Running `bundle destroy` alone does NOT delete these objects — always run the destroy job first.
+
+**The recommender endpoint and feature tables "light up" only after `build_feature_tables` + `train_recommender` both complete.**
+Until those two setup tasks finish, the Feature Serving endpoint returns empty lookups and the recommender falls back to cold-start (store-popularity) results for every caller. This is expected for a fresh deploy. The setup job task graph guarantees the ordering: `build_feature_tables` depends on `start_pipeline` (silver data present), `train_recommender` depends on `build_feature_tables` (features present), and `unpause_generator` depends on `train_recommender` (model live before live writes resume). Check task status in the setup job run log if the endpoint appears to return only cold-start results after setup completes.
+
 ---
 
 ## Destroy Job

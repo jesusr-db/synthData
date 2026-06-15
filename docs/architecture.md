@@ -162,5 +162,72 @@ The recommender endpoint and its backing feature tables are part of the complete
 ### Why a separate weekly `feature_refresh_job`
 The customer and store feature tables drift as new silver data accumulates from the hourly generator. Rather than retraining the recommender on every refresh, `feature_refresh_job` re-runs only `build_feature_tables.py` on a weekly cron (Sundays 06:00 UTC, `feature_refresh_cron`) to keep the lookup features current for online serving. It reuses the exact notebook the setup job runs, so the refresh path and the initial-build path can never diverge. Model retraining remains a setup-time (or manual) operation.
 
+### Customer Feature Store & Recommender
+
+#### Endpoints
+
+Two serving endpoints are created during setup (names track `schema_prefix`):
+
+| Endpoint | Type | Purpose |
+|---|---|---|
+| `synth_qsr-customer-features` | Feature Serving | Online lookup for the `{prefix}features.customer_features` and `{prefix}features.store_features` tables; called internally by the recommender pyfunc at inference time |
+| `synth_qsr-recommender` | Model Serving | PizzaTel-facing recommendation endpoint; accepts a cart + profile context and returns ranked items |
+
+#### Feature Schema & Tables
+
+Schema: `{catalog}.{prefix}features`
+
+| Table | PK | Content |
+|---|---|---|
+| `customer_features` | `profile_id` | Per-guest aggregates from silver: order frequency, avg spend, category mix, loyalty tier. **Join key is `guest_order.profile_id`** (not `guest_profile.guest_profile_id` — the column names differ). |
+| `store_features` | `unit_id` | Per-store aggregates: avg daily volume, top items, popularity scores, category distribution |
+
+Each table is backed by an Online Table (Delta → low-latency key-value store) created by `build_feature_tables.py`. Both online tables are billable and are torn down in `destroy_notebook.py` Step 0h.
+
+#### Endpoint Contract (v2)
+
+**Request** — standard Model Serving `dataframe_records` envelope, one record per call:
+
+```json
+{
+  "dataframe_records": [
+    {
+      "profile_id": 1234,
+      "member_id": 5678,
+      "store_id": 42,
+      "cart_product_ids": [1, 14],
+      "viewed_product_id": 8,
+      "num_recommendations": 5
+    }
+  ]
+}
+```
+
+All IDs are **integers**. `cart_product_ids` may be empty. `viewed_product_id` and `member_id` are nullable. `num_recommendations` defaults to 5 (clamped 1–10). An unknown `profile_id` triggers cold-start (store-popularity fallback, `personalized: false`).
+
+**Response** — standard Model Serving `predictions` envelope:
+
+```json
+{
+  "predictions": [
+    {
+      "personalized": true,
+      "recommendations": [
+        {"menu_item_id": 53, "score": 0.94, "item_name": "20oz Coca-Cola", "category": "drinks", "subcategory": "soda", "reason": "complements pizza; no drink in cart"},
+        {"menu_item_id": 61, "score": 0.81, "item_name": "Garlic Dipping Cup", "category": "sides", "subcategory": "dip", "reason": "pairs with wings"}
+      ]
+    }
+  ]
+}
+```
+
+`recommendations` excludes any item in `cart_product_ids` (and `viewed_product_id`), is sorted by `score` descending, and has length ≤ `num_recommendations`. The website consumes `predictions[0].recommendations[*].menu_item_id` + `score`; extra fields are optional to consume.
+
+#### Cadence & Design
+
+- **Weekly feature refresh**: `feature_refresh_job` re-runs `build_feature_tables.py` every Sunday at 06:00 UTC (`feature_refresh_cron`) to keep lookup features current as new silver accumulates. Model retraining remains a setup-time operation.
+- **No generator changes**: the synthetic data generator is unmodified. Complementarity signals come from `conf/basket_affinity.yml` — a curated category→category complement weight map with a same-subcategory suppression list.
+- **Recommendations light up**: the `synth_qsr-recommender` endpoint returns meaningful results only after the setup job's `build_feature_tables` and `train_recommender` tasks complete. Until then the endpoint may return cold-start (store-popularity) results for all callers.
+
 ### Why `features_enabled` and `recommender_query_principal` are bundle variables
 `features_enabled` (default `true`) lets an environment skip the feature store + recommender setup/destroy steps without altering the task graph — the same pattern as `ontos_enabled`. `recommender_query_principal` (default empty) names the service principal granted `CAN_QUERY` on the recommender endpoint so the PizzaTel app can call it; leaving it empty skips the grant, which is appropriate for workspaces where the consuming principal does not yet exist.

@@ -177,6 +177,34 @@ GROUP BY 1 ORDER BY 1;
 -- Returns 0 rows if initial_weather_refresh has not yet run
 ```
 
+```sql
+-- Check feature tables were built (run after setup_job completes)
+SELECT COUNT(*) FROM jmrdemo.synth_features.customer_features;
+-- Expected: one row per guest profile that has placed at least one order
+
+SELECT COUNT(*) FROM jmrdemo.synth_features.store_features;
+-- Expected: one row per unit_id (250 by default)
+
+-- Spot-check a store feature row (popularity stored as JSON string)
+SELECT unit_id, popularity, top_item_per_category
+FROM jmrdemo.synth_features.store_features
+LIMIT 3;
+```
+
+```bash
+# Call the recommender endpoint (requires PAT with CAN_QUERY)
+curl -X POST \
+  https://<workspace-host>/serving-endpoints/synth_qsr-recommender/invocations \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"dataframe_records": [{"profile_id": 1234, "member_id": null, "store_id": 42, "cart_product_ids": [1, 14], "viewed_product_id": null, "num_recommendations": 5}]}'
+# Expected: {"predictions": [{"personalized": true/false, "recommendations": [...]}]}
+# personalized=false means cold-start (profile_id not in customer_features)
+
+# Manually trigger a feature-table refresh (rebuilds customer + store features from current silver)
+databricks bundle run feature_refresh_job --target dev
+```
+
 ## Known Failure Modes
 
 <!-- NARRATIVE -->
