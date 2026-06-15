@@ -1,0 +1,17 @@
+id: 1
+name: weather-events-implementation
+description: >
+  Parallel implementation of Phase 3 weather/events integration.
+  data-engineer implements all Python clients, integration code, tests, metric view, and docs.
+  deploy-engineer wires DAB YAML files. No file overlap — safe to run in parallel.
+agents:
+  - weather-events-data-engineer
+  - weather-events-deploy-engineer
+parallel_groups:
+  - [weather-events-data-engineer, weather-events-deploy-engineer]
+contracts:
+  - weather-events-phase3
+qa_gate:
+  run: pytest tests/ -q
+  expected: all pass (75+ tests)
+  also: databricks bundle validate -p DEFAULT

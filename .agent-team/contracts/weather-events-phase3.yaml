@@ -1,0 +1,126 @@
+name: weather-events-phase3
+producer: weather-events-data-engineer, weather-events-deploy-engineer
+consumer: qa-engineer
+consumed_in_phase: 2
+
+artifacts:
+  # Read-only inputs
+  - path: docs/superpowers/plans/2026-05-22-weather-events-phase3.md
+    access: read-only
+    description: Full 11-task implementation plan
+
+  # Existing files modified by data-engineer
+  - path: src/generator/reference/seeder.py
+    access: read-modify
+    description: Replace stub schemas for weather_conditions + local_events with real schemas
+  - path: src/generator/causal_context.py
+    access: read-modify
+    description: Add optional weather_event_data param to build_context()
+  - path: src/generator/runner.py
+    access: read-modify
+    description: Add optional weather_event_lookup param to build_tick_rows() + backfill_ticks()
+  - path: src/generator/main.py
+    access: read-modify
+    description: Load weather/event lookup from ref tables at startup; pass to backfill_ticks()
+  - path: src/setup/create_metric_views.py
+    access: read-modify
+    description: Add demand_risk_forecast view (unit × weather × events, 14-day forward window)
+  - path: tests/test_seeder.py
+    access: read-modify
+    description: Add test_seed_all_weather_conditions_schema
+  - path: tests/test_causal_context.py
+    access: read-modify
+    description: Add 4 tests for weather_event_data integration
+
+  # Existing files modified by deploy-engineer
+  - path: databricks.yml
+    access: read-modify
+    description: Add weather_refresh_cron, ticketmaster_secret_scope, seatgeek_secret_scope
+  - path: resources/setup_job.yml
+    access: read-modify
+    description: Add initial_weather_refresh task (after setup, before backfill)
+
+outputs:
+  # New files from data-engineer
+  - path: src/refresh/__init__.py
+    description: Empty package marker
+  - path: src/refresh/openmeteo_client.py
+    description: Open-Meteo forecast client; WMO → condition mapping; extreme heat/cold override
+  - path: src/refresh/noaa_client.py
+    description: NOAA NWS alerts client; classifies to advisory/watch/warning; returns [] on error
+  - path: src/refresh/nager_client.py
+    description: Nager.Date US holidays; stable event_id from sha256(source:date:name)[:16]
+  - path: src/refresh/events_client.py
+    description: Ticketmaster + SeatGeek clients; both optional/key-gated; returns [] on error
+  - path: src/refresh/multiplier_engine.py
+    description: Reads conf/weather_event_multipliers.yml; compute_weather_multipliers, compose_multipliers
+  - path: src/refresh/refresh_notebook.py
+    description: Databricks notebook; fetches all sources; MERGEs into ref tables; graceful skip on API errors
+  - path: conf/weather_event_multipliers.yml
+    description: Auditable multiplier config; weather/alert/event multipliers; cap=2.5, floor=0.3
+  - path: tests/fixtures/openmeteo_forecast.json
+    description: Fixture with 3-day forecast including clear/rain/storm WMO codes
+  - path: tests/fixtures/noaa_alerts_ny.json
+    description: Fixture with Heat Advisory (classifiable) + Rip Current Statement (filtered)
+  - path: tests/fixtures/nager_holidays.json
+    description: Fixture with 3 US federal holidays
+  - path: tests/fixtures/ticketmaster_events.json
+    description: Fixture with 2 events (Sports + Music)
+  - path: tests/fixtures/seatgeek_events.json
+    description: Fixture with 1 NBA event
+  - path: tests/test_refresh.py
+    description: 16+ hermetic tests covering all 5 clients + multiplier engine
+
+  # New file from deploy-engineer
+  - path: resources/refresh_weather_events.yml
+    description: DAB job; daily 05:00 UTC cron; runs refresh_notebook.py; requests + pyyaml libraries
+
+schemas:
+  weather_conditions_table:
+    key_columns: [metro_area, forecast_date]
+    columns: [metro_area, forecast_date, observation_type, high_temp_f, low_temp_f,
+              precipitation_inches, weather_condition, alert_level, demand_multiplier,
+              channel_shift_delivery, refreshed_at]
+    merge_key: "(metro_area, forecast_date)"
+
+  local_events_table:
+    key_columns: [event_id]
+    columns: [metro_area, event_date, event_id, event_name, event_category,
+              venue, est_attendance, est_demand_multiplier, source, refreshed_at]
+    merge_key: "event_id"
+
+  demand_risk_forecast_view:
+    description: 14-day forward risk signal per unit
+    risk_levels: [demand_risk, capacity_risk, normal]
+    threshold_demand_risk: "< 0.8"
+    threshold_capacity_risk: "> 1.4"
+
+  setup_job_dag:
+    new_tasks: [initial_weather_refresh]
+    updated_deps:
+      initial_weather_refresh: [setup]
+      backfill: [setup, initial_weather_refresh]
+
+validation:
+  - type: artifact_exists
+    description: All 12 new files exist
+  - type: test_pass
+    description: pytest tests/ -q — all 75+ tests pass, zero failures
+  - type: bundle_validate
+    description: databricks bundle validate -p DEFAULT passes without errors
+  - type: schema_match
+    description: seeder.py creates weather_conditions with metro_area, forecast_date, demand_multiplier columns
+  - type: schema_match
+    description: seeder.py creates local_events with event_id, event_category columns
+  - type: schema_match
+    description: build_context() accepts weather_event_data=None without error
+  - type: schema_match
+    description: backfill_ticks() accepts weather_event_lookup=None without error
+  - type: schema_match
+    description: refresh_weather_events.yml job has daily schedule and requests+pyyaml libraries
+  - type: schema_match
+    description: setup_job.yml has initial_weather_refresh task depending on setup
+  - type: schema_match
+    description: backfill task in setup_job.yml depends on initial_weather_refresh
+  - type: schema_match
+    description: databricks.yml has weather_refresh_cron, ticketmaster_secret_scope, seatgeek_secret_scope

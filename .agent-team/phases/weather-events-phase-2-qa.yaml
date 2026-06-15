@@ -1,0 +1,16 @@
+id: 2
+name: qa
+description: >
+  Validate all Phase 3 changes: pytest suite (75+ tests must all pass, including new tests
+  in test_seeder, test_causal_context, test_refresh), bundle validate, and contract compliance.
+agents:
+  - qa-engineer
+parallel_groups:
+  - [qa-engineer]
+depends_on: [1]
+contracts:
+  - weather-events-phase3
+qa_gate:
+  run: pytest tests/ -q
+  expected: all pass
+  also: databricks bundle validate -p DEFAULT

@@ -1,30 +1,29 @@
 project: qsr-synth-data-generator
 mode: incremental
 feature_description: >
-  Implement Phase 2.5 (generator realism fixes: waste categories, loyalty redeem transactions,
-  item status on cancellations, waste flags, order discounts, guest churn, AOV variance via
-  per-unit price index + catering multiplier + quarterly price drift) and Phase 2 (catalog
-  enrichment: table/column metadata, 5 metric views, Genie Space, setup_job wiring).
-  Each phase runs on its own branch: feat/phase-25-generator-realism and feat/phase-2-catalog-enrichment.
+  Governance Pack — add Unity Catalog governance, data classification, Lakehouse Monitoring,
+  volumes, and row-level security capabilities as new setup_job tasks for the DPZ POC.
+  Spec: docs/superpowers/specs/2026-05-20-governance-pack-design.md
 previous_manifest: .agent-team/team-manifest.previous.yaml
+branch: feat/governance-pack
 
 plan_files:
-  - docs/superpowers/plans/2026-05-18-phase-25-generator-realism.md
-  - docs/superpowers/plans/2026-05-18-phase-2-catalog-enrichment.md
+  - docs/superpowers/specs/2026-05-20-governance-pack-design.md
 
 project_snapshot:
   structure:
     src_dirs:
-      - src/generator/domains/  # order, inventory, loyalty, guest, workforce generators
+      - src/generator/domains/   # order, inventory, loyalty, guest, workforce generators
       - src/generator/reference/ # us_locations, seeder, menu_catalog
-      - src/generator/           # entity_registry, runner, demand_model, entropy, causal_context
-      - src/pipeline/            # mvm_pipeline.py — DLT pipeline (14 silver + 4 gold tables)
-      - src/setup/               # setup_notebook, destroy_notebook, unpause_generator_notebook
+      - src/generator/           # entity_registry, runner, demand_model, entropy, causal_context, id_utils
+      - src/pipeline/            # mvm_pipeline.py — Lakeflow Declarative Pipelines (14 silver + 4 gold)
+      - src/setup/               # setup_notebook, destroy_notebook, start_pipeline, unpause_generator,
+                                 # create_metric_views, create_genie_space
     resources:
-      - resources/setup_job.yml
-      - resources/generator_job.yml
-      - resources/pipeline.yml
-      - resources/destroy_job.yml
+      - resources/setup_job.yml     # 6-task DAG: setup→(backfill‖start_pipeline→create_metric_views→create_genie_space)→unpause_generator
+      - resources/generator_job.yml # Hourly live generator cron job
+      - resources/pipeline.yml      # Lakeflow DLT pipeline resource
+      - resources/destroy_job.yml   # Teardown job
     tests:
       - tests/test_orders.py
       - tests/test_inventory.py
@@ -37,39 +36,51 @@ project_snapshot:
       - tests/test_entropy.py
       - tests/test_us_locations.py
       - tests/test_smoke.py
+      - tests/test_menu_catalog.py
     dab_config:
-      targets: [dev (mode:development), prod (mode:production)]
-      catalog_var: catalog_name
-      pipeline: triggered mode (continuous disabled due to dev target)
+      bundle: qsr-synth-data-generator
+      targets: [dev (mode:development, default), prod (mode:production, profile:aws)]
+      variables: [catalog_name, num_units, backfill_months, live_tick_seconds,
+                  base_orders_per_unit_per_hour, start_dt_override, schema_prefix]
+      schema_prefix_default: "synth_"
   history:
-    original_team: 9-agent 6-phase build team (all phases complete)
-    introspection: null
+    original_team: 9-agent 6-phase full-build team (all phases complete)
+    previous_feature: Phase 2.5 generator realism + Phase 2 catalog enrichment (complete)
     known_issues: []
   architecture:
     data_tables:
-      - jmrdemo.staging.* (14 bronze staging tables)
-      - jmrdemo.silver.* (14 silver + 4 gold via DLT)
-      - jmrdemo.ref.* (unit, menu_item, recipe_ingredient, financial_period, supplier, item_price)
+      - "{catalog}.{prefix}staging.*  (14 streaming staging tables)"
+      - "{catalog}.{prefix}silver.*   (14 silver tables via DLT: guest_profile uses CDC)"
+      - "{catalog}.{prefix}ref.*      (unit, franchisee, menu_item, recipe_ingredient, financial_period, supplier, weather_conditions, local_events)"
+      - "{catalog}.{prefix}metrics.*  (5 metric views + DLT profile/drift tables)"
     endpoints: []
     app_routes: []
     frontend_pages: []
+  pipeline_notes:
+    - "mvm_pipeline.py uses pyspark.pipelines (Lakeflow) NOT dlt"
+    - "guest_profile uses dp.create_streaming_table + dp.create_auto_cdc_flow (SCD Type 1)"
+    - "All other silver tables use @dp.table decorator"
+    - "Gold tables: unit_performance_daily, sos_compliance_summary, loyalty_cohort_metrics, inventory_waste_summary"
+    - "franchisee_id currently NOT in any silver table — needs left-join from ref.unit"
+  governance_notes:
+    - "ref.unit already has franchisee_id — seeder.py seeds this table"
+    - "destroy_notebook.py preserves staging schema by design — only drops ref, metrics schemas + DAB resources"
+    - "No existing UC functions, volumes, tags, masks, or monitors — all governance objects are NEW"
 
 agents:
-  - name: generator-realism-engineer
+  - name: governance-engineer
     type: dynamic
-    registered_agent: .agent-team/agents/generator-realism-engineer.md
+    registered_agent: .agent-team/agents/governance-engineer.md
     model: sonnet
     phase: 1
-    parallel_group: feature-work
-    branch: feat/phase-25-generator-realism
+    parallel_group: implementation
 
-  - name: catalog-enrichment-engineer
+  - name: deploy-engineer
     type: dynamic
-    registered_agent: .agent-team/agents/catalog-enrichment-engineer.md
+    registered_agent: .agent-team/agents/governance-deploy-engineer.md
     model: sonnet
     phase: 1
-    parallel_group: feature-work
-    branch: feat/phase-2-catalog-enrichment
+    parallel_group: implementation
 
   - name: qa-engineer
     type: curated
@@ -80,17 +91,18 @@ agents:
 
 phases:
   - id: 1
-    name: feature-implementation
+    name: governance-implementation
     description: >
-      Parallel implementation of Phase 2.5 (generator realism, 9 TDD tasks, pure Python)
-      and Phase 2 (catalog enrichment, 5 tasks, setup notebooks + DAB deploy).
-      Each engineer works on its own branch.
-    agents: [generator-realism-engineer, catalog-enrichment-engineer]
-    parallel_groups: [[generator-realism-engineer, catalog-enrichment-engineer]]
+      Parallel implementation of governance notebooks and DAB resource changes.
+      governance-engineer writes apply_governance.py, configure_monitoring.py,
+      destroy_notebook.py additions, and mvm_pipeline.py franchisee_id joins.
+      deploy-engineer wires setup_job.yml new tasks and updated unpause_generator deps.
+    agents: [governance-engineer, deploy-engineer]
+    parallel_groups: [[governance-engineer, deploy-engineer]]
 
   - id: 2
     name: qa
-    description: Validate both branches — pytest suite, contract compliance, bundle validate
+    description: Validate all changes — pytest suite (75 tests must still pass), contract compliance, bundle validate
     agents: [qa-engineer]
     parallel_groups: [[qa-engineer]]
     depends_on: [1]
