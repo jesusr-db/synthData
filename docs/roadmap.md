@@ -186,6 +186,92 @@ Persisting a stable customer location makes deliveries coherent (real store → 
 
 ---
 
+## Phase 5 — OTel Live-Order Integration (dual-source order model)
+
+> Status: Proposed (data-grounded analysis complete — based on profiling `jmrdemo.zerobus.otel_*`, 2026-06-15)
+
+Blend the **live order telemetry** emitted by the PizzaTel storefront (the OpenTelemetry demo, already wired to the recommender and exporting to `jmrdemo.zerobus.otel_*` via Zerobus) into synthData's order model, so downstream silver/gold tables consume **synth-generated and real OTel orders interchangeably**. Goal: a real-time "live order overlay" (actual on-time %, prep-time vs SOS, live order map) layered on top of the synthetic baseline — not a bulk data source.
+
+### Source data (profiled)
+
+| Table | Rows | Role |
+|---|---|---|
+| `otel_spans` | ~494K | Order signal lives here (traces) |
+| `otel_logs` | ~372K | App logs, correlated by `trace_id` |
+| `otel_metrics` | ~6.0M | Service RED metrics |
+
+Rolling ~3-day window (Jun 12–15 at time of analysis). Order-relevant services: `checkout`, `cart`, `payment`, `shipping`, and a **custom `order-tracker`** purpose-built to emit QSR-semantic orders.
+
+### The key fit — `order-tracker` already speaks synthData's order language
+
+The `order-tracker received order` span carries: `order.id`, `order.store_id`, `order.channel`, `order.skus` (e.g. `["1 x3"]`), `order.item_count`, `order.total_quantity`, `order.prep_seconds`, `order.location.{state,city,zip}`, and **`sos.target_seconds=1800`** — identical to synthData's 30-min delivery SOS target. Its lifecycle stages map near 1:1 to `status_event`:
+
+| OTel `order-tracker` stage | synthData `status_event` |
+|---|---|
+| Prep → Bake | placed → preparing |
+| QualityCheck | preparing |
+| ReadyForPickup / OutForDelivery | ready |
+| Delivered | fulfilled |
+
+### Span → silver mapping
+
+| Silver table | OTel source span | Fields available | Gaps |
+|---|---|---|---|
+| `guest_order` | `CheckoutService/PlaceOrder` + `order-tracker received order` | order.id, store_id, amount, items.count, channel, shipping.amount, currency, location | no `member_id`, `franchisee_id`/`region_id`, discount/tax split |
+| `order_item` | `order.skus` + `cart AddItem` | menu_item_id, quantity (**SKU space already == `menu_item_id`**) | no per-line price/discount |
+| `status_event` | `order-tracker stage: *` | prior→current state, dwell (span nanos), sos.target | richer vocab than synth (Bake/QualityCheck) |
+| `payment` | `PaymentService/Charge` | app.payment.amount | no tender_type/settlement |
+| `delivery_order` | `shipping` + `order.shipping.tracking.id` | tracking id, prep_seconds | est/actual delivery approximate |
+
+### Two hard constraints (from the data)
+
+1. **Live overlay, not a data source.** Only ~**45 distinct well-formed orders** (real `app.order.amount`); the other ~2,100 `PlaceOrder` spans are **load-generator noise** (`amount=0.0`, `fee-test`/`c2-verify` user IDs). `order-tracker` saw ~39 orders in 3 days. Treat OTel as a continuous tail, never a backfill.
+2. **ID-space mismatch.** OTel uses **UUID** `order.id`/`store_id`/`user.id`; synthData uses **BIGINT `make_id`** keys. No natural join — solved by namespacing via the existing pattern: `make_id("otel", order.id)`, etc.
+
+### Recommended approach — Option A: envelope adapter (single shared staging table)
+
+Normalize OTel into synthData's **existing `order_events` envelope** + a `source` discriminator, so the silver DLT tables (`readStream.table(staging.order_events).filter(event_type=…)`) pick it up with a ~1-line change each.
+
+```
+                    ┌─ synth generator ──→ staging.order_events  (source='synth')
+otel_spans ──→ [OTel order adapter] ──→ staging.order_events  (source='otel')
+  (DLT streaming view: filter order spans,        │
+   reshape to envelope, namespace IDs via make_id)│
+                                                   ▼
+                          existing silver DLT tables (+ new `source` column)
+                                                   ▼
+                                      gold / metrics (union for free; WHERE source='otel')
+```
+
+- New `src/pipeline/otel_order_adapter.py` DLT streaming view: filter order-tracker/checkout/cart/payment spans, reshape to the 5 `event_type`s, parse `order.skus` → `order_item` rows.
+- **ID bridge:** `guest_order_id = make_id("otel", order.id)`, `unit_id = make_id("otel-store", store_id)` (or map `order.location.zip` → nearest `ref.unit`), `profile_id = -1` cold-start (or `make_id("otel-user", user.id)` for a stable external customer). Guarantees no PK collision with synth keys.
+- Add `source STRING` (`'synth'`/`'otel'`) to the envelope DDL + each silver table; carry it through the `select`.
+
+**Rejected alternatives:** parallel silver tables + union views (doubles tables, forces union in every gold query); keep OTel fully separate (loses the one-coherent-order-model benefit).
+
+### Decisions for the spec (don't bake in blind)
+
+1. **Store mapping** — synthesize a small fixed set of "OTel stores" (`unit_id`s seeded in `ref.unit` so franchisee/region joins survive) vs. map OTel zips onto existing units.
+2. **State vocabulary** — collapse Bake/QualityCheck into synth's 4 states vs. enrich `status_event`.
+3. **Load-gen handling** — drop `amount=0.0`/`fee-test*` at the adapter vs. tag `is_synthetic_load=true`.
+
+### Suggested phasing & LOE
+
+- **Phase 5.1 — Envelope adapter (MVP, ~2–3 days):** `otel_order_adapter.py` (spans→envelope, ID bridge, SKU parse), `source` column on envelope DDL (`setup_notebook.py`) + 5 silver tables (`mvm_pipeline.py`), load-gen filter, tests. Shippable: live OTel orders flow through existing silver/gold with a `source` flag.
+- **Phase 5.2 — Coherence & gold (~2 days):** store-mapping + `ref.unit` seeding, state-vocab reconciliation, a `live_order_ops` gold table / metric view (real-time on-time %, prep vs SOS) split by `source`.
+- **Phase 5.3 (optional, ~1–2 days):** join `otel_logs`/`otel_metrics` by `trace_id` for failure/latency context; surface in Genie.
+- **Deferred:** OTel as a bulk historical source (volume too low); real customer-identity resolution (OTel users are anonymous UUIDs).
+
+**Total for a demoable dual-source order model: ~4–5 days (5.1 + 5.2).**
+
+### Key files
+
+- **New:** `src/pipeline/otel_order_adapter.py`, `tests/test_otel_order_adapter.py`.
+- **Edit:** `src/setup/setup_notebook.py` (`source` column on `order_events` DDL; OTel-store seeding in `ref.unit`), `src/pipeline/mvm_pipeline.py` (carry `source` through 5 silver order tables), `databricks.yml` (`otel_catalog`/`otel_schema` vars, e.g. `jmrdemo.zerobus`), `resources/setup_job.yml` (wire adapter into pipeline/refresh graph).
+- **Tests to extend:** `test_runner.py` (no regression on synth path), plus the new adapter test for span-reshape + ID bridge + SKU parse.
+
+---
+
 ## Open Issues / Known Gaps
 
 | Issue | Status |
