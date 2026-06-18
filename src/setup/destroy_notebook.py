@@ -169,7 +169,7 @@ except Exception as _e:
 # 0h-1: serving endpoints (billable) — delete via raw REST. The SDK serving_endpoints
 # wrapper is unreliable in the serverless job env (it broke create/update); raw REST
 # matches the working CLI delete and avoids leaking billable endpoints on teardown.
-for _ep in [_model_endpoint, _fs_endpoint]:
+for _ep in [_model_endpoint, _fs_endpoint, f"{schema_prefix}qsr-commerce-agent", f"{schema_prefix}qsr-agent-llm"]:
     try:
         w.api_client.do("DELETE", f"/api/2.0/serving-endpoints/{_ep}")
         print(f"[INFO] deleted serving endpoint {_ep}")

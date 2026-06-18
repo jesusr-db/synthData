@@ -1,7 +1,7 @@
-# src/setup/build_commerce_agent.py
 # Databricks notebook source
-# Configure the AI-Gateway LLM endpoint, log+register the commerce agent, and (re)create
-# the agent Model Serving endpoint. Mirrors train_recommender.py conventions.
+# src/setup/build_commerce_agent.py — Configure the AI-Gateway LLM endpoint,
+# log+register the commerce agent, and (re)create the agent Model Serving endpoint.
+# Mirrors train_recommender.py conventions.
 import sys
 
 _notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
