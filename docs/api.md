@@ -357,6 +357,8 @@ Conversational ordering agent. PizzaTel-facing; called once per chat turn.
 }
 ```
 
-`propose_order` is present only on turns where the agent proposes an order. The agent never places the order — the web BFF executes `place_order` after the customer approves. Prices are indicative; the BFF is the pricing authority at placement.
+`propose_order` is present only on turns where the agent proposes an order. The agent never places the order — the web BFF executes `place_order` after the customer approves. Prices are indicative; the BFF is the pricing authority at placement. `output[0]` carries an `id` (required by the MLflow ResponsesAgent schema).
 
-**Model access:** the agent reaches its LLM only via the AI-Gateway endpoint `synth_qsr-agent-llm` (usage tracking, rate limits, PII guardrails). Endpoint create/update/delete use raw REST via `api_client.do()`.
+**Model access:** the agent reaches its LLM only through a Databricks foundation-model endpoint with **AI Gateway enabled in place** (usage tracking, rate limits, PII guardrails BLOCK in/out). As deployed the model is `databricks-claude-sonnet-4-5` and the gateway is enabled on that endpoint directly — pay-per-token foundation models are system-managed and cannot be re-served under a separate `synth_qsr-agent-llm` name. The agent serving endpoint create/update/delete use raw REST via `api_client.do()`.
+
+**Deploy notes (v1, 2026-06-18):** Live tools are `search_menu`, `get_recommendations` (calls `synth_qsr-recommender`), `get_customer_context` (calls `synth_qsr-customer-features`), and `propose_order` (priced from `menu_item.base_price`). `get_order_history` and `get_occasion_context` return empty pending a v2 data path. In-serving MLflow tracing is currently a no-op, so `mlflow_trace_id` returns the sentinel `MLFLOW_NO_OP_SPAN_TRACE_ID` (trace-stitch deferred).
