@@ -37,6 +37,23 @@ def test_to_openai_messages_leaves_plain_assistant_untouched():
     assert to_openai_messages(convo) == convo
 
 
+def test_to_openai_messages_strips_responses_normalized_extra_keys():
+    # ResponsesAgent injects extra fields (status/id/type) on normalized input items;
+    # the chat-completions API rejects them ("Extra inputs are not permitted").
+    convo = [
+        {"role": "user", "content": "hi", "status": "completed", "type": "message", "id": "a"},
+        {"role": "assistant", "content": "hello", "status": "completed", "id": "b"},
+    ]
+    out = to_openai_messages(convo)
+    assert out[0] == {"role": "user", "content": "hi"}
+    assert out[1] == {"role": "assistant", "content": "hello"}
+
+
+def test_to_openai_messages_flattens_list_content():
+    convo = [{"role": "user", "content": [{"type": "input_text", "text": "two pizzas"}]}]
+    assert to_openai_messages(convo) == [{"role": "user", "content": "two pizzas"}]
+
+
 def test_from_openai_response_dict_with_tool_calls():
     resp = {"choices": [{"message": {
         "content": None,

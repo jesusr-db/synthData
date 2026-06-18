@@ -24,18 +24,35 @@ import json
 
 # --- I-1: internal <-> OpenAI wire-format translation (pure, unit-tested) ---
 
+def _content_to_text(content):
+    """Normalize a message content to a plain string. ResponsesAgent input items may
+    arrive with list-of-parts content (e.g. [{"type":"input_text","text":"..."}]); the
+    chat-completions API wants a string for our purposes."""
+    if isinstance(content, list):
+        parts = []
+        for p in content:
+            if isinstance(p, dict):
+                parts.append(p.get("text") or p.get("content") or "")
+            else:
+                parts.append(str(p))
+        return "".join(parts)
+    return content if content is not None else ""
+
+
 def to_openai_messages(convo):
     """Translate the loop's internal conversation into OpenAI chat-completions wire format.
 
-    Only assistant messages carrying tool_calls need reshaping: the loop stores them as
-    {"id","name","arguments"(dict)}; the OpenAI API requires
+    Critically, this WHITELISTS keys: ResponsesAgent normalizes incoming request items and
+    injects extra fields (notably `status`, plus `id`/`type`) that the chat-completions API
+    rejects ("Extra inputs are not permitted"). We rebuild each message from only the keys
+    the API accepts. Assistant tool_calls are reshaped from the loop's internal shape
+    {"id","name","arguments"(dict)} to the OpenAI wire shape
     {"id","type":"function","function":{"name","arguments": <JSON string>}}.
-    System/user/tool messages pass through unchanged (the API ignores the extra "name"
-    key on tool results).
     """
     out = []
     for m in convo:
-        if m.get("role") == "assistant" and m.get("tool_calls"):
+        role = m.get("role")
+        if role == "assistant" and m.get("tool_calls"):
             wire_calls = []
             for tc in m["tool_calls"]:
                 args = tc.get("arguments")
@@ -47,10 +64,14 @@ def to_openai_messages(convo):
                     "function": {"name": tc.get("name"), "arguments": args},
                 })
             out.append({"role": "assistant",
-                        "content": m.get("content") or "",
+                        "content": _content_to_text(m.get("content")),
                         "tool_calls": wire_calls})
+        elif role == "tool":
+            out.append({"role": "tool",
+                        "tool_call_id": m.get("tool_call_id"),
+                        "content": _content_to_text(m.get("content"))})
         else:
-            out.append(m)
+            out.append({"role": role, "content": _content_to_text(m.get("content"))})
     return out
 
 
