@@ -319,3 +319,44 @@ All IDs are integers. `cart_product_ids` may be empty. `viewed_product_id` and `
 - The serving signature includes FE `RequestSource` columns (scalar only); `cart_product_ids`/`member_id`/`viewed_product_id`/`num_recommendations` are threaded through the feature training set so the basket signal reaches the pyfunc.
 - Endpoint create/update and delete use **raw REST via `api_client.do()`**, not the SDK `serving_endpoints` wrapper (unreliable in serverless). See [gotchas.md](gotchas.md).
 - `CAN_QUERY` is granted only when `recommender_query_principal` is non-empty.
+
+### `synth_qsr-commerce-agent` — Model Serving (ResponsesAgent)
+
+Conversational ordering agent. PizzaTel-facing; called once per chat turn.
+
+**Method / path:** `POST https://<workspace-host>/serving-endpoints/synth_qsr-commerce-agent/invocations`
+**Auth:** `Authorization: Bearer <PAT or OAuth token with CAN_QUERY>`
+
+**Request** — Responses input shape; stateless (web resends full history each turn):
+
+```json
+{
+  "input": [{"role": "user", "content": "I want two pepperoni pizzas for the game"}],
+  "custom_inputs": {
+    "profile_id": 1234, "member_id": 5678, "store_id": 42,
+    "app_trace_context": "00-<traceid>-<spanid>-01"
+  }
+}
+```
+
+`profile_id` may be the string `"guest"` (cold-start path). `app_trace_context` is a W3C `traceparent` carried in the payload (not an HTTP header — Model Serving may strip headers).
+
+**Response** — assistant text plus structured outputs:
+
+```json
+{
+  "output": [{"type": "message", "role": "assistant",
+              "content": [{"type": "output_text", "text": "Here's your order — sound good?"}]}],
+  "custom_outputs": {
+    "propose_order": {"tool": "propose_order",
+      "items": [{"menu_item_id": 1, "quantity": 2, "item_name": "Large Pepperoni", "unit_price": 14.99}],
+      "order_type": "delivery", "subtotal": 29.98, "tax_estimate": 2.70, "total": 32.68,
+      "currency": "USD", "pricing_note": "indicative — BFF is pricing authority at place_order"},
+    "mlflow_trace_id": "tr-..."
+  }
+}
+```
+
+`propose_order` is present only on turns where the agent proposes an order. The agent never places the order — the web BFF executes `place_order` after the customer approves. Prices are indicative; the BFF is the pricing authority at placement.
+
+**Model access:** the agent reaches its LLM only via the AI-Gateway endpoint `synth_qsr-agent-llm` (usage tracking, rate limits, PII guardrails). Endpoint create/update/delete use raw REST via `api_client.do()`.
