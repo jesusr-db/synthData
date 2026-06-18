@@ -25,6 +25,9 @@ resources:
               - joblib
               - pandas
               - pyyaml
+              # build_commerce_agent logs a ResponsesAgent whose load_context builds the
+              # SDK OpenAI client (mlflow invokes load_context during log validation).
+              - databricks-sdk[openai]
       tasks:
         - task_key: setup
           notebook_task:

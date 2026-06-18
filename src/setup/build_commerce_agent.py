@@ -31,21 +31,21 @@ from databricks.sdk import WorkspaceClient
 import time as _t
 w = WorkspaceClient()
 
-# --- 1. AI-Gateway LLM endpoint (the ONLY model path the agent uses) ---
+# --- 1. AI Gateway: the agent reaches its LLM through the existing Databricks
+# foundation-model endpoint (agent_llm_model), with AI Gateway ENABLED IN PLACE on that
+# endpoint (usage tracking, rate limits, PII guardrails). Pay-per-token FM endpoints are
+# system-managed and cannot be re-served in a new endpoint, so the gateway choke-point is
+# applied to the FM endpoint itself. This keeps "all model access routes through AI
+# Gateway" true. (Workspace decision 2026-06-18; see contract ledger §1/§6.) ---
 from src.agent.gateway import build_gateway_endpoint_body
-llm_endpoint = f"{schema_prefix}qsr-agent-llm"
+llm_endpoint = agent_llm_model
 gw_body = build_gateway_endpoint_body(llm_endpoint, agent_llm_model, rate_limit_rpm=200)
 try:
-    w.api_client.do("GET", f"/api/2.0/serving-endpoints/{llm_endpoint}")
     w.api_client.do("PUT", f"/api/2.0/serving-endpoints/{llm_endpoint}/ai-gateway",
                     body=gw_body["ai_gateway"])
-    print(f"[INFO] updated AI Gateway config on existing {llm_endpoint}")
-except Exception:
-    try:
-        w.api_client.do("POST", "/api/2.0/serving-endpoints", body=gw_body)
-        print(f"[INFO] created AI-Gateway LLM endpoint {llm_endpoint}")
-    except Exception as e:
-        print(f"[WARN] AI-Gateway LLM endpoint setup: {repr(e)}")
+    print(f"[INFO] enabled AI Gateway on foundation-model endpoint {llm_endpoint}")
+except Exception as e:
+    print(f"[WARN] AI Gateway enable on {llm_endpoint} skipped: {repr(e)}")
 
 # --- 2. Bake menu + price + occasion artifacts (read to driver; small).
 # Prices are INDICATIVE (contract §3.1 — the BFF re-prices authoritatively at
@@ -105,7 +105,10 @@ with mlflow.start_run(run_name="qsr_commerce_agent"):
         registered_model_name=model_name,
         resources=resources,
         code_paths=[f"{_bundle_root}/src"],
-        pip_requirements=["mlflow", "databricks-openai", "databricks-sdk", "pyyaml"],
+        # The serving container reaches the AI-Gateway FM endpoint via the SDK's OpenAI
+        # client (needs the `openai` package) and calls the recommender/feature endpoints
+        # via api_client.do (databricks-sdk). Pin both.
+        pip_requirements=["mlflow", "openai", "databricks-sdk", "pyyaml"],
     )
 print(f"[INFO] registered {model_name}")
 

@@ -48,7 +48,7 @@ variables:
     default: ""
   agent_llm_model:
     description: Foundation model served behind the AI-Gateway LLM endpoint.
-    default: databricks-claude-3-7-sonnet
+    default: databricks-claude-sonnet-4-5
 
 workspace:
   profile: DEFAULT

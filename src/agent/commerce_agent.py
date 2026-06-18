@@ -20,14 +20,20 @@ def parse_request(request):
     return messages, custom_inputs
 
 
-def build_response(loop_result, mlflow_trace_id):
+def build_response(loop_result, mlflow_trace_id, message_id="msg_0"):
+    """Build the ResponsesAgent envelope.
+
+    mlflow's ResponsesAgentResponse schema requires each output item to carry a unique
+    `id` (discovered at deploy — log-time validation rejects items without it), so the
+    serving caller (CommerceAgent.predict) passes a uuid; tests use the default.
+    """
     custom_outputs = {}
     if loop_result.get("propose_order"):
         custom_outputs["propose_order"] = loop_result["propose_order"]
     if mlflow_trace_id:
         custom_outputs["mlflow_trace_id"] = mlflow_trace_id
     return {
-        "output": [{"type": "message", "role": "assistant",
+        "output": [{"type": "message", "id": message_id, "role": "assistant",
                     "content": [{"type": "output_text", "text": loop_result.get("text", "")}]}],
         "custom_outputs": custom_outputs,
     }
@@ -55,6 +61,17 @@ class CommerceAgent(ResponsesAgent):
         self._llm_client = llm_client
         self._toolbox_factory = toolbox_factory
 
+    def __getstate__(self):
+        # Only the baked, picklable config travels in the cloudpickle artifact. The live
+        # LLM client (OpenAI) and toolbox_factory (closure over WorkspaceClient) are not
+        # picklable and are rebuilt by load_context at serving load — so drop them here.
+        # (mlflow invokes load_context during log validation, which populates them; without
+        # this, serialization of the logged instance fails.)
+        state = self.__dict__.copy()
+        state["_llm_client"] = None
+        state["_toolbox_factory"] = None
+        return state
+
     def load_context(self, context):
         """Build the live LLM client + endpoint-backed toolbox_factory at serving load.
 
@@ -80,6 +97,7 @@ class CommerceAgent(ResponsesAgent):
 
     def predict(self, request):
         import mlflow
+        import uuid
         from src.agent.loop import run_agent_loop
         req = request if isinstance(request, dict) else request.model_dump()
         messages, custom_inputs = parse_request(req)
@@ -99,4 +117,4 @@ class CommerceAgent(ResponsesAgent):
                         break
                 except Exception:
                     trace_id = None
-        return build_response(result, trace_id)
+        return build_response(result, trace_id, message_id=str(uuid.uuid4()))
