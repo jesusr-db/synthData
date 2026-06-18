@@ -36,15 +36,47 @@ def build_response(loop_result, mlflow_trace_id):
 class CommerceAgent(ResponsesAgent):
     """Wraps run_agent_loop with MLflow tracing + AI-Gateway LLM client.
 
-    Constructed in build_commerce_agent.py with a toolbox_factory (builds a per-request
-    ToolBox bound to real Spark reads + the recommender/feature endpoints) and an
-    llm_client bound to the AI-Gateway endpoint synth_qsr-agent-llm.
+    Logged as a baked instance (cloudpickle, mirroring RecommenderModel): the small menu /
+    price / occasion artifacts are read once at log time and carried on the instance, so
+    the serving container needs no Spark. The live wiring — the OpenAI-compatible client
+    against the AI-Gateway endpoint and the endpoint-backed ToolBox — is built lazily in
+    load_context() from the served-entity environment variables (LLM_ENDPOINT,
+    RECOMMENDER_ENDPOINT, FEATURE_ENDPOINT). llm_client / toolbox_factory may also be
+    injected directly (tests / custom callers), in which case load_context leaves them be.
     """
 
-    def __init__(self, llm_client, toolbox_factory, system_prompt):
+    def __init__(self, system_prompt, *, menu=None, price_lookup=None, occasions=None,
+                 config=None, llm_client=None, toolbox_factory=None):
+        self._system_prompt = system_prompt
+        self._menu = menu or {}
+        self._price_lookup = price_lookup or {}
+        self._occasions = occasions or []
+        self._config = config or {}
         self._llm_client = llm_client
         self._toolbox_factory = toolbox_factory
-        self._system_prompt = system_prompt
+
+    def load_context(self, context):
+        """Build the live LLM client + endpoint-backed toolbox_factory at serving load.
+
+        Endpoint names come from the served-entity env vars (set in build_commerce_agent),
+        falling back to baked config. Skips anything already injected (tests).
+        """
+        import os
+        from databricks.sdk import WorkspaceClient
+        from src.agent.serving import _GatewayLLMClient, build_toolbox_factory
+        cfg = dict(self._config or {})
+        llm_endpoint = os.environ.get("LLM_ENDPOINT", cfg.get("llm_endpoint"))
+        rec_endpoint = os.environ.get("RECOMMENDER_ENDPOINT", cfg.get("recommender_endpoint"))
+        feat_endpoint = os.environ.get("FEATURE_ENDPOINT", cfg.get("feature_endpoint"))
+        w = WorkspaceClient()
+        if self._llm_client is None:
+            self._llm_client = _GatewayLLMClient(
+                w.serving_endpoints.get_open_ai_client(), llm_endpoint)
+        if self._toolbox_factory is None:
+            self._toolbox_factory = build_toolbox_factory(
+                w, menu=self._menu, price_lookup=self._price_lookup,
+                occasions=self._occasions, recommender_endpoint=rec_endpoint,
+                feature_endpoint=feat_endpoint)
 
     def predict(self, request):
         import mlflow
@@ -59,8 +91,12 @@ class CommerceAgent(ResponsesAgent):
             toolbox = self._toolbox_factory(custom_inputs)
             result = run_agent_loop(messages, custom_inputs, self._llm_client, toolbox,
                                     self._system_prompt)
-            try:
-                trace_id = span.request_id
-            except Exception:
-                trace_id = None
+            # mlflow 3.x exposes trace_id on the span; older builds used request_id.
+            for _attr in ("trace_id", "request_id"):
+                try:
+                    trace_id = getattr(span, _attr, None)
+                    if trace_id:
+                        break
+                except Exception:
+                    trace_id = None
         return build_response(result, trace_id)

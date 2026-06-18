@@ -47,42 +47,61 @@ except Exception:
     except Exception as e:
         print(f"[WARN] AI-Gateway LLM endpoint setup: {repr(e)}")
 
-# --- 2. Bake menu + price lookup artifacts (read to driver; small) ---
+# --- 2. Bake menu + price + occasion artifacts (read to driver; small).
+# Prices are INDICATIVE (contract §3.1 — the BFF re-prices authoritatively at
+# place_order), so base_price is the honest indicative figure. item_price holds only
+# per-period multipliers and unit market indices apply per store, neither known at bake
+# time — base_price avoids that and keeps the served container Spark-free. ---
 menu_rows = spark.read.table(f"{sp}ref.menu_item").select(
-    "menu_item_id", "item_name", "category", "subcategory").collect()
+    "menu_item_id", "item_name", "category", "subcategory", "base_price").collect()
 menu = {int(r["menu_item_id"]): {"item_name": r["item_name"], "category": r["category"],
                                  "subcategory": r["subcategory"]} for r in menu_rows}
-# current-period price per item (latest effective row)
-price_rows = spark.sql(f"""
-    SELECT menu_item_id, price FROM {sp}ref.item_price ip
-    WHERE ip.effective_to IS NULL OR ip.effective_to >= current_date()
-""").collect()
-price_lookup = {int(r["menu_item_id"]): float(r["price"]) for r in price_rows}
-print(f"[INFO] baked {len(menu)} menu items, {len(price_lookup)} prices")
+price_lookup = {int(r["menu_item_id"]): float(r["base_price"] or 0.0) for r in menu_rows}
+# Bake a small set of upcoming local events for the occasion tool (metro-keyed upstream;
+# store->metro mapping + live recency are a v2 follow-up — see contract ledger).
+try:
+    occ_rows = spark.sql(f"""
+        SELECT event_name, event_date, event_category, metro_area
+        FROM {sp}ref.local_events
+        WHERE event_date >= current_date()
+        ORDER BY event_date LIMIT 200
+    """).collect()
+    occasions = [{"name": r["event_name"], "date": str(r["event_date"]),
+                  "category": r["event_category"], "metro": r["metro_area"]} for r in occ_rows]
+except Exception as e:
+    occasions = []
+    print(f"[WARN] occasion bake skipped: {repr(e)}")
+print(f"[INFO] baked {len(menu)} menu items, {len(price_lookup)} prices, {len(occasions)} occasions")
 
-# --- 3. Log + register the agent ---
+# --- 3. Log + register the agent as a baked instance (cloudpickle), mirroring
+# train_recommender's RecommenderModel pattern. The instance carries menu/price/occasion +
+# endpoint config; CommerceAgent.load_context builds the live OpenAI client + toolbox at
+# serving load. (Models-from-Code path logging would require set_model() in the module;
+# the baked-instance path is the proven convention in this repo.) ---
 import mlflow
 from src.agent.commerce_agent import CommerceAgent
 from src.agent.prompts import SYSTEM_PROMPT
 mlflow.set_registry_uri("databricks-uc")
 
-# The real llm_client + toolbox_factory are constructed inside the model module at load
-# time (they need the serving runtime's workspace creds + endpoint names). For logging we
-# pass an instance carrying the config it needs; load_context rebinds live clients.
+rec_endpoint = f"{schema_prefix}qsr-recommender"
+feat_endpoint = f"{schema_prefix}qsr-customer-features"
+agent = CommerceAgent(
+    SYSTEM_PROMPT, menu=menu, price_lookup=price_lookup, occasions=occasions,
+    config={"llm_endpoint": llm_endpoint, "recommender_endpoint": rec_endpoint,
+            "feature_endpoint": feat_endpoint})
+
 model_name = fq("qsr_commerce_agent")
 import mlflow.models
 resources = [
     mlflow.models.resources.DatabricksServingEndpoint(endpoint_name=llm_endpoint),
-    mlflow.models.resources.DatabricksServingEndpoint(endpoint_name=f"{schema_prefix}qsr-recommender"),
-    mlflow.models.resources.DatabricksServingEndpoint(endpoint_name=f"{schema_prefix}qsr-customer-features"),
-    mlflow.models.resources.DatabricksTable(table_name=f"{sp}ref.menu_item"),
-    mlflow.models.resources.DatabricksTable(table_name=f"{sp}silver.guest_order"),
+    mlflow.models.resources.DatabricksServingEndpoint(endpoint_name=rec_endpoint),
+    mlflow.models.resources.DatabricksServingEndpoint(endpoint_name=feat_endpoint),
 ]
 import mlflow.pyfunc
 with mlflow.start_run(run_name="qsr_commerce_agent"):
     mlflow.pyfunc.log_model(
         artifact_path="commerce_agent",
-        python_model=f"{_bundle_root}/src/agent/commerce_agent.py",
+        python_model=agent,
         registered_model_name=model_name,
         resources=resources,
         code_paths=[f"{_bundle_root}/src"],
@@ -124,7 +143,8 @@ for _attempt in range(3):
         break
     except Exception as e:
         print(f"[WARN] agent endpoint REST submit attempt {_attempt + 1} failed: {repr(e)}")
-        _t.sleep(20)
+        if _attempt < 2:  # don't sleep after the final attempt
+            _t.sleep(20)
 if not _ok:
     raise RuntimeError(f"failed to submit serving endpoint {endpoint} via REST API")
 print(f"[INFO] {endpoint} submitted via REST; provisions to READY asynchronously")
