@@ -173,14 +173,7 @@ served_entity = {
     "workload_size": "Small",
     "environment_vars": env_vars,
 }
-# Inference tables: log every request/response (and MLflow trace logs) to a Delta table.
-auto_capture = {
-    "catalog_name": catalog_name,
-    "schema_name": f"{schema_prefix}silver",
-    "table_name_prefix": "commerce_agent_payload",
-    "enabled": True,
-}
-endpoint_config = {"served_entities": [served_entity], "auto_capture_config": auto_capture}
+endpoint_config = {"served_entities": [served_entity]}
 try:
     w.api_client.do("GET", f"/api/2.0/serving-endpoints/{endpoint}")
     _exists = True
@@ -204,6 +197,21 @@ for _attempt in range(3):
 if not _ok:
     raise RuntimeError(f"failed to submit serving endpoint {endpoint} via REST API")
 print(f"[INFO] {endpoint} submitted via REST; provisions to READY asynchronously")
+
+# Inference tables: log every request/response (and MLflow trace logs) to a Delta table.
+# Legacy auto_capture_config is deprecated — use AI Gateway inference_table_config. Usage
+# tracking is NOT supported on this endpoint type in this workspace, so omit it.
+try:
+    w.api_client.do("PUT", f"/api/2.0/serving-endpoints/{endpoint}/ai-gateway",
+                    body={"inference_table_config": {
+                        "catalog_name": catalog_name,
+                        "schema_name": f"{schema_prefix}silver",
+                        "table_name_prefix": "commerce_agent_payload",
+                        "enabled": True}})
+    print(f"[INFO] enabled AI Gateway inference tables on {endpoint} "
+          f"-> {catalog_name}.{schema_prefix}silver.commerce_agent_payload_payload")
+except Exception as e:
+    print(f"[WARN] inference table enable on {endpoint} skipped: {repr(e)}")
 
 # --- 5. Grant CAN_QUERY to the website principal ---
 if query_principal:
