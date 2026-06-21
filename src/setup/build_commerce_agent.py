@@ -112,22 +112,75 @@ with mlflow.start_run(run_name="qsr_commerce_agent"):
     )
 print(f"[INFO] registered {model_name}")
 
+# --- 3b. Observability: dedicated MLflow trace experiment + serving credential.
+# In-serving MLflow tracing requires ENABLE_MLFLOW_TRACING + an experiment id + creds with
+# CAN_EDIT on that experiment. Workspace-file experiments (where the model run lands) don't
+# support real-time tracing, so we route traces to a dedicated /Shared experiment. The
+# run-as user owns it, so a PAT minted here carries CAN_EDIT. Best-effort: if creds setup
+# fails, the agent still serves — just without trace export (mlflow_trace_id stays a no-op).
+trace_experiment_path = "/Shared/qsr-commerce-agent-traces"
+try:
+    _exp = mlflow.get_experiment_by_name(trace_experiment_path)
+    trace_experiment_id = _exp.experiment_id if _exp else mlflow.create_experiment(trace_experiment_path)
+except Exception:
+    trace_experiment_id = mlflow.create_experiment(trace_experiment_path)
+print(f"[INFO] trace experiment {trace_experiment_path} id={trace_experiment_id}")
+
+TRACE_SECRET_SCOPE = "qsr-synth"
+TRACE_SECRET_KEY = "commerce_agent_trace_pat"
+_TRACE_TOKEN_COMMENT = "synth_qsr-commerce-agent trace logging"
+workspace_host = w.config.host
+try:
+    # revoke prior trace PATs so they don't accumulate across rebuilds, then mint fresh
+    for _pat in w.tokens.list():
+        if (_pat.comment or "") == _TRACE_TOKEN_COMMENT:
+            try:
+                w.tokens.delete(token_id=_pat.token_id)
+            except Exception:
+                pass
+    _tok = w.tokens.create(comment=_TRACE_TOKEN_COMMENT, lifetime_seconds=90 * 24 * 3600)
+    w.secrets.put_secret(scope=TRACE_SECRET_SCOPE, key=TRACE_SECRET_KEY,
+                         string_value=_tok.token_value)
+    _trace_creds_ok = True
+    print(f"[INFO] minted trace PAT (90d) + stored secret {TRACE_SECRET_SCOPE}/{TRACE_SECRET_KEY}")
+except Exception as e:
+    _trace_creds_ok = False
+    print(f"[WARN] trace credential setup failed; tracing env vars omitted: {repr(e)}")
+
 # --- 4. (Re)create the agent serving endpoint via raw REST (Fix 9 pattern) ---
 latest = max(int(v.version) for v in w.model_versions.list(full_name=model_name))
 endpoint = f"{schema_prefix}qsr-commerce-agent"
+env_vars = {
+    "LLM_ENDPOINT": llm_endpoint,
+    "RECOMMENDER_ENDPOINT": f"{schema_prefix}qsr-recommender",
+    "FEATURE_ENDPOINT": f"{schema_prefix}qsr-customer-features",
+    "CATALOG_NAME": catalog_name,
+    "SCHEMA_PREFIX": schema_prefix,
+}
+if _trace_creds_ok:
+    # Turns the agent's mlflow.start_span into real traces logged to the experiment, and
+    # makes custom_outputs.mlflow_trace_id a real join key for the web team's trace-stitch.
+    env_vars.update({
+        "ENABLE_MLFLOW_TRACING": "true",
+        "MLFLOW_EXPERIMENT_ID": str(trace_experiment_id),
+        "DATABRICKS_HOST": workspace_host,
+        "DATABRICKS_TOKEN": f"{{{{secrets/{TRACE_SECRET_SCOPE}/{TRACE_SECRET_KEY}}}}}",
+    })
 served_entity = {
     "entity_name": model_name,
     "entity_version": str(latest),
     "scale_to_zero_enabled": True,
     "workload_size": "Small",
-    "environment_vars": {
-        "LLM_ENDPOINT": llm_endpoint,
-        "RECOMMENDER_ENDPOINT": f"{schema_prefix}qsr-recommender",
-        "FEATURE_ENDPOINT": f"{schema_prefix}qsr-customer-features",
-        "CATALOG_NAME": catalog_name,
-        "SCHEMA_PREFIX": schema_prefix,
-    },
+    "environment_vars": env_vars,
 }
+# Inference tables: log every request/response (and MLflow trace logs) to a Delta table.
+auto_capture = {
+    "catalog_name": catalog_name,
+    "schema_name": f"{schema_prefix}silver",
+    "table_name_prefix": "commerce_agent_payload",
+    "enabled": True,
+}
+endpoint_config = {"served_entities": [served_entity], "auto_capture_config": auto_capture}
 try:
     w.api_client.do("GET", f"/api/2.0/serving-endpoints/{endpoint}")
     _exists = True
@@ -138,10 +191,10 @@ for _attempt in range(3):
     try:
         if _exists:
             w.api_client.do("PUT", f"/api/2.0/serving-endpoints/{endpoint}/config",
-                            body={"served_entities": [served_entity]})
+                            body=endpoint_config)
         else:
             w.api_client.do("POST", "/api/2.0/serving-endpoints",
-                            body={"name": endpoint, "config": {"served_entities": [served_entity]}})
+                            body={"name": endpoint, "config": endpoint_config})
         _ok = True
         break
     except Exception as e:
