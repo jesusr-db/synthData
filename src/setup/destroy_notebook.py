@@ -169,12 +169,43 @@ except Exception as _e:
 # 0h-1: serving endpoints (billable) — delete via raw REST. The SDK serving_endpoints
 # wrapper is unreliable in the serverless job env (it broke create/update); raw REST
 # matches the working CLI delete and avoids leaking billable endpoints on teardown.
-for _ep in [_model_endpoint, _fs_endpoint]:
+for _ep in [_model_endpoint, _fs_endpoint, f"{schema_prefix}qsr-commerce-agent", f"{schema_prefix}qsr-agent-llm"]:
     try:
         w.api_client.do("DELETE", f"/api/2.0/serving-endpoints/{_ep}")
         print(f"[INFO] deleted serving endpoint {_ep}")
     except Exception as e:
         print(f"[WARN] delete serving endpoint {_ep} skipped: {repr(e)}")
+
+# 0h-1b: commerce-agent observability teardown — trace PATs, trace experiment, trace
+# secret, and the inference-table payload table created by the agent endpoint's
+# auto_capture_config. Best-effort; each guarded independently.
+if w is not None:
+    _TRACE_TOKEN_COMMENT = "synth_qsr-commerce-agent trace logging"
+    try:
+        for _pat in w.tokens.list():
+            if (_pat.comment or "") == _TRACE_TOKEN_COMMENT:
+                w.tokens.delete(token_id=_pat.token_id)
+                print(f"[INFO] revoked trace PAT {_pat.token_id}")
+    except Exception as e:
+        print(f"[WARN] revoke trace PATs skipped: {repr(e)}")
+    try:
+        import mlflow as _mlflow
+        _exp = _mlflow.get_experiment_by_name("/Shared/qsr-commerce-agent-traces")
+        if _exp:
+            _mlflow.delete_experiment(_exp.experiment_id)
+            print("[INFO] deleted trace experiment /Shared/qsr-commerce-agent-traces")
+    except Exception as e:
+        print(f"[WARN] delete trace experiment skipped: {repr(e)}")
+    try:
+        w.secrets.delete_secret(scope="qsr-synth", key="commerce_agent_trace_pat")
+        print("[INFO] deleted trace secret qsr-synth/commerce_agent_trace_pat")
+    except Exception as e:
+        print(f"[WARN] delete trace secret skipped: {repr(e)}")
+try:
+    spark.sql(f"DROP TABLE IF EXISTS {catalog_name}.{schema_prefix}silver.commerce_agent_payload_payload")
+    print("[INFO] dropped inference table commerce_agent_payload_payload")
+except Exception as e:
+    print(f"[WARN] drop inference table skipped: {repr(e)}")
 
 # 0h-2: feature spec
 try:

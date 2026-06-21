@@ -43,6 +43,12 @@ variables:
   recommender_query_principal:
     default: ""
     description: "Service principal name (or user PAT principal) granted CAN_QUERY on the recommender endpoint so PizzaTel can call it. Empty = skip the grant."
+  commerce_agent_query_principal:
+    description: SP/principal granted CAN_QUERY on the commerce agent endpoint. Empty = skip grant.
+    default: ""
+  agent_llm_model:
+    description: Foundation model served behind the AI-Gateway LLM endpoint.
+    default: databricks-claude-sonnet-4-5
 
 workspace:
   profile: DEFAULT
