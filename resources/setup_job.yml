@@ -90,6 +90,7 @@ resources:
               catalog_name: ${var.catalog_name}
               schema_prefix: ${var.schema_prefix}
               agent_llm_model: ${var.agent_llm_model}
+              llm_gateway_name: ${var.llm_gateway_name}
               commerce_agent_query_principal: ${var.commerce_agent_query_principal}
           environment_key: ml
 
