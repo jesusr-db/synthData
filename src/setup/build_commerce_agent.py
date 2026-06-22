@@ -102,11 +102,16 @@ agent = CommerceAgent(
 
 model_name = fq("qsr_commerce_agent")
 import mlflow.models
+# Declared resources drive automatic-auth + the pre-deploy dependency check. Only declare
+# the LLM as a serving-endpoint resource in FM mode — a standalone AI Gateway is NOT a
+# serving endpoint, so declaring it fails pre-deploy ("Dependent serving endpoint ... does
+# not exist"). In gateway mode the agent reaches the gateway via the container token.
 resources = [
-    mlflow.models.resources.DatabricksServingEndpoint(endpoint_name=llm_endpoint),
     mlflow.models.resources.DatabricksServingEndpoint(endpoint_name=rec_endpoint),
     mlflow.models.resources.DatabricksServingEndpoint(endpoint_name=feat_endpoint),
 ]
+if not llm_gateway_name:
+    resources.insert(0, mlflow.models.resources.DatabricksServingEndpoint(endpoint_name=llm_endpoint))
 import mlflow.pyfunc
 with mlflow.start_run(run_name="qsr_commerce_agent"):
     mlflow.pyfunc.log_model(
