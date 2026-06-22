@@ -1,0 +1,229 @@
+{
+ "version": 2,
+ "config": {
+  "sample_questions": [
+   {
+    "id": "067174b7654043a19dcb8f05ba5029ee",
+    "question": [
+     "Which tier redeems the most points?"
+    ]
+   },
+   {
+    "id": "0ade95be49d84486890f47ffb75dc421",
+    "question": [
+     "How many active digital accounts are there?"
+    ]
+   },
+   {
+    "id": "0d9d6118c8cc4066bdfb35ceb1119651",
+    "question": [
+     "Show the trend of points earned by week for gold-tier members"
+    ]
+   },
+   {
+    "id": "179a12d4123c42769b43b4cd950ccf99",
+    "question": [
+     "Compare average order value for members vs non-members"
+    ]
+   },
+   {
+    "id": "3fc07e8e67834353b5a920689ec80a49",
+    "question": [
+     "How many active loyalty members are there by tier?"
+    ]
+   },
+   {
+    "id": "4a806d3e62aa48bfbf8cd8a065d9b529",
+    "question": [
+     "Which stores have the most active loyalty members?"
+    ]
+   },
+   {
+    "id": "52f7c8b20b68495282cc35b3ed600602",
+    "question": [
+     "What share of orders are placed by loyalty members?"
+    ]
+   },
+   {
+    "id": "bf58917452ab456094516b4d86125d58",
+    "question": [
+     "Which franchisees have the highest loyalty engagement this month?"
+    ]
+   },
+   {
+    "id": "cb100479d0e2417ca3f16d603091d8ba",
+    "question": [
+     "What is the net points balance (earned minus redeemed) by store?"
+    ]
+   },
+   {
+    "id": "d12149babe7742eca8b949e662662315",
+    "question": [
+     "How many reward redemptions happened this week and what was their total reward value?"
+    ]
+   },
+   {
+    "id": "e797cce7626b47dc979d573184b2f391",
+    "question": [
+     "What is the redemption rate by store over the last 30 days?"
+    ]
+   },
+   {
+    "id": "fdb87445cc354bfe85c176c00b5faaf8",
+    "question": [
+     "Show loyalty points earned vs redeemed by store this month"
+    ]
+   }
+  ]
+ },
+ "data_sources": {
+  "tables": [
+   {
+    "identifier": "jmrdemo.synth_genie.metric_loyalty"
+   },
+   {
+    "identifier": "jmrdemo.synth_metrics.loyalty_performance"
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.franchisee"
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.unit"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.digital_account"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.guest_order"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.guest_profile"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.loyalty_cohort_metrics"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.loyalty_transaction"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.reward_redemption"
+   }
+  ]
+ },
+ "instructions": {
+  "text_instructions": [
+   {
+    "id": "501d55b093ca4f8bbb2e08d1c04199b9",
+    "content": [
+     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Loyalty & Rewards. Point ledger = synth_silver.loyalty_transaction (grain loyalty_transaction_id). points_delta is signed: positive = earned, negative = redeemed. transaction_type in (earn, redeem, ...). tier in (bronze, silver, gold, platinum). member_id identifies the loyalty member (= guest_profile.guest_profile_id).\n\nPoints earned = SUM(CASE WHEN points_delta>0 THEN points_delta ELSE 0 END). Points redeemed = SUM(CASE WHEN points_delta<0 THEN -points_delta ELSE 0 END). Redemption rate = points_redeemed / points_earned. Net points = SUM(points_delta).\n\nReward redemptions (currency value of rewards) = synth_silver.reward_redemption (points_redeemed spent for reward_value). Active members = COUNT(DISTINCT member_id). Digital adoption = synth_silver.digital_account (account_status='active'). Member master / PII = synth_silver.guest_profile.\n\nMember vs non-member: in synth_silver.guest_order, an order is from a member when member_id IS NOT NULL. Use this to compare AOV, order share, and revenue between members and non-members.\n\nFor fast cohort trends use synth_silver.loyalty_cohort_metrics (active_members, total_points_earned, transaction_count per unit+tier+date). synth_metrics.loyalty_performance is a monthly pre-aggregate (Title-Case columns).\n\nPrefer trusted functions when they fit: f_loyalty_summary(days), f_member_vs_nonmember(days), f_tier_breakdown(days). Metric view synth_genie.metric_loyalty exposes governed measures (Active Members, Points Earned, Points Redeemed, Redemption Rate) \u2014 use MEASURE()."
+    ]
+   }
+  ],
+  "join_specs": [
+   {
+    "id": "1de694d6a284402e98c0f641b12f1f92",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.reward_redemption",
+     "alias": "reward_redemption"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_silver.guest_order",
+     "alias": "guest_order"
+    },
+    "sql": [
+     "`reward_redemption`.`guest_order_id` = `guest_order`.`guest_order_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "62e456d3d75a4627af33a6c18c5b8222",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.loyalty_transaction",
+     "alias": "loyalty_transaction"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`loyalty_transaction`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "77093199b99d4ddfbc3ce4da37a4635f",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.loyalty_transaction",
+     "alias": "loyalty_transaction"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_silver.guest_profile",
+     "alias": "guest_profile"
+    },
+    "sql": [
+     "`loyalty_transaction`.`member_id` = `guest_profile`.`guest_profile_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "c7d0b3c7bd5e4736839e7888587014bf",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.digital_account",
+     "alias": "digital_account"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_silver.guest_profile",
+     "alias": "guest_profile"
+    },
+    "sql": [
+     "`digital_account`.`guest_profile_id` = `guest_profile`.`guest_profile_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "d3e70f18072f46889a9ac79caf4af68c",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.loyalty_transaction",
+     "alias": "loyalty_transaction"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_silver.guest_order",
+     "alias": "guest_order"
+    },
+    "sql": [
+     "`loyalty_transaction`.`guest_order_id` = `guest_order`.`guest_order_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "efe43ddc97c74577b8839252cd5862ec",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.reward_redemption",
+     "alias": "reward_redemption"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`reward_redemption`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   }
+  ],
+  "sql_functions": [
+   {
+    "id": "5405ccbb1a1a466a93c3a329e562051d",
+    "identifier": "jmrdemo.synth_genie.f_tier_breakdown"
+   },
+   {
+    "id": "7a49a03db37f4c2a9ae82e5c170c96c0",
+    "identifier": "jmrdemo.synth_genie.f_loyalty_summary"
+   },
+   {
+    "id": "c0fe2b15617742a085f809e587389d06",
+    "identifier": "jmrdemo.synth_genie.f_member_vs_nonmember"
+   }
+  ]
+ }
+}

@@ -1,0 +1,30 @@
+{
+  "orders_sos": {
+    "title": "Orders & SOS \u2014 PizzaTel QSR",
+    "tag": "Orders and SOS",
+    "space_id": "01f16e38e68b1a81827e98c3a9162a7e",
+    "action": "CREATED",
+    "ok": true
+  },
+  "loyalty": {
+    "title": "Loyalty & Rewards \u2014 PizzaTel QSR",
+    "tag": "Loyalty and Rewards",
+    "space_id": "01f16e38e840101092ea6ad834f0e215",
+    "action": "CREATED",
+    "ok": true
+  },
+  "inventory": {
+    "title": "Inventory & Waste \u2014 PizzaTel QSR",
+    "tag": "Inventory and Waste",
+    "space_id": "01f16e38ea04146fa8f4bb493607e96b",
+    "action": "CREATED",
+    "ok": true
+  },
+  "workforce": {
+    "title": "Workforce & Labor \u2014 PizzaTel QSR",
+    "tag": "Workforce and Labor",
+    "space_id": "01f16e38eae110c69093d8bab73dcd99",
+    "action": "CREATED",
+    "ok": true
+  }
+}

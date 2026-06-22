@@ -1,0 +1,193 @@
+{
+ "version": 2,
+ "config": {
+  "sample_questions": [
+   {
+    "id": "054fc51703ba414a91123f3d576c923e",
+    "question": [
+     "Compare labor hours to revenue by store this week"
+    ]
+   },
+   {
+    "id": "3daa59adc95645cfbb586b050eaa9dc8",
+    "question": [
+     "How many shifts were scheduled vs completed this week?"
+    ]
+   },
+   {
+    "id": "4db6291dfa2e4750b89cebf40f481d23",
+    "question": [
+     "Show the labor hours trend by week for store 105"
+    ]
+   },
+   {
+    "id": "5d0e9bbe4abc46ab86bd699729c0c2b0",
+    "question": [
+     "Which stores have the highest sales per labor hour over the last 7 days?"
+    ]
+   },
+   {
+    "id": "800559fcd3fa45f88c1d3bf7b143b34a",
+    "question": [
+     "What are the total labor hours by store this week?"
+    ]
+   },
+   {
+    "id": "83036347d01e4c90bce4ea8511b7867c",
+    "question": [
+     "Which stores have the most overtime hours?"
+    ]
+   },
+   {
+    "id": "b4f3bfede3604a9e9fbe0a16f4df8e9e",
+    "question": [
+     "What is the average hours per shift by store?"
+    ]
+   },
+   {
+    "id": "bac7ebb043374e0f9412ba5b6961257b",
+    "question": [
+     "What is total headcount by franchisee this month?"
+    ]
+   },
+   {
+    "id": "bc552348336d4f28bcd3d31534fc72d0",
+    "question": [
+     "How many unique employees worked at store 36 this month?"
+    ]
+   },
+   {
+    "id": "c30753aa03044236af435534a6b13216",
+    "question": [
+     "Which employees worked overtime (over 40 hours) this week?"
+    ]
+   },
+   {
+    "id": "cbeb7e0829634b0985e4f66e157ea336",
+    "question": [
+     "What is the average shift length by shift label?"
+    ]
+   },
+   {
+    "id": "d098eae3c8af441c975a91c74ae9544f",
+    "question": [
+     "Which stores are least labor-productive (lowest sales per labor hour)?"
+    ]
+   }
+  ]
+ },
+ "data_sources": {
+  "tables": [
+   {
+    "identifier": "jmrdemo.synth_genie.metric_labor"
+   },
+   {
+    "identifier": "jmrdemo.synth_metrics.staff_hours"
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.financial_period"
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.franchisee"
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.unit"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.shift"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.time_punch"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.unit_performance_daily"
+   }
+  ]
+ },
+ "instructions": {
+  "text_instructions": [
+   {
+    "id": "4e1e39f4d6da4f128e7dd81c479bffa7",
+    "content": [
+     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Workforce & Labor. Actual worked time = synth_silver.time_punch (grain time_punch_id; hours_worked per punch, employee_id, unit_id, punch_in/punch_out). Labor hours = SUM(hours_worked). Headcount / active employees = COUNT(DISTINCT employee_id). Scheduled shifts = synth_silver.shift (shift_start/shift_end, shift_label e.g. open/mid/close, status scheduled vs completed, date).\n\nOvertime = an employee with SUM(hours_worked) > 40 over the period. Use trusted function f_overtime_employees(days).\n\nLabor productivity = revenue per labor hour. Revenue by store/day = synth_silver.unit_performance_daily.daily_revenue; labor hours by store = SUM(time_punch.hours_worked). Sales per labor hour = revenue / labor_hours. Use f_sales_per_labor_hour(days).\n\nFor fast daily labor rollups use synth_metrics.staff_hours (Title-Case columns: `Total Hours Worked`, `Total Shifts`, `Unique Employees`, `Average Hours per Shift` per `Unit ID`+`Shift Date`).\n\nPrefer trusted functions when they fit: f_labor_hours(days), f_sales_per_labor_hour(days), f_overtime_employees(days). Metric view synth_genie.metric_labor exposes governed measures (Labor Hours, Employees, Punches, Avg Hours per Punch) \u2014 use MEASURE()."
+    ]
+   }
+  ],
+  "join_specs": [
+   {
+    "id": "28687898d76744d79641d2a7faca8504",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.time_punch",
+     "alias": "time_punch"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.franchisee",
+     "alias": "franchisee"
+    },
+    "sql": [
+     "`time_punch`.`franchisee_id` = `franchisee`.`franchisee_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "4cf64434e15247c9be9fb6b96b51e168",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.unit_performance_daily",
+     "alias": "unit_performance_daily"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`unit_performance_daily`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "b90b8b08181142daa9ed2dbe0b9cf9c9",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.time_punch",
+     "alias": "time_punch"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`time_punch`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "cec1c7d7c7854d89bde03a0415092759",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.shift",
+     "alias": "shift"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`shift`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   }
+  ],
+  "sql_functions": [
+   {
+    "id": "6b8b6caa331b4ca7a410188c6898fca9",
+    "identifier": "jmrdemo.synth_genie.f_overtime_employees"
+   },
+   {
+    "id": "a942194a333341e28f3de66210a620c0",
+    "identifier": "jmrdemo.synth_genie.f_labor_hours"
+   },
+   {
+    "id": "ea9258b67c3b4777b7d958bda4bff7aa",
+    "identifier": "jmrdemo.synth_genie.f_sales_per_labor_hour"
+   }
+  ]
+ }
+}
