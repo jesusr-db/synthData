@@ -83,12 +83,19 @@ class CommerceAgent(ResponsesAgent):
         from src.agent.serving import _GatewayLLMClient, build_toolbox_factory
         cfg = dict(self._config or {})
         llm_endpoint = os.environ.get("LLM_ENDPOINT", cfg.get("llm_endpoint"))
+        # Optional override: a standalone Unity AI Gateway base URL (e.g.
+        # https://<host>/ai-gateway/mlflow/v1). Empty => use the default /serving-endpoints
+        # base (foundation-model endpoint with in-place gateway config).
+        llm_base_url = os.environ.get("LLM_BASE_URL", cfg.get("llm_base_url")) or ""
         rec_endpoint = os.environ.get("RECOMMENDER_ENDPOINT", cfg.get("recommender_endpoint"))
         feat_endpoint = os.environ.get("FEATURE_ENDPOINT", cfg.get("feature_endpoint"))
         w = WorkspaceClient()
         if self._llm_client is None:
-            self._llm_client = _GatewayLLMClient(
-                w.serving_endpoints.get_open_ai_client(), llm_endpoint)
+            _oai = w.serving_endpoints.get_open_ai_client()
+            if llm_base_url:
+                # Reuse the SDK-managed auth (api_key) but redirect to the AI Gateway path.
+                _oai.base_url = llm_base_url.rstrip("/") + "/"
+            self._llm_client = _GatewayLLMClient(_oai, llm_endpoint)
         if self._toolbox_factory is None:
             self._toolbox_factory = build_toolbox_factory(
                 w, menu=self._menu, price_lookup=self._price_lookup,

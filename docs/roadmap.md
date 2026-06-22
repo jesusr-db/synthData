@@ -272,10 +272,50 @@ otel_spans ──→ [OTel order adapter] ──→ staging.order_events  (sourc
 
 ---
 
+## Commerce Agent — Known Issues / Follow-ups
+
+### menu_item_id ↔ storefront catalog mapping (OPEN, correctness)
+
+**Problem:** the agent's `propose_order` returns `menu_item_id`s that don't reliably match the
+PizzaTel storefront `ProductCatalog` ids. Pepperoni (1) and Cheese (2) coincide, but the web
+team (2026-06-21) found ordering **Large Pan MeatZZa** returned `13` (Medium Thin-Crust Cheese),
+`10` (Large BBQ Chicken), and once `2003` (outside the catalog → empty priced lines, order can't
+populate) in 4/5 runs.
+
+**Why it matters:** the web BFF prices `propose_order` verbatim against its catalog. A
+diverged-but-valid id silently shows the customer the wrong item; an out-of-catalog id yields an
+empty order. The approval card is the safety gate, but card-vs-intent mismatch is a real defect.
+
+**Distinct from two already-fixed bugs:** (1) the agent latching onto an earlier-recommended item
+(fixed by the confirmed-cart prompt constraint), and (2) finalize-reliability under sonnet-4-6
+(fixed by the atomic read-back+propose prompt). This one is structural, not LLM non-determinism.
+
+**Root-cause hypothesis:** the agent's menu is baked at log time from `ref.menu_item.menu_item_id`
+(`build_commerce_agent.py` Step 2), and `search_menu`/`get_recommendations` return ids from that
+same namespace. If `ref.menu_item` ids have drifted from the storefront `ProductCatalog`
+(contract assumes `product_id == str(menu_item_id)`), the mismatch is a two-namespace problem, not
+model error.
+
+**Investigation / fix options:**
+1. Confirm the source of truth — is `ref.menu_item.menu_item_id` meant to equal the storefront
+   `ProductCatalog` id? Enumerate which ids coincide vs drift (the web `app.agent.proposal_item_ids`
+   span + the agent's MLflow traces make every case reproducible).
+2. Reconcile: (a) align `ref.menu_item` ids to the storefront catalog at the source, (b) bake a
+   synth→storefront id map into the agent and translate in `build_proposal`, or (c) have the web BFF
+   map agent ids → its catalog. Needs a joint decision on which side owns the mapping.
+3. Guardrail: in `build_proposal`, flag/drop items whose id isn't in the baked menu (today unknown
+   ids silently price at 0.0) so an out-of-catalog id (e.g. 2003) surfaces instead of empty lines.
+
+**LOE:** small–medium once the id source-of-truth is confirmed; the reconcile (option 2) is the
+real work.
+
+---
+
 ## Open Issues / Known Gaps
 
 | Issue | Status |
 |---|---|
+| Commerce agent `propose_order` menu_item_id ↔ storefront catalog mismatch | Open — see "Commerce Agent — Known Issues" above; web reported 2026-06-21 |
 | `digital_account` event type never generated | Gap — `guest.py` generates `guest_profile` but not `digital_account` |
 | `order_modifier` event type in DOMAIN_TABLE_MAP but never generated | Gap — no modifier generator |
 | `stock_transfer` and `adjustment` in DOMAIN_TABLE_MAP but never generated | Gap — inventory domain incomplete |

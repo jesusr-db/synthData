@@ -19,10 +19,13 @@ def _widget(name, default):
 
 catalog_name = _widget("catalog_name", "jmrdemo")
 schema_prefix = _widget("schema_prefix", "synth_")
-agent_llm_model = _widget("agent_llm_model", "databricks-claude-3-7-sonnet")
+agent_llm_model = _widget("agent_llm_model", "databricks-claude-sonnet-4-5")
+# When set (e.g. "jmr_gateway"), the agent reaches its LLM through that standalone Unity AI
+# Gateway (base URL <host>/ai-gateway/mlflow/v1) instead of a foundation-model endpoint.
+llm_gateway_name = _widget("llm_gateway_name", "")
 query_principal = _widget("commerce_agent_query_principal", "")
 print(f"[INFO] build_commerce_agent: catalog={catalog_name} prefix={schema_prefix} "
-      f"llm={agent_llm_model}")
+      f"llm={agent_llm_model} gateway={llm_gateway_name or '(none)'}")
 
 sp = f"{catalog_name}.{schema_prefix}"
 fq = lambda t: f"{catalog_name}.{schema_prefix}features.{t}"  # noqa: E731
@@ -31,21 +34,28 @@ from databricks.sdk import WorkspaceClient
 import time as _t
 w = WorkspaceClient()
 
-# --- 1. AI Gateway: the agent reaches its LLM through the existing Databricks
-# foundation-model endpoint (agent_llm_model), with AI Gateway ENABLED IN PLACE on that
-# endpoint (usage tracking, rate limits, PII guardrails). Pay-per-token FM endpoints are
-# system-managed and cannot be re-served in a new endpoint, so the gateway choke-point is
-# applied to the FM endpoint itself. This keeps "all model access routes through AI
-# Gateway" true. (Workspace decision 2026-06-18; see contract ledger §1/§6.) ---
-from src.agent.gateway import build_gateway_endpoint_body
-llm_endpoint = agent_llm_model
-gw_body = build_gateway_endpoint_body(llm_endpoint, agent_llm_model, rate_limit_rpm=200)
-try:
-    w.api_client.do("PUT", f"/api/2.0/serving-endpoints/{llm_endpoint}/ai-gateway",
-                    body=gw_body["ai_gateway"])
-    print(f"[INFO] enabled AI Gateway on foundation-model endpoint {llm_endpoint}")
-except Exception as e:
-    print(f"[WARN] AI Gateway enable on {llm_endpoint} skipped: {repr(e)}")
+# --- 1. AI Gateway path for the agent's LLM. Two modes:
+#   (a) standalone Unity AI Gateway (llm_gateway_name set): the agent calls the gateway at
+#       <host>/ai-gateway/mlflow/v1 with model=<llm_gateway_name>. The gateway owns
+#       governance (usage -> system.ai_gateway.usage, limits, guardrails); nothing to
+#       configure on a foundation-model endpoint here.
+#   (b) foundation-model endpoint (default): enable AI Gateway IN PLACE on the FM endpoint
+#       (pay-per-token FMs can't be re-served, so the choke-point lives on the FM endpoint).
+if llm_gateway_name:
+    llm_endpoint = llm_gateway_name
+    llm_base_url = f"{w.config.host.rstrip('/')}/ai-gateway/mlflow/v1"
+    print(f"[INFO] LLM via standalone AI Gateway '{llm_endpoint}' @ {llm_base_url}")
+else:
+    from src.agent.gateway import build_gateway_endpoint_body
+    llm_endpoint = agent_llm_model
+    llm_base_url = ""
+    gw_body = build_gateway_endpoint_body(llm_endpoint, agent_llm_model, rate_limit_rpm=200)
+    try:
+        w.api_client.do("PUT", f"/api/2.0/serving-endpoints/{llm_endpoint}/ai-gateway",
+                        body=gw_body["ai_gateway"])
+        print(f"[INFO] enabled AI Gateway on foundation-model endpoint {llm_endpoint}")
+    except Exception as e:
+        print(f"[WARN] AI Gateway enable on {llm_endpoint} skipped: {repr(e)}")
 
 # --- 2. Bake menu + price + occasion artifacts (read to driver; small).
 # Prices are INDICATIVE (contract §3.1 — the BFF re-prices authoritatively at
@@ -87,16 +97,21 @@ rec_endpoint = f"{schema_prefix}qsr-recommender"
 feat_endpoint = f"{schema_prefix}qsr-customer-features"
 agent = CommerceAgent(
     SYSTEM_PROMPT, menu=menu, price_lookup=price_lookup, occasions=occasions,
-    config={"llm_endpoint": llm_endpoint, "recommender_endpoint": rec_endpoint,
-            "feature_endpoint": feat_endpoint})
+    config={"llm_endpoint": llm_endpoint, "llm_base_url": llm_base_url,
+            "recommender_endpoint": rec_endpoint, "feature_endpoint": feat_endpoint})
 
 model_name = fq("qsr_commerce_agent")
 import mlflow.models
+# Declared resources drive automatic-auth + the pre-deploy dependency check. Only declare
+# the LLM as a serving-endpoint resource in FM mode — a standalone AI Gateway is NOT a
+# serving endpoint, so declaring it fails pre-deploy ("Dependent serving endpoint ... does
+# not exist"). In gateway mode the agent reaches the gateway via the container token.
 resources = [
-    mlflow.models.resources.DatabricksServingEndpoint(endpoint_name=llm_endpoint),
     mlflow.models.resources.DatabricksServingEndpoint(endpoint_name=rec_endpoint),
     mlflow.models.resources.DatabricksServingEndpoint(endpoint_name=feat_endpoint),
 ]
+if not llm_gateway_name:
+    resources.insert(0, mlflow.models.resources.DatabricksServingEndpoint(endpoint_name=llm_endpoint))
 import mlflow.pyfunc
 with mlflow.start_run(run_name="qsr_commerce_agent"):
     mlflow.pyfunc.log_model(
@@ -152,6 +167,7 @@ latest = max(int(v.version) for v in w.model_versions.list(full_name=model_name)
 endpoint = f"{schema_prefix}qsr-commerce-agent"
 env_vars = {
     "LLM_ENDPOINT": llm_endpoint,
+    "LLM_BASE_URL": llm_base_url,  # standalone AI Gateway base URL; "" => /serving-endpoints
     "RECOMMENDER_ENDPOINT": f"{schema_prefix}qsr-recommender",
     "FEATURE_ENDPOINT": f"{schema_prefix}qsr-customer-features",
     "CATALOG_NAME": catalog_name,

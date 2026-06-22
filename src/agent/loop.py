@@ -47,9 +47,12 @@ def _identity_line(custom_inputs):
             "Pass these to tools; do not ask the customer for them.")
 
 
-def run_agent_loop(messages, custom_inputs, llm_client, toolbox, system_prompt, max_steps=6):
-    convo = [{"role": "system", "content": system_prompt},
-             {"role": "system", "content": _identity_line(custom_inputs)}]
+def run_agent_loop(messages, custom_inputs, llm_client, toolbox, system_prompt, max_steps=8):
+    # ONE system message: some gateways (e.g. Bedrock-backed AI Gateway routes) reject a
+    # second system message ("System message must be at the beginning"), so fold the
+    # identity line into the single system message rather than appending a second one.
+    convo = [{"role": "system",
+              "content": system_prompt + "\n\n" + _identity_line(custom_inputs)}]
     convo += list(messages)
     steps = []
     last_text = ""
