@@ -5,6 +5,18 @@ set -uo pipefail
 PROFILE=DEFAULT; WH=d56091a1171f30ff
 cd "$(dirname "$0")/.."
 
+echo "== Delete the 4 Discover domains (API) =="
+python3 - <<'PY'
+import json,subprocess,os
+f="genie_domains/domains_created.json"
+if os.path.exists(f):
+    for tag,did in json.load(open(f)).items():
+        p=subprocess.run(["databricks","api","delete",f"/api/2.0/domains/{did}","--profile","DEFAULT"],capture_output=True,text=True)
+        print(f"  deleted domain {tag} ({did}) rc={p.returncode}")
+else:
+    print("  (no domains_created.json)")
+PY
+
 echo "== Trash the 4 Genie spaces =="
 python3 - <<'PY'
 import json,subprocess
