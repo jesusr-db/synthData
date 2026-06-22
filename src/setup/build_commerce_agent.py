@@ -97,8 +97,8 @@ rec_endpoint = f"{schema_prefix}qsr-recommender"
 feat_endpoint = f"{schema_prefix}qsr-customer-features"
 agent = CommerceAgent(
     SYSTEM_PROMPT, menu=menu, price_lookup=price_lookup, occasions=occasions,
-    config={"llm_endpoint": llm_endpoint, "recommender_endpoint": rec_endpoint,
-            "feature_endpoint": feat_endpoint})
+    config={"llm_endpoint": llm_endpoint, "llm_base_url": llm_base_url,
+            "recommender_endpoint": rec_endpoint, "feature_endpoint": feat_endpoint})
 
 model_name = fq("qsr_commerce_agent")
 import mlflow.models
