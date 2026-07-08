@@ -216,31 +216,31 @@ try:
 except Exception as e:
     print(f"[WARN] delete feature spec skipped: {e}")
 
-# 0h-3: online feature store (Lakebase, billable) — drop published tables, then the store
+# 0h-3: online feature store (Lakebase, billable) — delete the store, which removes the
+# published online tables with it.
+#
+# NOTE (repeatability): published online tables (customer_features_online,
+# store_features_online) CANNOT be dropped individually — fe.drop_online_table raises
+# ValueError("Dropping Databricks online tables is not supported"), and they are not UC
+# tables (they live inside the Lakebase store, so DROP TABLE is a no-op). Deleting the
+# online store is the ONLY supported way to remove them. This teardown is what makes the
+# next deploy re-runnable: if the store survives, build_feature_tables.publish_table hits
+# AlreadyExists on the *_online destinations. This step REQUIRES databricks-feature-
+# engineering in the destroy_job env — without it the import below raises ImportError,
+# gets swallowed, and the billable store leaks (breaking the next deploy).
 _online_store_name = f"{schema_prefix.replace('_', '-')}qsr-online-store"
 try:
     from databricks.feature_engineering import FeatureEngineeringClient
     _fe = FeatureEngineeringClient()
     _os = _fe.get_online_store(name=_online_store_name)
     if _os is not None:
-        for _otfq in [ffq("customer_features_online"), ffq("store_features_online")]:
-            try:
-                _fe.drop_online_table(name=_otfq, online_store=_os)
-                print(f"[INFO] dropped published online table {_otfq}")
-            except Exception as e:
-                print(f"[WARN] drop_online_table {_otfq} skipped: {e}")
+        # delete_online_store drops the store AND its published online tables in one call.
         _fe.delete_online_store(name=_online_store_name)
-        print(f"[INFO] deleted online store {_online_store_name}")
+        print(f"[INFO] deleted online store {_online_store_name} (removes published online tables)")
     else:
         print(f"[INFO] online store {_online_store_name} not found; nothing to delete")
 except Exception as e:
     print(f"[WARN] online store teardown skipped: {e}")
-# belt-and-suspenders: drop any leftover published UC tables
-for _ot in ["customer_features_online", "store_features_online"]:
-    try:
-        spark.sql(f"DROP TABLE IF EXISTS {ffq(_ot)}")
-    except Exception as e:
-        print(f"[WARN] drop leftover {ffq(_ot)} skipped: {e}")
 
 # 0h-4: registered model (all versions)
 try:

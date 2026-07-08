@@ -10,6 +10,14 @@ resources:
             client: "1"
             dependencies:
               - pyyaml
+              # Step 0h drops the online feature tables + Lakebase online store via
+              # FeatureEngineeringClient (drop_online_table / delete_online_store /
+              # delete_feature_spec). On serverless this package is NOT pre-installed, so
+              # without it the FE import raises ImportError, the try/except swallows it as
+              # a [WARN], and the billable online store + *_online tables are left behind —
+              # which then breaks the next deploy with "Destination table ..._online already
+              # exists". Declaring it here lets the teardown actually execute.
+              - databricks-feature-engineering
       tasks:
         - task_key: destroy
           environment_key: default
