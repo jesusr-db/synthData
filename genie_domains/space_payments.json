@@ -1,0 +1,311 @@
+{
+ "version": 2,
+ "config": {
+  "sample_questions": [
+   {
+    "id": "0ce568dddd3a4a3eb6594b5606339f92",
+    "question": [
+     "What is the cash share trend by month?"
+    ]
+   },
+   {
+    "id": "9da56bb0ac7c4df79c95e43fe9b8ab04",
+    "question": [
+     "What is the average payment amount by tender type over the last 30 days?"
+    ]
+   },
+   {
+    "id": "ab84fb7d7fb94c8aa72eab5502f19c34",
+    "question": [
+     "How does tender mix differ between members and non-members?"
+    ]
+   },
+   {
+    "id": "b8c78b724dbb4f4da052ca802286040c",
+    "question": [
+     "Which metro areas use the most cash over the last 30 days?"
+    ]
+   },
+   {
+    "id": "d73ae5144e044c8e83b8f5cf398caf45",
+    "question": [
+     "Show the digital-wallet adoption trend by week"
+    ]
+   },
+   {
+    "id": "d7cd412e78a54f159f411b47a60fe581",
+    "question": [
+     "What is the tender mix by channel over the last 30 days?"
+    ]
+   },
+   {
+    "id": "e506d09b016847d091ce6675396ee0e9",
+    "question": [
+     "What is the total settled amount by tender type over the last 30 days?"
+    ]
+   },
+   {
+    "id": "e872ad06a8ba475e920ddd85a4101bb1",
+    "question": [
+     "What is the tender mix over the last 30 days?"
+    ]
+   },
+   {
+    "id": "f77aafbed7394ef5b68a8937da81c62d",
+    "question": [
+     "How many payments were made by each tender type this month?"
+    ]
+   },
+   {
+    "id": "f911cb67349544f5a1a6efdcbec19303",
+    "question": [
+     "What share of payments is loyalty redemption over the last 30 days?"
+    ]
+   },
+   {
+    "id": "fd98ec3641df4d309d013d0fdcbcd935",
+    "question": [
+     "Which stores have the highest digital-wallet share over the last 30 days?"
+    ]
+   },
+   {
+    "id": "fdbf3496daa04609809444c8a4adff3b",
+    "question": [
+     "What share of payment amount is digital wallet over the last 30 days?"
+    ]
+   }
+  ]
+ },
+ "data_sources": {
+  "tables": [
+   {
+    "identifier": "jmrdemo.synth_genie.metric_payments"
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.unit"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.guest_order"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.payment",
+    "column_configs": [
+     {
+      "column_name": "tender_type",
+      "synonyms": [
+       "payment method",
+       "tender",
+       "payment type"
+      ],
+      "enable_format_assistance": true,
+      "enable_entity_matching": true
+     }
+    ]
+   }
+  ]
+ },
+ "instructions": {
+  "text_instructions": [
+   {
+    "id": "01137d08b075461ca36f67253fdb5163",
+    "content": [
+     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Payments & Tender Mix. Payments = synth_silver.payment (grain payment_id; joins guest_order on guest_order_id). tender_type in (credit_card ~55%, digital_wallet ~22%, loyalty_redemption ~12%, cash ~11%). amount = paid amount; settlement_date = settlement day; paid_at = payment timestamp (use for time filters).\n\nTender mix = share of SUM(amount) or COUNT(*) by tender_type. Join guest_order for channel/member context and unit for store/metro. Use f_tender_mix(days) for the standard mix rollup. Metric view synth_genie.metric_payments exposes governed measures (Payment Amount, Payments, Average Payment) by Tender Type/Channel/Store/Metro/Payment Date \u2014 query with MEASURE().\n\nASSET SELECTION (follow in order): (1) For standard business measures, query the metric view with MEASURE(). (2) For time-windowed operational questions (last N days) prefer the trusted SQL functions (f_*). (3) For ad-hoc slicing not covered by either, query the silver tables directly using the joins and formulas above. The functions and metric view are the canonical definitions \u2014 do not re-derive a metric in raw SQL if a function or MEASURE() already provides it."
+    ]
+   }
+  ],
+  "join_specs": [
+   {
+    "id": "872da07e0bbf4744a3df6f35a5d88035",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.payment",
+     "alias": "payment"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_silver.guest_order",
+     "alias": "guest_order"
+    },
+    "sql": [
+     "`payment`.`guest_order_id` = `guest_order`.`guest_order_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "e016250aa62e401e9c703e41f4962731",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.payment",
+     "alias": "payment"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`payment`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "effbfad0d15a47a89b3e44a96bf2d6d7",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.guest_order",
+     "alias": "guest_order"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`guest_order`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   }
+  ],
+  "sql_functions": [
+   {
+    "id": "84f67b2641ba41659fe0576bf75f1035",
+    "identifier": "jmrdemo.synth_genie.f_tender_mix"
+   }
+  ],
+  "example_question_sqls": [
+   {
+    "id": "0ddaa8cdd5924cb992d62536278b8c92",
+    "question": [
+     "How does tender mix differ between members and non-members?"
+    ],
+    "sql": [
+     "SELECT CASE WHEN go.member_id IS NOT NULL THEN 'member' ELSE 'non_member' END AS segment, p.tender_type, SUM(p.amount) AS amount FROM jmrdemo.synth_silver.payment p JOIN jmrdemo.synth_silver.guest_order go ON go.guest_order_id = p.guest_order_id WHERE p.paid_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY 1, p.tender_type ORDER BY segment, amount DESC"
+    ],
+    "usage_guidance": [
+     "Use to compare tender mix across member segments."
+    ]
+   },
+   {
+    "id": "6e37822978d54b72b99dbc8a5526cf14",
+    "question": [
+     "What is the average payment amount by tender type over the last 30 days?"
+    ],
+    "sql": [
+     "SELECT tender_type, AVG(amount) AS avg_amount, COUNT(*) AS payments FROM jmrdemo.synth_silver.payment WHERE paid_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY tender_type ORDER BY avg_amount DESC"
+    ],
+    "usage_guidance": [
+     "Use for average ticket by tender type."
+    ]
+   },
+   {
+    "id": "700dc66c77ad47a691801cc79f7a5ae3",
+    "question": [
+     "What is the tender mix by channel over the last 30 days?"
+    ],
+    "sql": [
+     "SELECT go.channel, p.tender_type, SUM(p.amount) AS amount, COUNT(*) AS payments FROM jmrdemo.synth_silver.payment p JOIN jmrdemo.synth_silver.guest_order go ON go.guest_order_id = p.guest_order_id WHERE p.paid_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY go.channel, p.tender_type ORDER BY go.channel, amount DESC"
+    ],
+    "usage_guidance": [
+     "Use for tender mix split by order channel."
+    ]
+   },
+   {
+    "id": "ad7dc71ff0a14326a8d32fe1f4365b4a",
+    "question": [
+     "Show the digital-wallet adoption trend by week"
+    ],
+    "sql": [
+     "SELECT date_trunc('week', paid_at) AS week, SUM(CASE WHEN tender_type='digital_wallet' THEN amount ELSE 0 END)/NULLIF(SUM(amount),0) AS digital_wallet_share FROM jmrdemo.synth_silver.payment WHERE paid_at >= current_timestamp() - INTERVAL 90 DAYS GROUP BY date_trunc('week', paid_at) ORDER BY week"
+    ],
+    "usage_guidance": [
+     "Use for weekly digital-wallet share trend."
+    ]
+   },
+   {
+    "id": "fc61a4d74c7a4ef49569f0aeabb00399",
+    "question": [
+     "Which stores have the highest digital-wallet share over the last 30 days?"
+    ],
+    "sql": [
+     "SELECT unit_id, SUM(CASE WHEN tender_type='digital_wallet' THEN amount ELSE 0 END)/NULLIF(SUM(amount),0) AS digital_wallet_share FROM jmrdemo.synth_silver.payment WHERE paid_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY unit_id ORDER BY digital_wallet_share DESC LIMIT 20"
+    ],
+    "usage_guidance": [
+     "Use for store-level digital-wallet adoption."
+    ]
+   }
+  ],
+  "sql_snippets": {
+   "filters": [],
+   "expressions": [],
+   "measures": []
+  }
+ },
+ "benchmarks": {
+  "questions": [
+   {
+    "id": "02b1b51ae2294d3f93f829e2001e2829",
+    "question": [
+     "What is the average payment amount by tender type over the last 30 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT tender_type, AVG(amount) AS avg_amount FROM jmrdemo.synth_silver.payment WHERE paid_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY tender_type ORDER BY avg_amount DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "6b765e04ed98407d8939e1524d4d3fe5",
+    "question": [
+     "What is the tender mix over the last 30 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT * FROM jmrdemo.synth_genie.f_tender_mix(p_days => 30)"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "a28a1431d3754e6c87ee4ac79683a292",
+    "question": [
+     "What is the tender mix by channel over the last 30 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT go.channel, p.tender_type, SUM(p.amount) AS amount FROM jmrdemo.synth_silver.payment p JOIN jmrdemo.synth_silver.guest_order go ON go.guest_order_id = p.guest_order_id WHERE p.paid_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY go.channel, p.tender_type ORDER BY go.channel, amount DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "b0c4ad12d74942dd945ae5fa6821aed5",
+    "question": [
+     "Which stores have the highest digital-wallet share over the last 30 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT unit_id, SUM(CASE WHEN tender_type='digital_wallet' THEN amount ELSE 0 END)/NULLIF(SUM(amount),0) AS digital_wallet_share FROM jmrdemo.synth_silver.payment WHERE paid_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY unit_id ORDER BY digital_wallet_share DESC LIMIT 20"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "fc8b738be38e490cbda63f2385c63c47",
+    "question": [
+     "How many payments were made by each tender type this month?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT tender_type, COUNT(*) AS payments FROM jmrdemo.synth_silver.payment WHERE paid_at >= date_trunc('month', current_date()) GROUP BY tender_type ORDER BY payments DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   }
+  ]
+ }
+}

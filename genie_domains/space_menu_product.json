@@ -1,0 +1,357 @@
+{
+ "version": 2,
+ "config": {
+  "sample_questions": [
+   {
+    "id": "0e6bc70c499b419a896865fab028152f",
+    "question": [
+     "Show the price multiplier trend by financial period for menu item 5"
+    ]
+   },
+   {
+    "id": "2f49117fa97b44deb5638acf80e41f4d",
+    "question": [
+     "What are the top menu items by revenue over the last 30 days?"
+    ]
+   },
+   {
+    "id": "4a5ee6ea2b4049cb9dfbef3b750efacb",
+    "question": [
+     "Which menu items are available on 3pd but not carryout?"
+    ]
+   },
+   {
+    "id": "5d382d168cc9483482ccf78b8c82a275",
+    "question": [
+     "Which menu items have the lowest margin?"
+    ]
+   },
+   {
+    "id": "6b460feb0d494973bb3b69c84312c2ae",
+    "question": [
+     "What is the average base price and cost by category?"
+    ]
+   },
+   {
+    "id": "ab02aa55096946299af743c579ecf4a1",
+    "question": [
+     "What is the product mix by daypart (lunch vs all day)?"
+    ]
+   },
+   {
+    "id": "b965c3665dc843059225c8aa3dd73d88",
+    "question": [
+     "What share of revenue comes from pizza vs wings vs sides over the last 30 days?"
+    ]
+   },
+   {
+    "id": "c7e94d0f9abd4d6db6932d9e1b606313",
+    "question": [
+     "Which items consume the most expensive ingredients by extended BOM cost?"
+    ]
+   },
+   {
+    "id": "cb03825c8a694a57a727d606bbf55d41",
+    "question": [
+     "Which menu items have the highest gross margin (base price minus cost)?"
+    ]
+   },
+   {
+    "id": "e01e917a31cf43479952ec605cf0ba3b",
+    "question": [
+     "Which categories generate the most revenue over the last 30 days?"
+    ]
+   },
+   {
+    "id": "f296905867f2443294b61d8d96cabbdb",
+    "question": [
+     "How has item pricing drifted by financial period?"
+    ]
+   },
+   {
+    "id": "f70c3b9028bd4ceaa17afdb045395d91",
+    "question": [
+     "What are the top 10 menu items by units sold over the last 30 days?"
+    ]
+   }
+  ]
+ },
+ "data_sources": {
+  "tables": [
+   {
+    "identifier": "jmrdemo.synth_genie.metric_menu"
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.financial_period"
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.item_price"
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.menu_item",
+    "column_configs": [
+     {
+      "column_name": "category",
+      "synonyms": [
+       "menu category",
+       "product category"
+      ],
+      "enable_format_assistance": true,
+      "enable_entity_matching": true
+     },
+     {
+      "column_name": "daypart",
+      "synonyms": [
+       "time of day"
+      ],
+      "enable_format_assistance": true,
+      "enable_entity_matching": true
+     }
+    ]
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.recipe_ingredient"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.guest_order"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.order_item"
+   }
+  ]
+ },
+ "instructions": {
+  "text_instructions": [
+   {
+    "id": "25ddb81a148d46488038a93f2aa1651d",
+    "content": [
+     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Menu & Product Performance. Menu master = synth_ref.menu_item (grain menu_item_id; item_name, category, subcategory, base_price, cost, daypart, channel flags is_3pd_available/is_olo_available/is_delivery_available/is_carryout_available). Gross margin = base_price - cost; margin % = (base_price - cost)/base_price.\n\nSales = synth_silver.order_item (units_sold = SUM(quantity); revenue = SUM(line_net_amount); join to guest_order on guest_order_id for time filters, to menu_item on menu_item_id). Price drift = synth_ref.item_price (price_multiplier per menu_item_id + financial_period_id). Periods = synth_ref.financial_period (period_name, start_date, fiscal_quarter). BOM extended cost = SUM(recipe_ingredient.quantity * recipe_ingredient.cost_per_unit) per menu_item_id. Metric view synth_genie.metric_menu exposes governed measures (Units Sold, Net Revenue, Line Items) by Item/Category/Daypart/Store/Order Date \u2014 query with MEASURE().\n\nASSET SELECTION (follow in order): (1) For standard business measures, query the metric view with MEASURE(). (2) For time-windowed operational questions (last N days) prefer the trusted SQL functions (f_*). (3) For ad-hoc slicing not covered by either, query the silver tables directly using the joins and formulas above. The functions and metric view are the canonical definitions \u2014 do not re-derive a metric in raw SQL if a function or MEASURE() already provides it."
+    ]
+   }
+  ],
+  "join_specs": [
+   {
+    "id": "3f58f4b4e26443cb93bd80f223da3d37",
+    "left": {
+     "identifier": "jmrdemo.synth_ref.item_price",
+     "alias": "item_price"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.financial_period",
+     "alias": "financial_period"
+    },
+    "sql": [
+     "`item_price`.`financial_period_id` = `financial_period`.`financial_period_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "6e18a75d15774cc08f350ef0a5e38e14",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.order_item",
+     "alias": "order_item"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_silver.guest_order",
+     "alias": "guest_order"
+    },
+    "sql": [
+     "`order_item`.`guest_order_id` = `guest_order`.`guest_order_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "9f89a0a56ba74c709867daf0ab82007d",
+    "left": {
+     "identifier": "jmrdemo.synth_ref.recipe_ingredient",
+     "alias": "recipe_ingredient"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.menu_item",
+     "alias": "menu_item"
+    },
+    "sql": [
+     "`recipe_ingredient`.`menu_item_id` = `menu_item`.`menu_item_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "e0e9be3b095e41bc8d24daa61c2afd41",
+    "left": {
+     "identifier": "jmrdemo.synth_ref.item_price",
+     "alias": "item_price"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.menu_item",
+     "alias": "menu_item"
+    },
+    "sql": [
+     "`item_price`.`menu_item_id` = `menu_item`.`menu_item_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "e3154ee4a52e480198b2af3d9b00236a",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.order_item",
+     "alias": "order_item"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.menu_item",
+     "alias": "menu_item"
+    },
+    "sql": [
+     "`order_item`.`menu_item_id` = `menu_item`.`menu_item_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   }
+  ],
+  "sql_functions": [
+   {
+    "id": "7ad71274bf9145719bfad50fc693aa3d",
+    "identifier": "jmrdemo.synth_genie.f_top_menu_items"
+   }
+  ],
+  "example_question_sqls": [
+   {
+    "id": "524ae67cb2bb47259e8f0c4f766e949b",
+    "question": [
+     "Which categories generate the most revenue over the last 30 days?"
+    ],
+    "sql": [
+     "SELECT mi.category, SUM(oi.line_net_amount) AS revenue, SUM(oi.quantity) AS units_sold FROM jmrdemo.synth_silver.order_item oi JOIN jmrdemo.synth_ref.menu_item mi ON mi.menu_item_id = oi.menu_item_id WHERE oi.placed_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY mi.category ORDER BY revenue DESC"
+    ],
+    "usage_guidance": [
+     "Use for category revenue ranking."
+    ]
+   },
+   {
+    "id": "72ad60eadd6b431aa32085814fa9d32b",
+    "question": [
+     "Which menu items have the highest gross margin (base price minus cost)?"
+    ],
+    "sql": [
+     "SELECT item_name, category, base_price, cost, (base_price - cost) AS gross_margin, (base_price - cost)/NULLIF(base_price,0) AS margin_pct FROM jmrdemo.synth_ref.menu_item ORDER BY gross_margin DESC LIMIT 20"
+    ],
+    "usage_guidance": [
+     "Use for item-level margin ranking."
+    ]
+   },
+   {
+    "id": "8669183af2b24023a3becde16b8d6af2",
+    "question": [
+     "Which items consume the most expensive ingredients by extended BOM cost?"
+    ],
+    "sql": [
+     "SELECT mi.item_name, SUM(ri.quantity * ri.cost_per_unit) AS extended_ingredient_cost FROM jmrdemo.synth_ref.recipe_ingredient ri JOIN jmrdemo.synth_ref.menu_item mi ON mi.menu_item_id = ri.menu_item_id GROUP BY mi.item_name ORDER BY extended_ingredient_cost DESC LIMIT 20"
+    ],
+    "usage_guidance": [
+     "Extended BOM cost = SUM(quantity * cost_per_unit)."
+    ]
+   },
+   {
+    "id": "b59ada93bce4483286b3551ac36af739",
+    "question": [
+     "What is the product mix by daypart (lunch vs all day)?"
+    ],
+    "sql": [
+     "SELECT mi.daypart, SUM(oi.quantity) AS units_sold, SUM(oi.line_net_amount) AS revenue FROM jmrdemo.synth_silver.order_item oi JOIN jmrdemo.synth_ref.menu_item mi ON mi.menu_item_id = oi.menu_item_id WHERE oi.placed_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY mi.daypart ORDER BY revenue DESC"
+    ],
+    "usage_guidance": [
+     "Use for daypart product mix."
+    ]
+   },
+   {
+    "id": "f55cf952be264232b24f9692513f1102",
+    "question": [
+     "How has item pricing drifted by financial period?"
+    ],
+    "sql": [
+     "SELECT fp.period_name, AVG(ip.price_multiplier) AS avg_price_multiplier FROM jmrdemo.synth_ref.item_price ip JOIN jmrdemo.synth_ref.financial_period fp ON fp.financial_period_id = ip.financial_period_id GROUP BY fp.period_name, fp.start_date ORDER BY fp.start_date"
+    ],
+    "usage_guidance": [
+     "Use for price-drift trend across financial periods."
+    ]
+   }
+  ],
+  "sql_snippets": {
+   "filters": [],
+   "expressions": [],
+   "measures": []
+  }
+ },
+ "benchmarks": {
+  "questions": [
+   {
+    "id": "482b3ef364f149b7b675049a206ce2f4",
+    "question": [
+     "Which categories generate the most revenue over the last 30 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT mi.category, SUM(oi.line_net_amount) AS revenue FROM jmrdemo.synth_silver.order_item oi JOIN jmrdemo.synth_ref.menu_item mi ON mi.menu_item_id = oi.menu_item_id WHERE oi.placed_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY mi.category ORDER BY revenue DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "6c1a31c4900c40acb9e965ed0078c5ee",
+    "question": [
+     "What is the product mix by daypart (lunch vs all day)?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT mi.daypart, SUM(oi.quantity) AS units_sold, SUM(oi.line_net_amount) AS revenue FROM jmrdemo.synth_silver.order_item oi JOIN jmrdemo.synth_ref.menu_item mi ON mi.menu_item_id = oi.menu_item_id WHERE oi.placed_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY mi.daypart ORDER BY revenue DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "bf04780c526f47d7846324b62b6e9c30",
+    "question": [
+     "What are the top 10 menu items by units sold over the last 30 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT mi.item_name, SUM(oi.quantity) AS units_sold FROM jmrdemo.synth_silver.order_item oi JOIN jmrdemo.synth_ref.menu_item mi ON mi.menu_item_id = oi.menu_item_id WHERE oi.placed_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY mi.item_name ORDER BY units_sold DESC LIMIT 10"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "d23d0615f93441c48e71614f25907165",
+    "question": [
+     "Which menu items have the highest gross margin (base price minus cost)?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT item_name, (base_price - cost) AS gross_margin FROM jmrdemo.synth_ref.menu_item ORDER BY gross_margin DESC LIMIT 20"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "d509e010f26f44c2b91603a1baeb42ad",
+    "question": [
+     "How has item pricing drifted by financial period?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT fp.period_name, AVG(ip.price_multiplier) AS avg_price_multiplier FROM jmrdemo.synth_ref.item_price ip JOIN jmrdemo.synth_ref.financial_period fp ON fp.financial_period_id = ip.financial_period_id GROUP BY fp.period_name, fp.start_date ORDER BY fp.start_date"
+      ],
+      "format": "SQL"
+     }
+    ]
+   }
+  ]
+ }
+}

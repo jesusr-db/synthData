@@ -1,0 +1,256 @@
+{
+ "version": 2,
+ "config": {
+  "sample_questions": [
+   {
+    "id": "0af8f4e6d0374750ab5f53a3986077fa",
+    "question": [
+     "Which stores have the highest average store AOV?"
+    ]
+   },
+   {
+    "id": "246c2561726c4725bed6106866bd6817",
+    "question": [
+     "Show the top 20 customers by monetary total"
+    ]
+   },
+   {
+    "id": "2ed033d874834e7cb748ba277ce7e0da",
+    "question": [
+     "What is the average recency in days by tier?"
+    ]
+   },
+   {
+    "id": "2f64931ead5b46d4a33720154c1d5510",
+    "question": [
+     "Which customers are at churn risk (highest recency days)?"
+    ]
+   },
+   {
+    "id": "67b68d14070343298dbb75dd8a38e3c7",
+    "question": [
+     "What is the average pizza affinity by tier?"
+    ]
+   },
+   {
+    "id": "686f739967644e2393098cca42685696",
+    "question": [
+     "How many customers have never ordered (recency_days = -1)?"
+    ]
+   },
+   {
+    "id": "91cfcf7dd672453289a9778c57ceedc2",
+    "question": [
+     "What share of customers are high-value (monetary total in the top decile)?"
+    ]
+   },
+   {
+    "id": "a2cc2f6a24904f08a69ad6f8b25abc74",
+    "question": [
+     "What is the average category affinity across all customers?"
+    ]
+   },
+   {
+    "id": "b13aba9c0c2f4d4ab35cec3df1a554e6",
+    "question": [
+     "Which customers have the highest lifetime spend?"
+    ]
+   },
+   {
+    "id": "d1798764e2bb4a27975a810e987cd192",
+    "question": [
+     "What is the average monetary total and AOV by tier?"
+    ]
+   },
+   {
+    "id": "d3cc99bbfcd74970b5133cb3b10692ec",
+    "question": [
+     "Which customers have the highest order frequency?"
+    ]
+   },
+   {
+    "id": "df24627bf19d47088fdd7abc2509261c",
+    "question": [
+     "What is the distribution of customers by tier?"
+    ]
+   }
+  ]
+ },
+ "data_sources": {
+  "tables": [
+   {
+    "identifier": "jmrdemo.synth_features.customer_features",
+    "column_configs": [
+     {
+      "column_name": "tier",
+      "synonyms": [
+       "loyalty tier",
+       "segment tier"
+      ],
+      "enable_format_assistance": true,
+      "enable_entity_matching": true
+     }
+    ]
+   },
+   {
+    "identifier": "jmrdemo.synth_features.store_features"
+   },
+   {
+    "identifier": "jmrdemo.synth_genie.metric_customer"
+   }
+  ]
+ },
+ "instructions": {
+  "text_instructions": [
+   {
+    "id": "49fcb710273744ceadad72cfa0f33554",
+    "content": [
+     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Customer ML Features (RFM + affinity, for segmentation/churn). Source = synth_features.customer_features (grain profile_id = guest_order.profile_id, the order-history key; NOT guest_profile.guest_profile_id). total_orders (frequency), monetary_total (lifetime spend), aov, recency_days (days since last order; -1 = never ordered), tier (bronze/silver/gold/platinum/none), affinity_<category> (share of spend on pizza/wings/sides/salads/drinks/desserts, 0..1).\n\nChurn risk = high recency_days. High-value = high monetary_total. Store features = synth_features.store_features (grain unit_id; store_orders, store_aov, category popularity). These are batch ML feature tables (refreshed weekly), not live silver data. Metric view synth_genie.metric_customer exposes governed measures (Customers, Avg Lifetime Spend, Avg Order Value, Avg Recency Days, Avg Total Orders) by Tier \u2014 query with MEASURE().\n\nASSET SELECTION (follow in order): (1) For standard business measures, query the metric view with MEASURE(). (2) For time-windowed operational questions (last N days) prefer the trusted SQL functions (f_*). (3) For ad-hoc slicing not covered by either, query the silver tables directly using the joins and formulas above. The functions and metric view are the canonical definitions \u2014 do not re-derive a metric in raw SQL if a function or MEASURE() already provides it."
+    ]
+   }
+  ],
+  "join_specs": [],
+  "sql_functions": [],
+  "example_question_sqls": [
+   {
+    "id": "38cd7b8abb8e411d923795d3e5c8ff9b",
+    "question": [
+     "Show the top 20 customers by monetary total"
+    ],
+    "sql": [
+     "SELECT profile_id, monetary_total, total_orders, aov, tier FROM jmrdemo.synth_features.customer_features ORDER BY monetary_total DESC LIMIT 20"
+    ],
+    "usage_guidance": [
+     "Use for highest lifetime-spend customers."
+    ]
+   },
+   {
+    "id": "4fe074f03c034a0e9959d976598dc901",
+    "question": [
+     "Which customers are at churn risk (highest recency days)?"
+    ],
+    "sql": [
+     "SELECT profile_id, recency_days, total_orders, monetary_total, tier FROM jmrdemo.synth_features.customer_features WHERE recency_days >= 0 ORDER BY recency_days DESC LIMIT 50"
+    ],
+    "usage_guidance": [
+     "Churn risk proxied by recency_days (exclude -1 = never ordered)."
+    ]
+   },
+   {
+    "id": "588e869082aa44109db9add3e100e701",
+    "question": [
+     "What is the average monetary total and AOV by tier?"
+    ],
+    "sql": [
+     "SELECT tier, AVG(monetary_total) AS avg_lifetime_spend, AVG(aov) AS avg_aov, COUNT(*) AS customers FROM jmrdemo.synth_features.customer_features GROUP BY tier ORDER BY avg_lifetime_spend DESC"
+    ],
+    "usage_guidance": [
+     "Use for tier-level value comparison."
+    ]
+   },
+   {
+    "id": "c3b7ace3528b485aa8baec814c72c9fd",
+    "question": [
+     "What is the average pizza affinity by tier?"
+    ],
+    "sql": [
+     "SELECT tier, AVG(affinity_pizza) AS avg_pizza_affinity FROM jmrdemo.synth_features.customer_features GROUP BY tier ORDER BY avg_pizza_affinity DESC"
+    ],
+    "usage_guidance": [
+     "affinity_pizza = share of spend on pizza (0..1); swap the column for other categories."
+    ]
+   },
+   {
+    "id": "ddcadfbfd6954c4ba0d589ad386695f8",
+    "question": [
+     "How many customers have never ordered (recency_days = -1)?"
+    ],
+    "sql": [
+     "SELECT COUNT(*) AS never_ordered FROM jmrdemo.synth_features.customer_features WHERE recency_days = -1"
+    ],
+    "usage_guidance": [
+     "recency_days = -1 sentinel means no orders on record."
+    ]
+   }
+  ],
+  "sql_snippets": {
+   "filters": [],
+   "expressions": [],
+   "measures": []
+  }
+ },
+ "benchmarks": {
+  "questions": [
+   {
+    "id": "06207d0086f242a69871a4b273644dcb",
+    "question": [
+     "What is the distribution of customers by tier?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT tier, COUNT(*) AS customers FROM jmrdemo.synth_features.customer_features GROUP BY tier ORDER BY customers DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "2a1f9c9920c54e38ba9eacffcb91c1db",
+    "question": [
+     "How many customers have never ordered (recency_days = -1)?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT COUNT(*) AS never_ordered FROM jmrdemo.synth_features.customer_features WHERE recency_days = -1"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "302b8588f1e94f648920584fbea3218f",
+    "question": [
+     "What is the average monetary total and AOV by tier?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT tier, AVG(monetary_total) AS avg_lifetime_spend, AVG(aov) AS avg_aov FROM jmrdemo.synth_features.customer_features GROUP BY tier ORDER BY avg_lifetime_spend DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "309a15569928482c8c56c0602d5be072",
+    "question": [
+     "Which customers are at churn risk (highest recency days)?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT profile_id, recency_days FROM jmrdemo.synth_features.customer_features WHERE recency_days >= 0 ORDER BY recency_days DESC LIMIT 50"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "5a820d2c95a44ed587e8f8cc880f37a6",
+    "question": [
+     "Show the top 20 customers by monetary total"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT profile_id, monetary_total FROM jmrdemo.synth_features.customer_features ORDER BY monetary_total DESC LIMIT 20"
+      ],
+      "format": "SQL"
+     }
+    ]
+   }
+  ]
+ }
+}

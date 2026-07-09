@@ -1,0 +1,90 @@
+{
+  "orders_sos": {
+    "title": "Orders & SOS \u2014 PizzaTel QSR",
+    "tag": "Orders and SOS",
+    "bu": "Store Operations",
+    "space_id": "01f16e38e68b1a81827e98c3a9162a7e",
+    "action": "UPDATED",
+    "ok": true
+  },
+  "loyalty": {
+    "title": "Loyalty & Rewards \u2014 PizzaTel QSR",
+    "tag": "Loyalty and Rewards",
+    "bu": "Customer and Loyalty",
+    "space_id": "01f16e38e840101092ea6ad834f0e215",
+    "action": "UPDATED",
+    "ok": true
+  },
+  "inventory": {
+    "title": "Inventory & Waste \u2014 PizzaTel QSR",
+    "tag": "Inventory and Waste",
+    "bu": "Supply Chain and Merchandising",
+    "space_id": "01f16e38ea04146fa8f4bb493607e96b",
+    "action": "UPDATED",
+    "ok": true
+  },
+  "workforce": {
+    "title": "Workforce & Labor \u2014 PizzaTel QSR",
+    "tag": "Workforce and Labor",
+    "bu": "Store Operations",
+    "space_id": "01f16e38eae110c69093d8bab73dcd99",
+    "action": "UPDATED",
+    "ok": true
+  },
+  "demand_risk": {
+    "title": "Demand Risk & External Signals \u2014 PizzaTel QSR",
+    "tag": "Demand Risk and External Signals",
+    "bu": "Store Operations",
+    "space_id": "01f17aefb04b165cb6ce7ad9ece0bcef",
+    "action": "UPDATED",
+    "ok": true
+  },
+  "franchisee_exec": {
+    "title": "Franchisee & Executive \u2014 PizzaTel QSR",
+    "tag": "Franchisee and Executive",
+    "bu": "Finance and Franchise",
+    "space_id": "01f17aef8dd11d628aac4a3088740d39",
+    "action": "UPDATED",
+    "ok": true
+  },
+  "delivery_3pd": {
+    "title": "Delivery & 3PD Operations \u2014 PizzaTel QSR",
+    "tag": "Delivery and 3PD Operations",
+    "bu": "Store Operations",
+    "space_id": "01f17aef8e2319bcb34c3e18aebf3570",
+    "action": "UPDATED",
+    "ok": true
+  },
+  "menu_product": {
+    "title": "Menu & Product Performance \u2014 PizzaTel QSR",
+    "tag": "Menu and Product Performance",
+    "bu": "Supply Chain and Merchandising",
+    "space_id": "01f17aef8ed71336bc2fe2e701063e7f",
+    "action": "UPDATED",
+    "ok": true
+  },
+  "payments": {
+    "title": "Payments & Tender Mix \u2014 PizzaTel QSR",
+    "tag": "Payments and Tender Mix",
+    "bu": "Customer and Loyalty",
+    "space_id": "01f17aef8fc91cd7869fa7cd32af12d4",
+    "action": "UPDATED",
+    "ok": true
+  },
+  "guest_360": {
+    "title": "Guest & Customer 360 \u2014 PizzaTel QSR",
+    "tag": "Guest and Customer 360",
+    "bu": "Customer and Loyalty",
+    "space_id": "01f17aef90a417e6985cd0b8261bfd21",
+    "action": "UPDATED",
+    "ok": true
+  },
+  "customer_ml": {
+    "title": "Customer ML Features \u2014 PizzaTel QSR",
+    "tag": "Customer ML Features",
+    "bu": "Customer and Loyalty",
+    "space_id": "01f17aef91c91b6ebc0201c9ee2530dd",
+    "action": "UPDATED",
+    "ok": true
+  }
+}

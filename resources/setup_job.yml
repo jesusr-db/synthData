@@ -103,11 +103,29 @@ resources:
               catalog_name: ${var.catalog_name}
               schema_prefix: ${var.schema_prefix}
 
-        - task_key: create_genie_space
+        - task_key: apply_grounding_sql
           depends_on:
             - task_key: create_metric_views
           notebook_task:
-            notebook_path: ../src/setup/create_genie_space.py
+            notebook_path: ../src/setup/apply_grounding_sql.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
+              schema_prefix: ${var.schema_prefix}
+
+        - task_key: build_genie_spaces
+          depends_on:
+            - task_key: apply_grounding_sql
+          notebook_task:
+            notebook_path: ../src/setup/build_genie_spaces.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
+              schema_prefix: ${var.schema_prefix}
+
+        - task_key: apply_bu_domains
+          depends_on:
+            - task_key: build_genie_spaces
+          notebook_task:
+            notebook_path: ../src/setup/apply_bu_domains.py
             base_parameters:
               catalog_name: ${var.catalog_name}
               schema_prefix: ${var.schema_prefix}
@@ -162,7 +180,7 @@ resources:
         - task_key: unpause_generator
           depends_on:
             - task_key: backfill
-            - task_key: create_genie_space
+            - task_key: apply_bu_domains
             - task_key: apply_ontos
             - task_key: train_recommender
             - task_key: build_commerce_agent

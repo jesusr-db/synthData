@@ -143,8 +143,69 @@ for _ in range(80):
     time.sleep(15)
 print(f"[INFO] online store ready: state={getattr(online_store, 'state', None)}")
 
-# Publish feature tables to the online store (default publish_mode TRIGGERED = incremental
-# sync; re-running this notebook weekly re-triggers the sync to refresh online values).
+# Publish feature tables to the online store.
+#
+# REPEATABILITY — read before touching this loop:
+#   * publish_mode TRIGGERED creates a synced online table; the sync keeps it fresh, so
+#     publishing is a ONE-TIME operation (the weekly feature_refresh_job re-runs this
+#     notebook and must not fail just because the table is already published).
+#   * fe.publish_table is NOT idempotent — on a re-run (setup re-run without destroy, or
+#     weekly refresh) it tries to CREATE the destination again and raises
+#     AlreadyExists ("Destination table <x>_online already exists").
+#   * You CANNOT drop just the online table to retry: fe.drop_online_table raises
+#     ValueError("Dropping Databricks online tables is not supported"), and the published
+#     table is NOT a UC table (it lives inside the Lakebase store), so DROP TABLE is a
+#     no-op. The only supported way to remove a published table is delete_online_store,
+#     which destroy_notebook.py does on teardown.
+#   * Therefore the correct idempotent behavior here is: publish once; on AlreadyExists,
+#     treat it as success (the existing table is already syncing).
+#
+# The ORIGINAL failure was NOT AlreadyExists — it was that this exception was swallowed as
+# a bare [WARN] on the *first* deploy where publish genuinely failed (store not yet
+# AVAILABLE / half-provisioned), leaving nothing published, after which both serving
+# endpoints failed with "No suitable online store found for feature tables". The
+# wait-until-AVAILABLE loop above now guarantees the store is ready before we publish, and
+# any publish error OTHER than AlreadyExists is re-raised to fail the task loudly instead
+# of silently proceeding to build endpoints on an unpublished feature store.
+from databricks.sdk.errors.platform import AlreadyExists as _AlreadyExists
+from databricks.sdk import WorkspaceClient as _WSC
+_w_sync = _WSC()
+
+def _wait_until_online(_online_fqn, timeout_s=1800, poll_s=20):
+    """Block until a synced/online table reaches ONLINE, retrying its backing pipeline on
+    failure. publish_table only KICKS OFF an async Lakeflow sync pipeline and returns; that
+    pipeline can transiently fail with 'External authorization failed' when the freshly
+    provisioned Lakebase instance isn't ready to accept the connection yet. The synced-table
+    API is idempotent and documented as retry-on-error, and a manual pipeline restart clears
+    the transient failure. Returns when ONLINE; raises if it can't get there in time — we must
+    NOT let train_recommender/endpoint creation proceed against a half-synced table (that is
+    what produced 'Online table ... is missing required columns')."""
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        st = _w_sync.database.get_synced_database_table(name=_online_fqn)
+        dss = getattr(st, "data_synchronization_status", None)
+        state = str(getattr(dss, "detailed_state", "") or "")
+        if "ONLINE" in state and "FAILED" not in state:
+            print(f"[INFO] {_online_fqn} sync ONLINE (state={state})")
+            return
+        if "FAILED" in state:
+            # Transient (e.g. External authorization failed on a cold instance) — restart the
+            # backing pipeline and keep polling. The pipeline id is on the sync status.
+            pid = getattr(dss, "pipeline_id", None)
+            msg = (getattr(dss, "message", "") or "")[:200]
+            if pid:
+                try:
+                    _w_sync.pipelines.start_update(pipeline_id=pid, full_refresh=True)
+                    print(f"[INFO] {_online_fqn} sync FAILED ({msg}); restarted pipeline {pid}, waiting...")
+                except Exception as _e:
+                    print(f"[WARN] restart of pipeline {pid} for {_online_fqn} failed: {_e}")
+            else:
+                print(f"[WARN] {_online_fqn} sync FAILED ({msg}) but no pipeline_id to restart; waiting...")
+        else:
+            print(f"[INFO] {_online_fqn} sync state={state}; waiting {poll_s}s...")
+        time.sleep(poll_s)
+    raise RuntimeError(f"online table {_online_fqn} did not reach ONLINE within {timeout_s}s")
+
 for _src, _online in [("customer_features", "customer_features_online"),
                       ("store_features", "store_features_online")]:
     try:
@@ -152,8 +213,12 @@ for _src, _online in [("customer_features", "customer_features_online"),
                          source_table_name=fq(_src),
                          online_table_name=fq(_online))
         print(f"[INFO] published {fq(_src)} -> {fq(_online)}")
-    except Exception as e:
-        print(f"[WARN] publish {fq(_src)} failed: {e}")
+    except _AlreadyExists:
+        # Already published on a prior run — the TRIGGERED sync keeps it current. Idempotent.
+        print(f"[INFO] {fq(_online)} already published (sync is live); skipping re-publish")
+    # Publish is async — block until the sync actually lands (retrying transient pipeline
+    # failures) so downstream endpoint creation sees fully-populated online tables.
+    _wait_until_online(fq(_online))
 
 # --- Feature Serving endpoint (fold #1: real-time customer look) ---
 from databricks.feature_engineering import FeatureLookup

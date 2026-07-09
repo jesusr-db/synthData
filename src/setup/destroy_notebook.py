@@ -106,32 +106,76 @@ except Exception as e:
     print(f"[WARN] Demo group cleanup skipped: {e}")
 
 # COMMAND ----------
-# Step 0g: Delete Genie Space — non-fatal
+# Step 0g: Tear down Genie layer — BU domains + governed tags, the 11 spaces, and the
+# synth_genie functions/metric views. Runs BEFORE the metrics/ref schema drops (Steps 1-4)
+# so spaces/domains are removed before the views/functions/tables they reference. Non-fatal.
 try:
     import requests
     from databricks.sdk import WorkspaceClient
+    from genie_domains import _domains
+    from genie_domains._spaces import DOMAINS
+
     _wc = WorkspaceClient()
     _workspace_url = _wc.config.host.rstrip("/")
     _ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
     _token = _ctx.apiToken().get()
-    _headers = {"Authorization": f"Bearer {_token}"}
-    _space_title = f"QSR Synthetic Data — {catalog_name}"
-    _resp = requests.get(f"{_workspace_url}/api/2.0/genie/spaces", headers=_headers, timeout=30)
-    if _resp.status_code == 200:
-        _spaces = [s for s in _resp.json().get("spaces", []) if s.get("title") == _space_title]
-        if _spaces:
-            _space_id = _spaces[0]["space_id"]
-            _del = requests.delete(f"{_workspace_url}/api/2.0/genie/spaces/{_space_id}", headers=_headers, timeout=30)
-            if _del.status_code in (200, 204):
-                print(f"[INFO] Deleted Genie Space: '{_space_title}' (id={_space_id})")
+    _headers = {"Authorization": f"Bearer {_token}", "Content-Type": "application/json"}
+
+    def _get(path):
+        r = requests.get(f"{_workspace_url}{path}", headers=_headers, timeout=30)
+        return r.json() if r.status_code == 200 else {}
+
+    def _delete(path):
+        r = requests.delete(f"{_workspace_url}{path}", headers=_headers, timeout=30)
+        return r.status_code in (200, 204)
+
+    def _sql(stmt, best_effort=False):
+        try:
+            spark.sql(stmt)
+        except Exception as _e:
+            if best_effort:
+                print(f"[WARN] sql skipped: {stmt[:70]} -> {str(_e)[:120]}")
             else:
-                print(f"[WARN] Genie Space delete returned {_del.status_code}: {_del.text}")
-        else:
-            print(f"[INFO] Genie Space not found (ok): '{_space_title}'")
-    else:
-        print(f"[WARN] Could not list Genie Spaces ({_resp.status_code}): {_resp.text}")
+                raise
+
+    # List ALL spaces (paginated — the endpoint caps per page) and map our titles -> ids.
+    def _all_spaces():
+        out, tok = [], None
+        for _ in range(200):
+            _p = "/api/2.0/genie/spaces?page_size=100" + (f"&page_token={tok}" if tok else "")
+            _j = _get(_p)
+            out += _j.get("spaces", [])
+            tok = _j.get("next_page_token")
+            if not tok:
+                break
+        return out
+
+    _title_to_key = {d["title"]: k for k, d in DOMAINS.items()}
+    _spaces_map = {}
+    for _s in _all_spaces():
+        _k = _title_to_key.get(_s.get("title"))
+        if _k:
+            _spaces_map[_k] = {"space_id": _s["space_id"]}
+
+    # 1. Delete BU domain cards + governed tags + space tag-assignments (children first).
+    _domains.teardown(_get, _delete, _sql, drop_tags=True, spaces=_spaces_map)
+    print("[INFO] BU domains + governed tags + space tag-assignments torn down")
+
+    # 2. Trash all our spaces by title (handles any timestamp-suffixed duplicates too).
+    _titles = set(_title_to_key)
+    for _s in _all_spaces():
+        _t = _s.get("title", "")
+        if _t in _titles or any(_t.startswith(x + " ") for x in _titles):
+            if _delete(f"/api/2.0/genie/spaces/{_s['space_id']}"):
+                print(f"[INFO] Trashed space: {_t}")
+            else:
+                print(f"[WARN] Space delete failed: {_t}")
+
+    # 3. Drop the synth_genie schema (functions + metric views) — CASCADE.
+    _sql(f"DROP SCHEMA IF EXISTS {catalog_name}.{schema_prefix}genie CASCADE", best_effort=True)
+    print(f"[INFO] Dropped schema: {catalog_name}.{schema_prefix}genie")
 except Exception as e:
-    print(f"[WARN] Genie Space cleanup skipped: {e}")
+    print(f"[WARN] Genie layer cleanup skipped: {e}")
 
 # COMMAND ----------
 # Step 0b: Drop UC functions (governance pack)
@@ -216,31 +260,31 @@ try:
 except Exception as e:
     print(f"[WARN] delete feature spec skipped: {e}")
 
-# 0h-3: online feature store (Lakebase, billable) — drop published tables, then the store
+# 0h-3: online feature store (Lakebase, billable) — delete the store, which removes the
+# published online tables with it.
+#
+# NOTE (repeatability): published online tables (customer_features_online,
+# store_features_online) CANNOT be dropped individually — fe.drop_online_table raises
+# ValueError("Dropping Databricks online tables is not supported"), and they are not UC
+# tables (they live inside the Lakebase store, so DROP TABLE is a no-op). Deleting the
+# online store is the ONLY supported way to remove them. This teardown is what makes the
+# next deploy re-runnable: if the store survives, build_feature_tables.publish_table hits
+# AlreadyExists on the *_online destinations. This step REQUIRES databricks-feature-
+# engineering in the destroy_job env — without it the import below raises ImportError,
+# gets swallowed, and the billable store leaks (breaking the next deploy).
 _online_store_name = f"{schema_prefix.replace('_', '-')}qsr-online-store"
 try:
     from databricks.feature_engineering import FeatureEngineeringClient
     _fe = FeatureEngineeringClient()
     _os = _fe.get_online_store(name=_online_store_name)
     if _os is not None:
-        for _otfq in [ffq("customer_features_online"), ffq("store_features_online")]:
-            try:
-                _fe.drop_online_table(name=_otfq, online_store=_os)
-                print(f"[INFO] dropped published online table {_otfq}")
-            except Exception as e:
-                print(f"[WARN] drop_online_table {_otfq} skipped: {e}")
+        # delete_online_store drops the store AND its published online tables in one call.
         _fe.delete_online_store(name=_online_store_name)
-        print(f"[INFO] deleted online store {_online_store_name}")
+        print(f"[INFO] deleted online store {_online_store_name} (removes published online tables)")
     else:
         print(f"[INFO] online store {_online_store_name} not found; nothing to delete")
 except Exception as e:
     print(f"[WARN] online store teardown skipped: {e}")
-# belt-and-suspenders: drop any leftover published UC tables
-for _ot in ["customer_features_online", "store_features_online"]:
-    try:
-        spark.sql(f"DROP TABLE IF EXISTS {ffq(_ot)}")
-    except Exception as e:
-        print(f"[WARN] drop leftover {ffq(_ot)} skipped: {e}")
 
 # 0h-4: registered model (all versions)
 try:

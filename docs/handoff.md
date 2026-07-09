@@ -1,40 +1,42 @@
 # Handoff for Next Agent — synthData
 
-**As of**: 2026-06-22 00:30 EDT
-**Branch / HEAD**: `main` @ `413850e` (merged commerce agent + tracing + jmr_gateway switch). **Not pushed** — back up before destructive git ops.
+**As of**: 2026-06-22 10:00 EDT
+**Branch / HEAD**: `feat/genie-domains` @ `af0923f feat(genie): bake drill-down sample questions into spaces + deck one-pager` — **NOT pushed** (4 local commits, no upstream)
 
 > Single canonical handoff. Detail lives behind §4 pointers, not inlined.
 
-## §1 — Launchpad (act on this first)
+## §1 — Launchpad (act on this first)   [≤10 lines]
 
-- **State**: clean re: source (`.pyc` + 1 untracked `research/*.md`) · 192 tests pass · agent live on `synth_qsr-commerce-agent`, LLM via `jmr_gateway` → `claude-sonnet-4-5`.
-- **Next actions** (priority order):
-  1. **PRIORITY — explore LOE: migrate the agent from a Model Serving endpoint to a Databricks App** (ref: https://docs.databricks.com/aws/en/generative-ai/agent-framework/author-agent). **Must verify the feature-store (`synth_qsr-customer-features`) and recommender (`synth_qsr-recommender`) endpoints are invoked properly under the App's identity.** LOE drivers spelled out in §4 "App-migration exploration" — the pure core ports as-is; the real work is auth (App SP grants), live menu/price data access, tracing, and the web-facing URL change.
-  2. **OPEN BUG: `propose_order` menu-id ↔ storefront catalog mismatch.** MeatZZa(4)→`13`/`10`/`2003` in 4/5 (web 2026-06-21). Two-namespace problem (`ref.menu_item.menu_item_id` baked at log time vs storefront `ProductCatalog`). Roadmapped (`docs/roadmap.md` → "Commerce Agent — Known Issues"); needs a joint call on which side owns the id map.
-  3. To make the live endpoint callable by the web SP: set `commerce_agent_query_principal` and re-run `build_commerce_agent`.
-- **Landmines**: trace PAT is owner-minted, 90-day (rotate / move to SP for prod). · Re-test the agent via a one-off `jobs/runs/submit` of `build_commerce_agent` (notebook path: NO `.py` ext) — NOT the full `setup_job` (regenerates all data). · Don't delete `jmr_gateway` in destroy — it's the user's shared gateway.
+- **State**: clean re: source (only `.pyc` churn + 1 pre-existing untracked `research/*.md`) · branch `feat/genie-domains` **not pushed**.
+- **Next actions** (≤3, specific):
+  1. **Reload Discover → confirm the 4 PizzaTel domains show their Genie spaces**; for a demo, run `genie_domains/demo_onepager.md` flow (Orders&SOS → pivot to Workforce).
+  2. **Push `feat/genie-domains` + open PR** (or merge to `main`) — 4 commits, currently local-only.
+  3. Optional: **codify the one-time Genie patch into setup/destroy jobs** (today it's live-only on `jmrdemo`) — sources in `genie_domains/build_*.{py,sh}` + `teardown.sh`.
+- **Landmines** (≤2): Domains/Discover is account-level **Beta** — both previews ("Domains and Discover Page" account + "Discover Page" workspace) must stay ON or Domains vanish from the UI (assets stay tagged). · Shared demo account already had **37 other teams' domains** — never bulk-delete domains/tags; use `genie_domains/teardown.sh` (scoped to our 4).
 
-## §2 — This session
+## §2 — This session   [≤5 bullets, each with evidence]
 
-- Switched the agent's LLM hop to the standalone Unity AI Gateway `jmr_gateway` (base `…/ai-gateway/mlflow/v1`, `model="jmr_gateway"`, now → sonnet-4-5) — evidence: commits `1238e58`..`5647c70`, merged `413850e`; re-validated 5/5 finalize + simple orders, correct ids, traces real.
-- Deploy-time fixes for the gateway path: bake `llm_base_url` into config (log validation), drop the gateway from declared `resources` (pre-deploy dep check), single system message (Bedrock rejects two) — `47aee58`,`4bf41c1`,`ffc9e08`.
-- Prompt tuning (decisive propose, atomic read-back+propose, wording→nearest menu item) `ca3cd38`,`595728d` — fixed sonnet-4-6 finalize flakiness; harmless on 4.5.
-- Prior session (already merged): built+deployed the agent, enabled MLflow tracing + inference tables. Contract ledger updated each step (web repo latest `b7d21e4`).
+- Built **4 grounded Genie spaces** over `jmrdemo.synth_*` (Orders&SOS, Loyalty, Inventory, Workforce) — evidence: `a603bc4`; validated live (Genie calls `f_sos_compliance`, `MEASURE()` over metric views).
+- Created `jmrdemo.synth_genie` grounding: **13 trusted SQL functions + 4 metric views + table comments** — evidence: `a603bc4`, `verify.sh` (functions=13).
+- Created **4 governed tags** + applied to the 4 spaces (`entity-tag-assignments` API) and curated UC assets — evidence: `a603bc4`, `verify.sh` (4/4 space tag-assignments OK).
+- Created+**published 4 Discover Domains** via `POST /api/2.0/domains` (`effective_draft=false`) — evidence: `07309ce`, `genie_domains/domains_created.json`.
+- Baked **what/why/recommend drill-down sample questions** into all 4 spaces + scenarios doc + deck one-pager — evidence: `afac548`,`af0923f`; 3 hardest drill-downs (labor-per-order, below-par, tier breakage) validated live.
 
-## §3 — Gotchas this session
+## §3 — Gotchas this session   [≤5]
 
-- A standalone AI Gateway is NOT a serving endpoint: don't declare it as a `DatabricksServingEndpoint` model resource (pre-deploy dep check fails); invoke at `…/ai-gateway/mlflow/v1` with `model=<gateway-name>` — (durable → memory: `ai-gateway-payg-fm`).
-- Bedrock-backed gateway routes reject a second system message ("System message must be at the beginning") — fold identity into one system message — (durable → memory: `mlflow-responsesagent-serving`).
-- Model swap behind the gateway is config-only on the gateway side — the agent calls `model="jmr_gateway"` and needs no redeploy when the gateway repoints (4.6→4.5 was zero agent change).
+- Discover **Domains** can be created+published via `POST /api/2.0/domains` (`tag_key`=governed tag; returns `effective_draft=false` = live) — earlier "UI-only" belief was wrong — (durable → memory: `genie-spaces-and-domains`).
+- Tag a Genie space (workspace object) via `POST /api/2.0/entity-tag-assignments` (`entity_type=geniespaces`), NOT UC `SET TAGS` — (durable → memory: `genie-spaces-and-domains`).
+- `serialized_space` v2: strict validator — `text_instructions` must be EXACTLY one item; all id-lists sorted by `id` (32-hex); `tables` sorted by identifier; curated SQL = UC functions in `sql_functions` — (durable → memory: `genie-spaces-and-domains`).
+- `databricks genie update-space` needs `--serialized-space` flag; `create-space` takes the blob positionally — (durable → memory: `genie-spaces-and-domains`).
+- `COMMENT ON COLUMN` is blocked on silver streaming tables (Lakeflow); `COMMENT ON TABLE` and `SET TAGS` both work on them — (session-local).
 
 ## §4 — Pointers
 
-- **App-migration exploration (priority #1 detail):** the pure core (`src/agent/{pricing,tools,loop,prompts}.py` + `parse_request`/`build_response`/`to_openai_messages`/`from_openai_response`) is framework-agnostic — a FastAPI route replaces `CommerceAgent.predict` (low effort). The LOE is in: (a) **auth** — an App runs as its own service principal; grant it CAN_QUERY on `synth_qsr-recommender` + `synth_qsr-customer-features` and query access to `jmr_gateway`, and wire tokens (today the served model's automatic-auth `resources` do this for free) — **verify both endpoints invoke correctly under the App SP**; (b) **menu/price/occasion data** — today baked at model log time, an App needs a live path (SQL warehouse / statement execution at startup or per request); (c) **tracing** — replace the `ENABLE_MLFLOW_TRACING` env-var path with in-app `mlflow.openai.autolog()`/manual spans to the experiment; (d) **inference tables** — were a gateway/endpoint feature, an App must log payloads itself; (e) **deploy** — `app.yaml` + DAB app resource + `databricks apps deploy`, update destroy. **Web-facing change:** BFF currently POSTs the serving `/invocations` URL; an App exposes an HTTPS route (URL + auth change) → coordinate in the ledger; request/response shape can stay (we own it). Trade-off: App gains streaming/custom-UI/session control and sheds managed-endpoint limits we hit (usage-tracking-unsupported, single-system, deprecated auto_capture); costs managed ResponsesAgent serving + gateway inference tables + the simple invocations contract, and you own auth/scaling/tracing.
-- Plan: `docs/superpowers/plans/2026-06-18-pizzatel-commerce-agent.md` · Roadmap (menu-id issue): `docs/roadmap.md` → "Commerce Agent — Known Issues" · Agent API: `docs/api.md` · Contract ledger (web repo): `gitRepos_FY26/opentelemetry-demo/docs/integration/agent-endpoint-contract.md`.
-- Agent code: `src/agent/{pricing,tools,loop,commerce_agent,gateway,serving,prompts}.py`; setup: `src/setup/build_commerce_agent.py` (gateway mode via `llm_gateway_name`); teardown: `src/setup/destroy_notebook.py` (0h-1b); tests: `tests/test_agent_*.py`.
-- Memory: `mlflow-responsesagent-serving`, `ai-gateway-payg-fm` (cover the durable serving/gateway learnings). Legacy QSR-generator reference: `git show 0a9aa3f:docs/handoff.md`.
-- **Carried-forward open issues**:
-  1. **App-migration LOE exploration** (priority #1 above) — not started.
-  2. **`propose_order` menu-id mapping mismatch** (§1 #2, roadmapped) — open.
-  3. **Data classification auto-tagging not active** — `configure_monitoring.py` sets `MonitorDataClassificationConfig(enabled=True)` but the workspace tier returns `enabled=False`; `class.*` tags applied deterministically by `apply_governance.py` Step 3. Lights up if the tier is upgraded.
-  4. **In-UI real-time trace view** — needs `databricks-agents>=1.2.0` + GenAI-monitoring beta; traces are already captured/queryable via API + inference table without it.
+- Genie Domains patch: `genie_domains/` (`README.md`, `build_spaces.py`, `build_domains.sh`, `demo_scenarios.md`, `demo_onepager.md`, `verify.sh`, `teardown.sh`, `*_created.json`, `01_grounding.sql`).
+- Memory added/updated this session: `genie-spaces-and-domains` (reference), `qsr-genie-domains` (project).
+- **Carried-forward open issues** (prior handoff, still unresolved — agent workstream, dormant this session):
+  1. **App-migration LOE exploration** (migrate commerce agent from Model Serving → Databricks App; verify feature-store + recommender invoke under the App SP) — not started. Detail: prior handoff §4 `git show 4880670:docs/handoff.md`.
+  2. **`propose_order` menu-id ↔ storefront catalog mismatch** — open; roadmapped in `docs/roadmap.md` → "Commerce Agent — Known Issues".
+  3. **Data classification auto-tagging not active** — `configure_monitoring.py` sets `enabled=True` but tier returns `False`; `class.*` tags applied deterministically by `apply_governance.py` Step 3.
+  4. **In-UI real-time trace view** — needs `databricks-agents>=1.2.0` + GenAI-monitoring beta; traces already API/inference-table queryable.
+  - Agent-workstream landmines still live: trace PAT is owner-minted 90-day (rotate/SP for prod); re-test agent via one-off `build_commerce_agent`, NOT full `setup_job` (regenerates all data); don't delete `jmr_gateway` in destroy (shared).

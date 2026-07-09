@@ -128,6 +128,205 @@ See `docs/handoff.md` for full deploy + test instructions. Summary:
 
 ---
 
+## Phase 3.5 — Genie Spaces Quality Pass + Expansion ✅
+
+> Status: DONE (2026-07-08)
+> Scope: `genie_domains/` (shared `_spaces.py` + `_domains.py` modules) + setup/destroy jobs.
+> No schema or generator changes; grounding SQL + Genie configuration + governance only.
+
+Reworked the 4 original spaces to best-practice standard AND added 7 new spaces (11 total), all
+grouped under 4 Business-Unit governed-tag Domains, fully managed by setup_job/destroy_job.
+
+### What shipped
+- **11 best-practice spaces** (4 reworked + 7 new). Each has ≥5 `example_question_sqls`
+  (question→SQL pairs), ≥5 `benchmarks` (SME-verified answer SQL, `format: "SQL"`), `column_configs`
+  with synonyms + `enable_format_assistance`/`enable_entity_matching` on categoricals, explicit
+  join_specs, trusted functions / metric views as canonical, and a MEASURE-hierarchy instruction block.
+  - New spaces: Demand Risk & External Signals, Franchisee & Executive, Delivery & 3PD Operations,
+    Menu & Product Performance, Payments & Tender Mix, Guest & Customer 360, Customer ML Features.
+  - Excluded (data doesn't support): **Marketing** (discount_type never persisted; no campaign tables)
+    and **Supply Chain supplier scorecards** (`receiving_order` has no `supplier_id`).
+- **Retired** the broad 14-table catch-all space (`create_genie_space.py` deleted).
+- **4 BU governed-tag Domains** (Store Operations, Customer & Loyalty, Supply Chain & Merchandising,
+  Finance & Franchise) with parent/child tag-key hierarchy (`BU/Space`) via `parent_domain_id`.
+  Replaced the 4 flat domains. Governed tags applied to each space's UC assets + space entity.
+- **Fully job-managed:** setup DAG `create_metric_views → apply_grounding_sql → build_genie_spaces →
+  apply_bu_domains`; destroy notebook Step 0g tears down domains + tags + spaces + `synth_genie`
+  before schema drops. Shared modules imported by both notebooks and local `.sh`/CLI wrappers.
+
+### Empirically verified (2026-07-08, jmrdemo workspace)
+- v2 serialized_space persists `example_question_sqls`, `benchmarks.questions`, `column_configs`
+  (round-trip confirmed). Field shapes: question/sql/usage_guidance are string ARRAYS;
+  benchmark answer = `[{content:[sql], format:"SQL"}]`; column_configs use v2 names
+  `enable_format_assistance`/`enable_entity_matching` and must be sorted by `column_name`.
+- All 11 spaces built (4 updated, 7 created); all round-trip with 5 example SQL + 5 benchmarks.
+- All **55 benchmark SQL answers execute** against the warehouse with sane row counts.
+- 4 BU parent + 11 child Domain cards published (`effective_draft=false`), no duplicates.
+
+### Metric view per space (2026-07-08 follow-up)
+Every one of the 11 spaces now has a dedicated `synth_genie.metric_*` view (11 total, up from 5) so the
+"query the metric view with MEASURE()" instruction is never a dangling reference (finding #4). Added 6:
+`metric_delivery`, `metric_menu`, `metric_payments`, `metric_guest`, `metric_demand_risk`, `metric_customer`,
+all verified with live `MEASURE()` queries. Also fixed a pagination bug in `existing_spaces()` /
+`list_spaces_by_title()` (the list endpoint caps ~10/page) that caused duplicate spaces on re-run —
+builder is now idempotent (11 UPDATED, 0 CREATED), and teardown now also removes space tag-assignments.
+
+### Original audit findings (all addressed)
+The four original spaces used the fundamentals well but missed the highest-leverage levers; the
+audit below (against Databricks Genie best-practices docs) drove the rework.
+
+### Background — Audit Findings Summary
+
+Key gaps identified across all four spaces:
+
+| Gap | Impact |
+|---|---|
+| Missing join specs for queried tables | Genie infers wrong joins; incorrect SQL generated |
+| No `example_question_sqls` (question+SQL pairs) | Genie writes ad-hoc SQL for uncovered patterns instead of using verified queries |
+| 12 sample questions per space (recommended: 20–50) | Thin coverage; Genie over-relies on raw SQL generation |
+| MEASURE() usage not operationally scoped | Genie makes inconsistent asset choices for the same conceptual question |
+| Dead-weight unjoined tables in table sets | Adds ambiguity to Genie's table selection |
+| Ambiguous sample questions (no time window / grain) | Genie scans full history instead of applying expected filters |
+
+---
+
+### Priority 1 — Critical (accuracy blockers)
+
+#### 3.5.1 — Add Missing Join Specs
+
+Several tables are queried in sample questions or referenced in instructions but have no declared join path. Genie will attempt to infer these joins and regularly fails.
+
+| Space | Table | Missing join |
+|---|---|---|
+| **Loyalty** | `franchisee` | No path from loyalty facts → `franchisee` |
+| **Loyalty** | `guest_order` | No join to `unit` or `franchisee` |
+| **Loyalty** | `loyalty_cohort_metrics` | No `unit` join (trend queries lose store-level slicing) |
+| **Inventory** | `supplier` | No `receiving_order` / `replenishment_order` → `supplier` join |
+| **Inventory** | `inventory_waste_summary` | No `unit` join (fast-trend table is unreachable by store) |
+| **Orders & SOS** | `sos_compliance_summary` | No `unit` join |
+| **Orders & SOS** | `unit_performance_daily` | No `unit` join |
+| **Workforce** | `staff_hours` (synth_metrics) | No `unit` join |
+
+**File:** `genie_domains/build_spaces.py` — add entries to each domain's `"joins"` list.
+
+---
+
+#### 3.5.2 — Add `example_question_sqls` (Question + SQL Pairs)
+
+The spaces use trusted functions for ~4 question types each, but 8–10 question patterns per space fall through to ad-hoc SQL generation. Best-practices guidance rates `example_question_sqls` as the highest-leverage curation lever after trusted functions.
+
+Target: **5–8 example SQL pairs per space** covering uncovered patterns:
+
+| Space | Uncovered patterns to add |
+|---|---|
+| **Orders & SOS** | Cancellation rate by store, hourly SOS breach rate, store-level delivery-time gap, franchisee revenue ranking |
+| **Loyalty** | Store-level redemption rate, weekly active-member trend, active digital account count, franchisee loyalty engagement |
+| **Inventory** | Receiving quality failure rate, cold-chain compliance rate, weekly waste trend by store, average waste cost per event by store, BOM ingredient cost by menu item |
+| **Workforce** | Labor hours per order by store, scheduled vs. completed shift comparison, headcount by franchisee, weekly labor hours trend |
+
+**File:** `genie_domains/build_spaces.py` — add `example_question_sqls` key to each domain dict; update `serialized()` to include them in the payload under `instructions.example_question_sqls`.
+
+---
+
+### Priority 2 — Medium (quality improvements)
+
+#### 3.5.3 — Explicit MEASURE() vs. Trusted Function vs. Raw Table Hierarchy
+
+All four spaces say "query with MEASURE()" but none specifies the decision order. Genie makes inconsistent asset choices for the same conceptual question.
+
+Add a 2–3 sentence rule block to each space's text instructions:
+
+> *"For standard business measures (Revenue, AOV, SOS Breach Rate, Active Members, Waste Cost, Labor Hours) always use `MEASURE()` against the metric view. For time-windowed operational questions (last N days) use the trusted SQL functions. For ad-hoc slicing not covered by either, query the silver tables directly."*
+
+**File:** `genie_domains/build_spaces.py` — add a `MEASURE_HIERARCHY` constant (like `GLOSSARY`) and inject it as the last instruction block in each domain's `ti()` call.
+
+---
+
+#### 3.5.4 — Expand Sample Questions (12 → 25–30 per space)
+
+Current count is 12 per space; internal best-practices guide recommends 20–50 for a production space across question classes: simple lookups, aggregations, multi-table joins, filtered queries, complex analytics, and edge cases.
+
+Additions per space:
+- **Orders & SOS:** period-scoped revenue questions, more channel variants, payment method mix
+- **Loyalty:** tier-progression rate, points expiry, multi-store member behavior
+- **Inventory:** quality/cold-chain, receiving by supplier, open PO aging, BOM cost drill-down
+- **Workforce** : shift-completion rate, overtime cost, labor efficiency vs. SOS correlation, employee headcount trend
+
+**File:** `genie_domains/build_spaces.py` — expand each domain's `sq([...])` list.
+
+---
+
+#### 3.5.5 — Remove Dead-Weight Tables
+
+Unjoined tables with no instruction context add noise to Genie's table selection without providing any benefit.
+
+| Space | Table to remove | Reason |
+|---|---|---|
+| **Orders & SOS** | `financial_period` | No join declared, not mentioned in instructions |
+| **Workforce** | `financial_period` | Same |
+| **Inventory** | `franchisee` | Unjoined, no inventory questions reference it |
+
+**File:** `genie_domains/build_spaces.py` — remove from each domain's `tbl([...])` list.
+
+---
+
+#### 3.5.6 — Fix Ambiguous Sample Questions
+
+Several questions have no time window or grain, causing Genie to scan full history or produce unclear SQL:
+
+| Space | Question | Fix |
+|---|---|---|
+| **Orders & SOS** | Q6: "average gap between actual and estimated delivery time" | Add "over the last 30 days" |
+| **Loyalty** | Q3: "does higher member penetration correlate with higher AOV?" | Add "by store over the last 30 days" |
+| **Loyalty** | Q10: "which stores have the most active loyalty members?" | Add "this month" |
+| **Inventory** | Q12: "which menu items consume the most expensive ingredients?" | Clarify "by total extended ingredient cost" |
+
+**File:** `genie_domains/build_spaces.py` — edit the affected strings in each domain's `sq([...])`.
+
+---
+
+### Priority 3 — Polish (longer-term)
+
+#### 3.5.7 — Trim Text Instruction Prose
+
+After adding `example_question_sqls` (3.5.2), move query-pattern guidance out of text instructions and into the SQL pairs. Internal guidance recommends keeping the text instruction block under ~2,000 characters total. The current merged blocks (glossary + domain rules + metric formulas + trusted asset guidance) likely exceed this.
+
+Target per space: GLOSSARY block + data foundation (grain + key column disambiguation) + business rules (metric formulas) + MEASURE hierarchy (from 3.5.3). Remove any prose that's better expressed as a SQL example.
+
+**File:** `genie_domains/build_spaces.py` — tighten each domain's `ti([...])` list after 3.5.2 is complete.
+
+---
+
+#### 3.5.8 — Add SQL Function COMMENT Annotations (Unity Catalog side)
+
+Genie uses Unity Catalog function comments to decide when to invoke a trusted function vs. generate fresh SQL. The 13 registered functions in `jmrdemo.synth_genie` currently lack invocation guidance in their `COMMENT`.
+
+Add to each function's `COMMENT`:
+- What question types it answers
+- Example invocations (`SELECT * FROM f_sos_compliance(p_days => 7)`)
+- When NOT to use it (e.g. "don't use for single-store questions — use `guest_order` directly")
+
+**File:** `genie_domains/01_grounding.sql` — add `COMMENT ON FUNCTION` statements for all 13 functions.
+
+---
+
+### Phasing & LOE
+
+| Task | LOE | Unblocks |
+|---|---|---|
+| 3.5.1 Missing join specs | ~2h | Fixes incorrect SQL on franchisee/supplier/aggregate questions immediately |
+| 3.5.2 Example SQL pairs | ~4h | Biggest accuracy lift for uncovered question types |
+| 3.5.3 MEASURE() hierarchy | ~1h | Consistent asset selection across all spaces |
+| 3.5.4 Expand sample questions | ~2h | Better Genie question suggestions; broader coverage |
+| 3.5.5 Remove dead-weight tables | ~30m | Reduces table-selection noise |
+| 3.5.6 Fix ambiguous questions | ~30m | Eliminates full-history scans |
+| 3.5.7 Trim instruction prose | ~2h | Requires 3.5.2 first |
+| 3.5.8 UC function comments | ~2h | Independent; improves trusted-function invocation rate |
+
+**Recommended first pass (highest ROI):** 3.5.1 + 3.5.2 + 3.5.3 — roughly a half-day of work, covers all critical accuracy gaps. Re-run `python3 genie_domains/build_spaces.py` after each batch (idempotent).
+
+---
+
 ## Phase 4 — Driver Tracking & Last-Mile Delivery
 
 > Status: Proposed (brainstorm complete — see `research/driver-data-integration_2026-06-15.md`)

@@ -1,0 +1,362 @@
+{
+ "version": 2,
+ "config": {
+  "sample_questions": [
+   {
+    "id": "03abfcc4623c44e18f5ba4e20eae91b9",
+    "question": [
+     "What is the shift completion rate this week?"
+    ]
+   },
+   {
+    "id": "231f0296585b445fb5da3723cd5787ba",
+    "question": [
+     "What is total headcount by franchisee this month?"
+    ]
+   },
+   {
+    "id": "3681f4ee9b6e44deb9d5eb9fe9030d3c",
+    "question": [
+     "Which stores have the most labor hours per order this week?"
+    ]
+   },
+   {
+    "id": "48fd1696386c4302ba073c0688bd3d88",
+    "question": [
+     "Which stores have the lowest sales per labor hour over the last 7 days?"
+    ]
+   },
+   {
+    "id": "5f2d8ac54b16428fa70af2fee19b4606",
+    "question": [
+     "How many employees worked overtime (over 40 hours) in the last 7 days?"
+    ]
+   },
+   {
+    "id": "71b715a8c68744a197b3d65019564a46",
+    "question": [
+     "Which employees worked the most hours in the last 7 days?"
+    ]
+   },
+   {
+    "id": "875faec3eb8949a9a790fff62b1359d6",
+    "question": [
+     "How many unique employees worked at store 113 this month?"
+    ]
+   },
+   {
+    "id": "adcaf6d77e9a4b198631d5e80531f066",
+    "question": [
+     "Which stores have the most overtime hours in the last 7 days?"
+    ]
+   },
+   {
+    "id": "b6479757c2ef46bcb6554f15c5e525ff",
+    "question": [
+     "What is the average hours per shift by store?"
+    ]
+   },
+   {
+    "id": "b769b4c5f1c943c99f4dea1fa37288b6",
+    "question": [
+     "Which stores have the highest sales per labor hour over the last 7 days?"
+    ]
+   },
+   {
+    "id": "e829a2bf6bfc4fa7984d685863db947b",
+    "question": [
+     "Show the labor hours trend by week for store 85"
+    ]
+   },
+   {
+    "id": "f189fbc00ae44c4ca8734e3d6b3244e6",
+    "question": [
+     "How many shifts were scheduled vs completed this week?"
+    ]
+   },
+   {
+    "id": "f589abf7e7884ee89ac3a5525d6ff506",
+    "question": [
+     "For the lowest-productivity stores, show labor hours versus revenue over the last 7 days"
+    ]
+   },
+   {
+    "id": "ffaa9bc0fbf643c3994132544aa0ae93",
+    "question": [
+     "What are the total labor hours by store this week?"
+    ]
+   }
+  ]
+ },
+ "data_sources": {
+  "tables": [
+   {
+    "identifier": "jmrdemo.synth_genie.metric_labor"
+   },
+   {
+    "identifier": "jmrdemo.synth_metrics.staff_hours"
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.franchisee"
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.unit"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.shift",
+    "column_configs": [
+     {
+      "column_name": "shift_label",
+      "synonyms": [
+       "shift name",
+       "daypart shift"
+      ],
+      "enable_format_assistance": true,
+      "enable_entity_matching": true
+     },
+     {
+      "column_name": "status",
+      "synonyms": [
+       "shift status"
+      ],
+      "enable_format_assistance": true,
+      "enable_entity_matching": true
+     }
+    ]
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.time_punch"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.unit_performance_daily"
+   }
+  ]
+ },
+ "instructions": {
+  "text_instructions": [
+   {
+    "id": "b4035985e0d64c4082a18cb2a7b1e6d8",
+    "content": [
+     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Workforce & Labor. Actual worked time = synth_silver.time_punch (grain time_punch_id; hours_worked per punch, employee_id, unit_id, punch_in/punch_out). Labor hours = SUM(hours_worked). Headcount = COUNT(DISTINCT employee_id). Scheduled shifts = synth_silver.shift (shift_start/shift_end, shift_label open/mid/close, status scheduled vs completed).\n\nOvertime = an employee with SUM(hours_worked) > 40 over the period; use f_overtime_employees(days). Labor productivity = revenue / labor hours. Revenue by store/day = synth_silver.unit_performance_daily.daily_revenue. Sales per labor hour = f_sales_per_labor_hour(days). Fast rollups = synth_metrics.staff_hours.\n\nASSET SELECTION (follow in order): (1) For standard business measures, query the metric view with MEASURE(). (2) For time-windowed operational questions (last N days) prefer the trusted SQL functions (f_*). (3) For ad-hoc slicing not covered by either, query the silver tables directly using the joins and formulas above. The functions and metric view are the canonical definitions \u2014 do not re-derive a metric in raw SQL if a function or MEASURE() already provides it."
+    ]
+   }
+  ],
+  "join_specs": [
+   {
+    "id": "2399f3183e154861a1d137d5ace89ec6",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.time_punch",
+     "alias": "time_punch"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`time_punch`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "4b4aed6a24fe4767bd21890dc768ca7b",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.unit_performance_daily",
+     "alias": "unit_performance_daily"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`unit_performance_daily`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "676b73c8296b45afa7c209c0e987108d",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.time_punch",
+     "alias": "time_punch"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.franchisee",
+     "alias": "franchisee"
+    },
+    "sql": [
+     "`time_punch`.`franchisee_id` = `franchisee`.`franchisee_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "7897feb8bf6d45e3b3a76a2a1e2f10fd",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.shift",
+     "alias": "shift"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`shift`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   }
+  ],
+  "sql_functions": [
+   {
+    "id": "1426330229c842618895bbe9962446c9",
+    "identifier": "jmrdemo.synth_genie.f_labor_hours"
+   },
+   {
+    "id": "30950dd5a64d4449b98f6475a4ddc563",
+    "identifier": "jmrdemo.synth_genie.f_sales_per_labor_hour"
+   },
+   {
+    "id": "88a115a774504186887963ec24a7d58e",
+    "identifier": "jmrdemo.synth_genie.f_overtime_employees"
+   }
+  ],
+  "example_question_sqls": [
+   {
+    "id": "0b7a966768f1416b85212a1c620a867a",
+    "question": [
+     "How many shifts were scheduled vs completed this week?"
+    ],
+    "sql": [
+     "SELECT status, COUNT(*) AS shifts FROM jmrdemo.synth_silver.shift WHERE date >= current_date() - 7 GROUP BY status"
+    ],
+    "usage_guidance": [
+     "Use for scheduled-vs-completed shift comparison; completion rate = completed / all."
+    ]
+   },
+   {
+    "id": "30b1cd7dae09426a926a7919be519173",
+    "question": [
+     "What is total headcount by franchisee this month?"
+    ],
+    "sql": [
+     "SELECT franchisee_id, COUNT(DISTINCT employee_id) AS headcount FROM jmrdemo.synth_silver.time_punch WHERE punch_in >= date_trunc('month', current_date()) GROUP BY franchisee_id ORDER BY headcount DESC"
+    ],
+    "usage_guidance": [
+     "Use for franchisee-level headcount."
+    ]
+   },
+   {
+    "id": "37c750da79874e4b93952125927bde8c",
+    "question": [
+     "How many unique employees worked at store 113 this month?"
+    ],
+    "sql": [
+     "SELECT COUNT(DISTINCT employee_id) AS employees FROM jmrdemo.synth_silver.time_punch WHERE unit_id = 113 AND punch_in >= date_trunc('month', current_date())"
+    ],
+    "usage_guidance": [
+     "Use for headcount at a single store this month."
+    ]
+   },
+   {
+    "id": "d7df9cd1ab114db38243f77edbd914b3",
+    "question": [
+     "Which stores have the most labor hours per order this week?"
+    ],
+    "sql": [
+     "WITH lh AS (SELECT unit_id, SUM(hours_worked) hrs FROM jmrdemo.synth_silver.time_punch WHERE punch_in >= current_date() - 7 GROUP BY unit_id), ord AS (SELECT unit_id, COUNT(*) orders FROM jmrdemo.synth_silver.guest_order WHERE placed_at >= current_date() - 7 GROUP BY unit_id) SELECT lh.unit_id, lh.hrs / NULLIF(ord.orders,0) AS labor_hours_per_order FROM lh JOIN ord ON lh.unit_id = ord.unit_id ORDER BY labor_hours_per_order DESC LIMIT 20"
+    ],
+    "usage_guidance": [
+     "Labor hours per order = labor hours / order count over the same window."
+    ]
+   },
+   {
+    "id": "e90f4dcbd47c41c6b68edf3caf7e0e46",
+    "question": [
+     "What are the total labor hours by store this week?"
+    ],
+    "sql": [
+     "SELECT unit_id, SUM(hours_worked) AS labor_hours FROM jmrdemo.synth_silver.time_punch WHERE punch_in >= current_date() - 7 GROUP BY unit_id ORDER BY labor_hours DESC"
+    ],
+    "usage_guidance": [
+     "Use for weekly labor hours by store."
+    ]
+   }
+  ],
+  "sql_snippets": {
+   "filters": [],
+   "expressions": [],
+   "measures": []
+  }
+ },
+ "benchmarks": {
+  "questions": [
+   {
+    "id": "0faa9842e044408d91e408c912310b51",
+    "question": [
+     "What are the total labor hours by store this week?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT * FROM jmrdemo.synth_genie.f_labor_hours(p_days => 7)"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "4aad1656301e44aca9bc839e2d9d8114",
+    "question": [
+     "How many employees worked overtime (over 40 hours) in the last 7 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT COUNT(*) AS overtime_employees FROM jmrdemo.synth_genie.f_overtime_employees(p_days => 7)"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "579c1d4ba46343bcaf41dbc499216d05",
+    "question": [
+     "Which stores have the lowest sales per labor hour over the last 7 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT * FROM jmrdemo.synth_genie.f_sales_per_labor_hour(p_days => 7) ORDER BY sales_per_labor_hour ASC LIMIT 10"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "8bcdd62a48dc4f95975b9ec700d36fb8",
+    "question": [
+     "How many unique employees worked at store 113 this month?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT COUNT(DISTINCT employee_id) AS employees FROM jmrdemo.synth_silver.time_punch WHERE unit_id = 113 AND punch_in >= date_trunc('month', current_date())"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "96ba9c24a9b84c25911d5d63bce17d0a",
+    "question": [
+     "How many shifts were scheduled vs completed this week?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT status, COUNT(*) AS shifts FROM jmrdemo.synth_silver.shift WHERE date >= current_date() - 7 GROUP BY status"
+      ],
+      "format": "SQL"
+     }
+    ]
+   }
+  ]
+ }
+}

@@ -1,0 +1,33 @@
+{
+  "Store Operations": {
+    "domain_id": "ae46a4b9-88c6-4dd6-8568-6a53c5effdca",
+    "children": {
+      "orders_sos": "57249d0e-29df-4128-b4fb-f8980866c3e7",
+      "workforce": "bb8495e7-2d02-4d88-ad38-2582c8625aba",
+      "demand_risk": "81ca82c7-7c0e-40ef-9ddf-af9519ea484d",
+      "delivery_3pd": "78ae904b-6495-402f-b56d-6f519c1b6466"
+    }
+  },
+  "Customer and Loyalty": {
+    "domain_id": "8fc61072-5ec6-43c1-bfb1-85722e862289",
+    "children": {
+      "loyalty": "dbd4347d-2eeb-462b-9b95-ff6fdac97c8d",
+      "payments": "6d6b4b55-bbdd-47d5-9c91-f0a499de9fe6",
+      "guest_360": "e6b4ab19-a478-4793-b9c0-33191739dded",
+      "customer_ml": "6bf43695-fcab-4b9a-bec3-2f85f0488465"
+    }
+  },
+  "Supply Chain and Merchandising": {
+    "domain_id": "9a0fb6f4-470c-481f-9962-f082f4ea1ebc",
+    "children": {
+      "inventory": "ee26b5ba-ab4a-4a04-b450-1bbd084560c2",
+      "menu_product": "ff48c901-ec0c-4268-a151-5b6f5aa9f25b"
+    }
+  },
+  "Finance and Franchise": {
+    "domain_id": "004b1f23-7905-456e-8336-57b0414c3b5d",
+    "children": {
+      "franchisee_exec": "59dc9057-0633-4cae-b596-2640b797ce5e"
+    }
+  }
+}

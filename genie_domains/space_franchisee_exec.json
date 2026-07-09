@@ -1,0 +1,323 @@
+{
+ "version": 2,
+ "config": {
+  "sample_questions": [
+   {
+    "id": "03b99b3a20b146dead4f551cd31d3ef5",
+    "question": [
+     "Show the revenue trend by month for franchisee 12"
+    ]
+   },
+   {
+    "id": "0e4decfcca754cbebd0f6cb32dfa761d",
+    "question": [
+     "Rank franchisees by revenue this month"
+    ]
+   },
+   {
+    "id": "0fda8e1273634c389e71bdbda66ca9cf",
+    "question": [
+     "Compare the top 5 and bottom 5 franchisees by revenue this month"
+    ]
+   },
+   {
+    "id": "111ad63f8a924c65af18299ec4975f8b",
+    "question": [
+     "Which franchisee has the best sales per labor hour over the last 30 days?"
+    ]
+   },
+   {
+    "id": "13ae924c7e084baa8e5764e00be85c82",
+    "question": [
+     "Which franchisees have the worst SOS breach rate over the last 30 days?"
+    ]
+   },
+   {
+    "id": "25297e108930442c9efbafddcab4d570",
+    "question": [
+     "Which franchisees have the most labor hours relative to revenue over the last 30 days?"
+    ]
+   },
+   {
+    "id": "41b4a62676584e919e7d27e6c0347db9",
+    "question": [
+     "Which franchisee's stores are underperforming across revenue and SOS?"
+    ]
+   },
+   {
+    "id": "53fc748008324d4aa10b1b2a34872692",
+    "question": [
+     "What is the average order value by franchisee this month?"
+    ]
+   },
+   {
+    "id": "9d420d050a7247d9925b05ccc744335f",
+    "question": [
+     "How many stores does each franchisee operate and what is their total revenue this month?"
+    ]
+   },
+   {
+    "id": "e7f62b8abe8d41488f03c2b9feb45da2",
+    "question": [
+     "What is total revenue by region this month?"
+    ]
+   },
+   {
+    "id": "ed9e6f34dbf54f049f2ba4c7bf5325ad",
+    "question": [
+     "Show revenue, orders, AOV, SOS breach rate, waste cost, and labor hours by franchisee for the last 30 days"
+    ]
+   },
+   {
+    "id": "f44a213bbea94a9c9f85f33f62256ccb",
+    "question": [
+     "Which franchisees have the highest waste cost over the last 30 days?"
+    ]
+   }
+  ]
+ },
+ "data_sources": {
+  "tables": [
+   {
+    "identifier": "jmrdemo.synth_genie.metric_franchisee"
+   },
+   {
+    "identifier": "jmrdemo.synth_metrics.staff_hours"
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.franchisee"
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.unit"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.inventory_waste_summary"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.sos_compliance_summary"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.unit_performance_daily"
+   }
+  ]
+ },
+ "instructions": {
+  "text_instructions": [
+   {
+    "id": "491fc334745d44bb93b6f32d235a417d",
+    "content": [
+     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Franchisee / Executive (cross-domain rollup). A franchisee owns many units; roll facts up via unit.franchisee_id. The canonical cross-domain scorecard is f_franchisee_scorecard(days): revenue, orders, AOV, SOS breach rate, waste cost, labor hours per franchisee.\n\nThe metric view synth_genie.metric_franchisee exposes governed measures (Revenue, Orders, Average Order Value, SOS Breach Rate, Stores) with a Franchisee dimension \u2014 query with MEASURE() for flexible slicing. Daily rollups: synth_silver.unit_performance_daily (revenue), sos_compliance_summary (SOS), inventory_waste_summary (waste), synth_metrics.staff_hours (labor).\n\nASSET SELECTION (follow in order): (1) For standard business measures, query the metric view with MEASURE(). (2) For time-windowed operational questions (last N days) prefer the trusted SQL functions (f_*). (3) For ad-hoc slicing not covered by either, query the silver tables directly using the joins and formulas above. The functions and metric view are the canonical definitions \u2014 do not re-derive a metric in raw SQL if a function or MEASURE() already provides it."
+    ]
+   }
+  ],
+  "join_specs": [
+   {
+    "id": "34dc83cea20d433795df803ce0825561",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.unit_performance_daily",
+     "alias": "unit_performance_daily"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`unit_performance_daily`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "5a30e8d066cc490c949b3904077c953a",
+    "left": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.franchisee",
+     "alias": "franchisee"
+    },
+    "sql": [
+     "`unit`.`franchisee_id` = `franchisee`.`franchisee_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "9c13b3032a964a77b2d5dce879a5c6ef",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.sos_compliance_summary",
+     "alias": "sos_compliance_summary"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`sos_compliance_summary`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "fb790d283a794ebf8277a39f98ece958",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.inventory_waste_summary",
+     "alias": "inventory_waste_summary"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`inventory_waste_summary`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   }
+  ],
+  "sql_functions": [
+   {
+    "id": "4dc414e7157e442589b0e89f3d30f328",
+    "identifier": "jmrdemo.synth_genie.f_franchisee_scorecard"
+   }
+  ],
+  "example_question_sqls": [
+   {
+    "id": "01d226e6f1114bc19b1b0aeee3327c2b",
+    "question": [
+     "How many stores does each franchisee operate and what is their total revenue this month?"
+    ],
+    "sql": [
+     "SELECT u.franchisee_id, COUNT(DISTINCT u.unit_id) AS stores, SUM(go.total_amount) AS revenue FROM jmrdemo.synth_silver.guest_order go JOIN jmrdemo.synth_ref.unit u ON u.unit_id = go.unit_id WHERE go.placed_at >= date_trunc('month', current_date()) GROUP BY u.franchisee_id ORDER BY revenue DESC"
+    ],
+    "usage_guidance": [
+     "Use for store count + revenue per franchisee this month."
+    ]
+   },
+   {
+    "id": "0a397f5329a94fc691b987d2408321ae",
+    "question": [
+     "Show revenue, orders, AOV, SOS breach rate, waste cost, and labor hours by franchisee for the last 30 days"
+    ],
+    "sql": [
+     "SELECT * FROM jmrdemo.synth_genie.f_franchisee_scorecard(p_days => 30) ORDER BY revenue DESC"
+    ],
+    "usage_guidance": [
+     "The one-call cross-domain franchisee scorecard."
+    ]
+   },
+   {
+    "id": "5c4d84c63c9d4c5598cf98f0c44c21b6",
+    "question": [
+     "Which franchisees have the worst SOS breach rate over the last 30 days?"
+    ],
+    "sql": [
+     "SELECT franchisee_id, sos_breach_rate, orders FROM jmrdemo.synth_genie.f_franchisee_scorecard(p_days => 30) ORDER BY sos_breach_rate DESC LIMIT 10"
+    ],
+    "usage_guidance": [
+     "SOS breach rate column of the franchisee scorecard."
+    ]
+   },
+   {
+    "id": "95e12c65dcc44ecba4f52ea4fd2a9a30",
+    "question": [
+     "What is total revenue by region this month?"
+    ],
+    "sql": [
+     "SELECT u.region_id, SUM(go.total_amount) AS revenue FROM jmrdemo.synth_silver.guest_order go JOIN jmrdemo.synth_ref.unit u ON u.unit_id = go.unit_id WHERE go.placed_at >= date_trunc('month', current_date()) GROUP BY u.region_id ORDER BY revenue DESC"
+    ],
+    "usage_guidance": [
+     "Use for region-level revenue rollup."
+    ]
+   },
+   {
+    "id": "cda19e58b6e5431fa74cf3ed3b87649a",
+    "question": [
+     "Which franchisees have the highest waste cost over the last 30 days?"
+    ],
+    "sql": [
+     "SELECT franchisee_id, waste_cost FROM jmrdemo.synth_genie.f_franchisee_scorecard(p_days => 30) ORDER BY waste_cost DESC LIMIT 10"
+    ],
+    "usage_guidance": [
+     "Waste cost column of the franchisee scorecard."
+    ]
+   }
+  ],
+  "sql_snippets": {
+   "filters": [],
+   "expressions": [],
+   "measures": []
+  }
+ },
+ "benchmarks": {
+  "questions": [
+   {
+    "id": "26a694818458403cb431b9600f043537",
+    "question": [
+     "What is total revenue by region this month?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT u.region_id, SUM(go.total_amount) AS revenue FROM jmrdemo.synth_silver.guest_order go JOIN jmrdemo.synth_ref.unit u ON u.unit_id = go.unit_id WHERE go.placed_at >= date_trunc('month', current_date()) GROUP BY u.region_id ORDER BY revenue DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "42fa929a7a684efcacdc2faf5bedb540",
+    "question": [
+     "Rank franchisees by revenue this month"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT franchisee_id, revenue FROM jmrdemo.synth_genie.f_franchisee_scorecard(p_days => 30) ORDER BY revenue DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "7f0e6b7da44549d7aff0a0ad200377fc",
+    "question": [
+     "How many stores does each franchisee operate and what is their total revenue this month?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT u.franchisee_id, COUNT(DISTINCT u.unit_id) AS stores, SUM(go.total_amount) AS revenue FROM jmrdemo.synth_silver.guest_order go JOIN jmrdemo.synth_ref.unit u ON u.unit_id = go.unit_id WHERE go.placed_at >= date_trunc('month', current_date()) GROUP BY u.franchisee_id ORDER BY revenue DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "91a3468991cc497ba8df51e1652e7167",
+    "question": [
+     "Which franchisees have the worst SOS breach rate over the last 30 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT franchisee_id, sos_breach_rate FROM jmrdemo.synth_genie.f_franchisee_scorecard(p_days => 30) ORDER BY sos_breach_rate DESC LIMIT 10"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "dd9f3cebb0874e22b5174a8756941a11",
+    "question": [
+     "Which franchisees have the highest waste cost over the last 30 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT franchisee_id, waste_cost FROM jmrdemo.synth_genie.f_franchisee_scorecard(p_days => 30) ORDER BY waste_cost DESC LIMIT 10"
+      ],
+      "format": "SQL"
+     }
+    ]
+   }
+  ]
+ }
+}
