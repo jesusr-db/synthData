@@ -3,75 +3,87 @@
  "config": {
   "sample_questions": [
    {
-    "id": "2c723ed6335c4a13bb161d9a04627ec1",
+    "id": "2670626d11ce4e7aa7fcb456452b6c7f",
     "question": [
      "How many active digital accounts are there?"
     ]
    },
    {
-    "id": "2f6aacadf21a4707b73cb95949107efb",
-    "question": [
-     "Which franchisees have the highest loyalty engagement this month?"
-    ]
-   },
-   {
-    "id": "5021b46fd7ae4b4ba610d47442cda55b",
-    "question": [
-     "Does higher member penetration correlate with higher average order value?"
-    ]
-   },
-   {
-    "id": "51a60ecbdc864d769261f0cdf0bc858a",
-    "question": [
-     "Which stores have the most active loyalty members?"
-    ]
-   },
-   {
-    "id": "6e734441a44845c8a2be75c291544a78",
-    "question": [
-     "What is the redemption rate by store over the last 30 days?"
-    ]
-   },
-   {
-    "id": "732e2b8e4b20470bae36a6458f3dbeb5",
-    "question": [
-     "Show the active members trend by week"
-    ]
-   },
-   {
-    "id": "7dc0930d8dc64e1b87f36815a0cb8cae",
-    "question": [
-     "What share of orders come from loyalty members, by store, over the last 30 days?"
-    ]
-   },
-   {
-    "id": "81318c28849f4f0a80cc0a51812a1a4c",
-    "question": [
-     "Compare average order value for members vs non-members over the last 30 days"
-    ]
-   },
-   {
-    "id": "81ed08263eca4289b6a578b2cde40385",
-    "question": [
-     "How many reward redemptions happened this week and what was their total reward value?"
-    ]
-   },
-   {
-    "id": "b2089da8b66b49a9b3b63681a271f909",
+    "id": "3561e2eec8314a22b350babf063c7c0e",
     "question": [
      "What is the points breakage rate by tier (share of earned points not redeemed)?"
     ]
    },
    {
-    "id": "bb94489531cb434b8a0320bcb1cd73ca",
+    "id": "3e37810552ab439ea45c6a60c00c5cd9",
+    "question": [
+     "Which tiers have the lowest redemption rate?"
+    ]
+   },
+   {
+    "id": "46d5fc1f81614ca19b14996ab46ba132",
+    "question": [
+     "Does higher member penetration correlate with higher average order value, by store over the last 30 days?"
+    ]
+   },
+   {
+    "id": "6b31d75619a34bc6aab471bb8f1598a2",
+    "question": [
+     "How many reward redemptions happened this week and what was their total reward value?"
+    ]
+   },
+   {
+    "id": "6f3459c8359a4159907c33b8e98121f9",
+    "question": [
+     "What share of orders come from loyalty members, by store, over the last 30 days?"
+    ]
+   },
+   {
+    "id": "91a4dd4e14e24ed489c55435168b9808",
+    "question": [
+     "Which stores have the most active loyalty members this month?"
+    ]
+   },
+   {
+    "id": "bc9516d5ffac4efcb70bcfe0d9416d50",
+    "question": [
+     "What is the net points change by tier over the last 30 days?"
+    ]
+   },
+   {
+    "id": "dd70b080b6784112b5ec63e0f83080e6",
+    "question": [
+     "Which franchisees have the highest loyalty engagement this month?"
+    ]
+   },
+   {
+    "id": "e0807b6d54cf44478521e12bce8c6ecc",
     "question": [
      "Show points earned vs redeemed by tier over the last 30 days"
     ]
    },
    {
-    "id": "d6e1dae2588745f38ccd243cb1e991ed",
+    "id": "e4f3bcc311a34b46985f486fab390312",
     "question": [
-     "Which tiers have the lowest redemption rate?"
+     "Compare average order value for members vs non-members over the last 30 days"
+    ]
+   },
+   {
+    "id": "e6f9bbece5b2497b97f404a5a6e8196a",
+    "question": [
+     "Show the active members trend by week"
+    ]
+   },
+   {
+    "id": "efc2ab2cd29240429051f702d006c4e3",
+    "question": [
+     "What is the redemption rate by store over the last 30 days?"
+    ]
+   },
+   {
+    "id": "f05e8d5f97e34a1081af33425e785bf4",
+    "question": [
+     "How many loyalty transactions were earns vs redeems over the last 30 days?"
     ]
    }
   ]
@@ -103,7 +115,27 @@
     "identifier": "jmrdemo.synth_silver.loyalty_cohort_metrics"
    },
    {
-    "identifier": "jmrdemo.synth_silver.loyalty_transaction"
+    "identifier": "jmrdemo.synth_silver.loyalty_transaction",
+    "column_configs": [
+     {
+      "column_name": "tier",
+      "synonyms": [
+       "loyalty tier",
+       "membership tier"
+      ],
+      "enable_format_assistance": true,
+      "enable_entity_matching": true
+     },
+     {
+      "column_name": "transaction_type",
+      "synonyms": [
+       "txn type",
+       "earn or redeem"
+      ],
+      "enable_format_assistance": true,
+      "enable_entity_matching": true
+     }
+    ]
    },
    {
     "identifier": "jmrdemo.synth_silver.reward_redemption"
@@ -113,45 +145,30 @@
  "instructions": {
   "text_instructions": [
    {
-    "id": "bd5b53e0f15c4da5b875748720091c60",
+    "id": "b0299ff8cea148e59035910bde42d6f4",
     "content": [
-     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Loyalty & Rewards. Point ledger = synth_silver.loyalty_transaction (grain loyalty_transaction_id). points_delta is signed: positive = earned, negative = redeemed. transaction_type in (earn, redeem, ...). tier in (bronze, silver, gold, platinum). member_id identifies the loyalty member (= guest_profile.guest_profile_id).\n\nPoints earned = SUM(CASE WHEN points_delta>0 THEN points_delta ELSE 0 END). Points redeemed = SUM(CASE WHEN points_delta<0 THEN -points_delta ELSE 0 END). Redemption rate = points_redeemed / points_earned. Net points = SUM(points_delta).\n\nReward redemptions (currency value of rewards) = synth_silver.reward_redemption (points_redeemed spent for reward_value). Active members = COUNT(DISTINCT member_id). Digital adoption = synth_silver.digital_account (account_status='active'). Member master / PII = synth_silver.guest_profile.\n\nMember vs non-member: in synth_silver.guest_order, an order is from a member when member_id IS NOT NULL. Use this to compare AOV, order share, and revenue between members and non-members.\n\nFor fast cohort trends use synth_silver.loyalty_cohort_metrics (active_members, total_points_earned, transaction_count per unit+tier+date). synth_metrics.loyalty_performance is a monthly pre-aggregate (Title-Case columns).\n\nPrefer trusted functions when they fit: f_loyalty_summary(days), f_member_vs_nonmember(days), f_tier_breakdown(days). Metric view synth_genie.metric_loyalty exposes governed measures (Active Members, Points Earned, Points Redeemed, Redemption Rate) \u2014 use MEASURE()."
+     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Loyalty & Rewards. Point ledger = synth_silver.loyalty_transaction (grain loyalty_transaction_id). points_delta is signed: positive = earned, negative = redeemed. tier in (bronze, silver, gold, platinum). member_id = guest_profile.guest_profile_id.\n\nPoints earned = SUM(CASE WHEN points_delta>0 THEN points_delta ELSE 0 END). Points redeemed = SUM(CASE WHEN points_delta<0 THEN -points_delta ELSE 0 END). Redemption rate = points_redeemed / points_earned. Active members = COUNT(DISTINCT member_id). Member vs non-member: guest_order.member_id IS NOT NULL means a member order.\n\nReward currency value = synth_silver.reward_redemption (points_redeemed spent for reward_value). Digital adoption = synth_silver.digital_account (account_status='active'). Fast cohort trends = synth_silver.loyalty_cohort_metrics.\n\nASSET SELECTION (follow in order): (1) For standard business measures, query the metric view with MEASURE(). (2) For time-windowed operational questions (last N days) prefer the trusted SQL functions (f_*). (3) For ad-hoc slicing not covered by either, query the silver tables directly using the joins and formulas above. The functions and metric view are the canonical definitions \u2014 do not re-derive a metric in raw SQL if a function or MEASURE() already provides it."
     ]
    }
   ],
   "join_specs": [
    {
-    "id": "34d832fd280544e9a656b2582032edb3",
+    "id": "06621ad1c3c741bdaee12b47bb5646b8",
     "left": {
-     "identifier": "jmrdemo.synth_silver.reward_redemption",
-     "alias": "reward_redemption"
-    },
-    "right": {
      "identifier": "jmrdemo.synth_silver.guest_order",
      "alias": "guest_order"
     },
-    "sql": [
-     "`reward_redemption`.`guest_order_id` = `guest_order`.`guest_order_id`",
-     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
-    ]
-   },
-   {
-    "id": "52747706532c483f93e8ee20368908a6",
-    "left": {
-     "identifier": "jmrdemo.synth_silver.loyalty_transaction",
-     "alias": "loyalty_transaction"
-    },
     "right": {
-     "identifier": "jmrdemo.synth_silver.guest_profile",
-     "alias": "guest_profile"
+     "identifier": "jmrdemo.synth_ref.franchisee",
+     "alias": "franchisee"
     },
     "sql": [
-     "`loyalty_transaction`.`member_id` = `guest_profile`.`guest_profile_id`",
+     "`guest_order`.`franchisee_id` = `franchisee`.`franchisee_id`",
      "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
     ]
    },
    {
-    "id": "54c72cd7d1ca4e2db2b890a698d7ac88",
+    "id": "40192bb5ff7e48a9896436e518895448",
     "left": {
      "identifier": "jmrdemo.synth_silver.loyalty_transaction",
      "alias": "loyalty_transaction"
@@ -166,22 +183,52 @@
     ]
    },
    {
-    "id": "62bec62a9d8f4fe2aaff1b570e94806e",
+    "id": "9b1847ac426e4fe484b140e31a4e2144",
     "left": {
-     "identifier": "jmrdemo.synth_silver.digital_account",
-     "alias": "digital_account"
+     "identifier": "jmrdemo.synth_silver.loyalty_transaction",
+     "alias": "loyalty_transaction"
     },
     "right": {
      "identifier": "jmrdemo.synth_silver.guest_profile",
      "alias": "guest_profile"
     },
     "sql": [
-     "`digital_account`.`guest_profile_id` = `guest_profile`.`guest_profile_id`",
+     "`loyalty_transaction`.`member_id` = `guest_profile`.`guest_profile_id`",
      "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
     ]
    },
    {
-    "id": "6d97103a3f924a63839c817595f73240",
+    "id": "a234e39e46e24003b9e5ce4c5b6214f5",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.guest_order",
+     "alias": "guest_order"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`guest_order`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "aca4dd810c03443d877c8c5a06f53dec",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.reward_redemption",
+     "alias": "reward_redemption"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_silver.guest_order",
+     "alias": "guest_order"
+    },
+    "sql": [
+     "`reward_redemption`.`guest_order_id` = `guest_order`.`guest_order_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "becc0a4107cb4c33aa01877f49a9d676",
     "left": {
      "identifier": "jmrdemo.synth_silver.reward_redemption",
      "alias": "reward_redemption"
@@ -196,7 +243,7 @@
     ]
    },
    {
-    "id": "c6db9139fe7b42958290331c1d0196a8",
+    "id": "d2e0b2d7f2414c09b2c3e96a4f47c186",
     "left": {
      "identifier": "jmrdemo.synth_silver.loyalty_transaction",
      "alias": "loyalty_transaction"
@@ -209,20 +256,176 @@
      "`loyalty_transaction`.`unit_id` = `unit`.`unit_id`",
      "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
     ]
+   },
+   {
+    "id": "ee0029aa88f941d8a05869ec5ee0a97b",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.digital_account",
+     "alias": "digital_account"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_silver.guest_profile",
+     "alias": "guest_profile"
+    },
+    "sql": [
+     "`digital_account`.`guest_profile_id` = `guest_profile`.`guest_profile_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
    }
   ],
   "sql_functions": [
    {
-    "id": "1baa20b1fd844001a14df6d1a1b93387",
+    "id": "2aca305d12ff43368076ba8fec207d05",
     "identifier": "jmrdemo.synth_genie.f_member_vs_nonmember"
    },
    {
-    "id": "208611cb5e4143f4971961cb74459e2e",
+    "id": "92e27cb95964402492935b6233b78828",
     "identifier": "jmrdemo.synth_genie.f_tier_breakdown"
    },
    {
-    "id": "29bc7da273514499bea136a15b01ef6d",
+    "id": "c3e899b6410e475f8d8cfa00d658f5a6",
     "identifier": "jmrdemo.synth_genie.f_loyalty_summary"
+   }
+  ],
+  "example_question_sqls": [
+   {
+    "id": "3a5a8402f4554390be3a6d0042b1ef6d",
+    "question": [
+     "How many reward redemptions happened this week and what was their total reward value?"
+    ],
+    "sql": [
+     "SELECT COUNT(*) AS redemptions, SUM(reward_value) AS total_reward_value FROM jmrdemo.synth_silver.reward_redemption WHERE redeemed_at >= current_date() - 7"
+    ],
+    "usage_guidance": [
+     "Use for weekly reward-redemption volume and value."
+    ]
+   },
+   {
+    "id": "524082629d2f4d3fb10a44f02d1881cc",
+    "question": [
+     "What share of orders come from loyalty members, by store, over the last 30 days?"
+    ],
+    "sql": [
+     "SELECT unit_id, AVG(CASE WHEN member_id IS NOT NULL THEN 1.0 ELSE 0.0 END) AS member_order_share, COUNT(*) AS orders FROM jmrdemo.synth_silver.guest_order WHERE placed_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY unit_id ORDER BY member_order_share DESC"
+    ],
+    "usage_guidance": [
+     "Use for member penetration by store."
+    ]
+   },
+   {
+    "id": "6ae2fa3179ef4ee9afb3c44ef8e0282f",
+    "question": [
+     "How many active digital accounts are there?"
+    ],
+    "sql": [
+     "SELECT COUNT(*) AS active_digital_accounts FROM jmrdemo.synth_silver.digital_account WHERE account_status = 'active'"
+    ],
+    "usage_guidance": [
+     "Use for digital-adoption counts."
+    ]
+   },
+   {
+    "id": "9ab9d17586b24970babba94dd74fc1dc",
+    "question": [
+     "What is the points breakage rate by tier (share of earned points not redeemed)?"
+    ],
+    "sql": [
+     "SELECT tier, 1 - (SUM(CASE WHEN points_delta<0 THEN -points_delta ELSE 0 END) / NULLIF(SUM(CASE WHEN points_delta>0 THEN points_delta ELSE 0 END),0)) AS breakage_rate FROM jmrdemo.synth_silver.loyalty_transaction WHERE transaction_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY tier ORDER BY breakage_rate DESC"
+    ],
+    "usage_guidance": [
+     "Breakage = 1 - redemption rate; use for unredeemed-points analysis by tier."
+    ]
+   },
+   {
+    "id": "c1987f8aaad146f8ae9091b1173ad2e8",
+    "question": [
+     "Show the active members trend by week"
+    ],
+    "sql": [
+     "SELECT date_trunc('week', transaction_at) AS week, COUNT(DISTINCT member_id) AS active_members FROM jmrdemo.synth_silver.loyalty_transaction WHERE transaction_at >= current_timestamp() - INTERVAL 90 DAYS GROUP BY date_trunc('week', transaction_at) ORDER BY week"
+    ],
+    "usage_guidance": [
+     "Use for weekly active-member trend."
+    ]
+   }
+  ],
+  "sql_snippets": {
+   "filters": [],
+   "expressions": [],
+   "measures": []
+  }
+ },
+ "benchmarks": {
+  "questions": [
+   {
+    "id": "13056fce8c94461abfea1ef45909be7f",
+    "question": [
+     "Compare average order value for members vs non-members over the last 30 days"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT * FROM jmrdemo.synth_genie.f_member_vs_nonmember(p_days => 30)"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "88dd8f777aed4681ae654d86590216dd",
+    "question": [
+     "How many reward redemptions happened this week and what was their total reward value?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT COUNT(*) AS redemptions, SUM(reward_value) AS total_reward_value FROM jmrdemo.synth_silver.reward_redemption WHERE redeemed_at >= current_date() - 7"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "8a7bcf080efb483391a2de4cfef263bb",
+    "question": [
+     "How many active digital accounts are there?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT COUNT(*) AS active_digital_accounts FROM jmrdemo.synth_silver.digital_account WHERE account_status = 'active'"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "8e0c8fe092804f56b4ebf2a4d24f8ac0",
+    "question": [
+     "Show points earned vs redeemed by tier over the last 30 days"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT * FROM jmrdemo.synth_genie.f_tier_breakdown(p_days => 30)"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "de2b74924c21406ab66879810ce60cd5",
+    "question": [
+     "What is the redemption rate by store over the last 30 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT * FROM jmrdemo.synth_genie.f_loyalty_summary(p_days => 30)"
+      ],
+      "format": "SQL"
+     }
+    ]
    }
   ]
  }

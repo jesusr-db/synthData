@@ -1,0 +1,313 @@
+{
+ "version": 2,
+ "config": {
+  "sample_questions": [
+   {
+    "id": "0dc0d24f56e348a28bd9c064d3d02559",
+    "question": [
+     "How many deliveries were late vs on-time over the last 14 days?"
+    ]
+   },
+   {
+    "id": "121e9a9b3e074d7dbb4c45dece1c03be",
+    "question": [
+     "What share of orders are delivery vs carryout over the last 30 days?"
+    ]
+   },
+   {
+    "id": "53744638bf1c41da8b0c4171e98c0434",
+    "question": [
+     "Which stores have the largest average delivery-time gap over the last 30 days?"
+    ]
+   },
+   {
+    "id": "53ceedcc916d481fb467c7f1f12442b3",
+    "question": [
+     "Which metro areas have the highest delivery volume over the last 30 days?"
+    ]
+   },
+   {
+    "id": "5be641e848b341c6af537c7b58c6c5f3",
+    "question": [
+     "What is the average delivery-time gap (actual minus estimated) by metro over the last 30 days?"
+    ]
+   },
+   {
+    "id": "6084b79c97774975a4f7ff4650efd96f",
+    "question": [
+     "What is the average actual delivery time by store over the last 14 days?"
+    ]
+   },
+   {
+    "id": "63bf738f8a8448a4959514156d531188",
+    "question": [
+     "Which stores improved their late-delivery rate week over week?"
+    ]
+   },
+   {
+    "id": "904a223192374152b7eff92f09e794b6",
+    "question": [
+     "How do own_delivery and 3pd_delivery compare on late-delivery rate over the last 30 days?"
+    ]
+   },
+   {
+    "id": "ba49895e1dc64a049c5a03abe6e04b7c",
+    "question": [
+     "Show the daily late-delivery rate trend over the last 30 days"
+    ]
+   },
+   {
+    "id": "c13d5cd91a004d909075a86ad42db004",
+    "question": [
+     "What is the delivery order volume by channel over the last 30 days?"
+    ]
+   },
+   {
+    "id": "d472c345f1ff4cafa12b214d05b4fb43",
+    "question": [
+     "Which stores have the worst late-delivery rate over the last 14 days?"
+    ]
+   },
+   {
+    "id": "e419494f87d7491791c028087899faa5",
+    "question": [
+     "What is the late-delivery rate by channel over the last 14 days?"
+    ]
+   }
+  ]
+ },
+ "data_sources": {
+  "tables": [
+   {
+    "identifier": "jmrdemo.synth_genie.metric_delivery"
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.unit"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.delivery_order"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.guest_order",
+    "column_configs": [
+     {
+      "column_name": "channel",
+      "synonyms": [
+       "order channel",
+       "delivery channel"
+      ],
+      "enable_format_assistance": true,
+      "enable_entity_matching": true
+     }
+    ]
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.status_event"
+   }
+  ]
+ },
+ "instructions": {
+  "text_instructions": [
+   {
+    "id": "34094422b73e418682241fe55c0fc11e",
+    "content": [
+     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Delivery & 3PD Operations. Delivery detail = synth_silver.delivery_order (grain delivery_order_id; joins guest_order on guest_order_id). A delivery is LATE when actual_delivery_seconds > estimated_delivery_seconds. Delivery-time gap = actual_delivery_seconds - estimated_delivery_seconds. platform_order_reference identifies the 3rd-party (3PD) marketplace order.\n\nDelivery channels on guest_order: '3pd_delivery' (third-party marketplaces) and 'own_delivery' (first-party). Stage timing detail = synth_silver.status_event. Use f_late_delivery_rate(days) for per-store late rates. Metric view synth_genie.metric_delivery exposes governed measures (Deliveries, Late Deliveries, Late Delivery Rate, Avg Delivery Gap Seconds) by Channel/Store/Metro/Delivery Date \u2014 query with MEASURE().\n\nASSET SELECTION (follow in order): (1) For standard business measures, query the metric view with MEASURE(). (2) For time-windowed operational questions (last N days) prefer the trusted SQL functions (f_*). (3) For ad-hoc slicing not covered by either, query the silver tables directly using the joins and formulas above. The functions and metric view are the canonical definitions \u2014 do not re-derive a metric in raw SQL if a function or MEASURE() already provides it."
+    ]
+   }
+  ],
+  "join_specs": [
+   {
+    "id": "25fab19425cb437888cfd9182c68a36a",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.delivery_order",
+     "alias": "delivery_order"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_silver.guest_order",
+     "alias": "guest_order"
+    },
+    "sql": [
+     "`delivery_order`.`guest_order_id` = `guest_order`.`guest_order_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "d64db53d51fd4a5986d2a59e1fd90e91",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.status_event",
+     "alias": "status_event"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_silver.guest_order",
+     "alias": "guest_order"
+    },
+    "sql": [
+     "`status_event`.`guest_order_id` = `guest_order`.`guest_order_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "fa3d85b9b1a7436b9ad5b5228f1078c5",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.guest_order",
+     "alias": "guest_order"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`guest_order`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   }
+  ],
+  "sql_functions": [
+   {
+    "id": "ece5712769eb43088eb9834c8d2aecb1",
+    "identifier": "jmrdemo.synth_genie.f_late_delivery_rate"
+   }
+  ],
+  "example_question_sqls": [
+   {
+    "id": "693b366a4b26459697f4e01beb9cd256",
+    "question": [
+     "What is the delivery order volume by channel over the last 30 days?"
+    ],
+    "sql": [
+     "SELECT go.channel, COUNT(*) AS deliveries FROM jmrdemo.synth_silver.delivery_order d JOIN jmrdemo.synth_silver.guest_order go ON go.guest_order_id = d.guest_order_id WHERE d.created_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY go.channel ORDER BY deliveries DESC"
+    ],
+    "usage_guidance": [
+     "Use for delivery volume split by channel."
+    ]
+   },
+   {
+    "id": "8b2dbdab4cd143ba9a49ded68e080f4d",
+    "question": [
+     "How many deliveries were late vs on-time over the last 14 days?"
+    ],
+    "sql": [
+     "SELECT CASE WHEN actual_delivery_seconds > estimated_delivery_seconds THEN 'late' ELSE 'on_time' END AS status, COUNT(*) AS deliveries FROM jmrdemo.synth_silver.delivery_order WHERE created_at >= current_timestamp() - INTERVAL 14 DAYS GROUP BY 1"
+    ],
+    "usage_guidance": [
+     "Use for late vs on-time delivery counts."
+    ]
+   },
+   {
+    "id": "ae5073c05a3c454790bf46308956563e",
+    "question": [
+     "What is the average delivery-time gap (actual minus estimated) by metro over the last 30 days?"
+    ],
+    "sql": [
+     "SELECT u.metro_area, AVG(d.actual_delivery_seconds - d.estimated_delivery_seconds) AS avg_gap_seconds FROM jmrdemo.synth_silver.delivery_order d JOIN jmrdemo.synth_silver.guest_order go ON go.guest_order_id = d.guest_order_id JOIN jmrdemo.synth_ref.unit u ON u.unit_id = go.unit_id WHERE d.created_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY u.metro_area ORDER BY avg_gap_seconds DESC"
+    ],
+    "usage_guidance": [
+     "Use for metro-level delivery-time gap."
+    ]
+   },
+   {
+    "id": "d000e26f72c4411a9fe9622f141fbe30",
+    "question": [
+     "Which metro areas have the highest delivery volume over the last 30 days?"
+    ],
+    "sql": [
+     "SELECT u.metro_area, COUNT(*) AS deliveries FROM jmrdemo.synth_silver.delivery_order d JOIN jmrdemo.synth_silver.guest_order go ON go.guest_order_id = d.guest_order_id JOIN jmrdemo.synth_ref.unit u ON u.unit_id = go.unit_id WHERE d.created_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY u.metro_area ORDER BY deliveries DESC"
+    ],
+    "usage_guidance": [
+     "Use for metro delivery-volume ranking."
+    ]
+   },
+   {
+    "id": "d7ac13e90616428e8a73ed2901fe531d",
+    "question": [
+     "How do own_delivery and 3pd_delivery compare on late-delivery rate over the last 30 days?"
+    ],
+    "sql": [
+     "SELECT go.channel, AVG(CASE WHEN d.actual_delivery_seconds > d.estimated_delivery_seconds THEN 1.0 ELSE 0.0 END) AS late_rate, COUNT(*) AS deliveries FROM jmrdemo.synth_silver.delivery_order d JOIN jmrdemo.synth_silver.guest_order go ON go.guest_order_id = d.guest_order_id WHERE d.created_at >= current_timestamp() - INTERVAL 30 DAYS AND go.channel IN ('own_delivery','3pd_delivery') GROUP BY go.channel"
+    ],
+    "usage_guidance": [
+     "Use to compare first-party vs third-party delivery reliability."
+    ]
+   }
+  ],
+  "sql_snippets": {
+   "filters": [],
+   "expressions": [],
+   "measures": []
+  }
+ },
+ "benchmarks": {
+  "questions": [
+   {
+    "id": "2d0ee59d692d4333aec2003d50758287",
+    "question": [
+     "What is the late-delivery rate by channel over the last 14 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT go.channel, AVG(CASE WHEN d.actual_delivery_seconds > d.estimated_delivery_seconds THEN 1.0 ELSE 0.0 END) AS late_rate FROM jmrdemo.synth_silver.delivery_order d JOIN jmrdemo.synth_silver.guest_order go ON go.guest_order_id = d.guest_order_id WHERE d.created_at >= current_timestamp() - INTERVAL 14 DAYS GROUP BY go.channel"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "42e612b29bf841beaf32a87bc3a67132",
+    "question": [
+     "What is the average delivery-time gap by metro over the last 30 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT u.metro_area, AVG(d.actual_delivery_seconds - d.estimated_delivery_seconds) AS avg_gap_seconds FROM jmrdemo.synth_silver.delivery_order d JOIN jmrdemo.synth_silver.guest_order go ON go.guest_order_id = d.guest_order_id JOIN jmrdemo.synth_ref.unit u ON u.unit_id = go.unit_id WHERE d.created_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY u.metro_area ORDER BY avg_gap_seconds DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "53a2e5fa2572422189f16900778d6c0c",
+    "question": [
+     "How many deliveries were late vs on-time over the last 14 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT CASE WHEN actual_delivery_seconds > estimated_delivery_seconds THEN 'late' ELSE 'on_time' END AS status, COUNT(*) AS deliveries FROM jmrdemo.synth_silver.delivery_order WHERE created_at >= current_timestamp() - INTERVAL 14 DAYS GROUP BY 1"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "5bac268495164d4c915cd32ad3f22aac",
+    "question": [
+     "What is the delivery order volume by channel over the last 30 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT go.channel, COUNT(*) AS deliveries FROM jmrdemo.synth_silver.delivery_order d JOIN jmrdemo.synth_silver.guest_order go ON go.guest_order_id = d.guest_order_id WHERE d.created_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY go.channel ORDER BY deliveries DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "d123cf7a147845a5802834cdd52e8caf",
+    "question": [
+     "Which stores have the worst late-delivery rate over the last 14 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT * FROM jmrdemo.synth_genie.f_late_delivery_rate(p_days => 14) ORDER BY late_rate DESC LIMIT 10"
+      ],
+      "format": "SQL"
+     }
+    ]
+   }
+  ]
+ }
+}

@@ -3,75 +3,87 @@
  "config": {
   "sample_questions": [
    {
-    "id": "08c83ac4756842a5bcf06a8597fdc5ff",
-    "question": [
-     "What is the average gap between actual and estimated delivery time?"
-    ]
-   },
-   {
-    "id": "380a027fad6349dc9d581246fb9d9d55",
-    "question": [
-     "What was total revenue and average order value by channel over the last 30 days?"
-    ]
-   },
-   {
-    "id": "392627d6647e4e1bb5dfeaeb6f2807c2",
+    "id": "1dd44fc67bb948ff9f374a8b8c24490e",
     "question": [
      "Which franchisees have the highest revenue this month?"
     ]
    },
    {
-    "id": "3932ee9c7d234faba07b8b6a9b0355af",
+    "id": "26be34518a6c4727beee245ee5ad5b1a",
     "question": [
-     "What hours of the day have the highest SOS breach rate?"
+     "Show the daily revenue trend for store 85 over the last 30 days"
     ]
    },
    {
-    "id": "40691bffc23c46ba899a129fc0c5f270",
-    "question": [
-     "For the 8 worst SOS stores, show order volume and SOS breach rate over the last 14 days"
-    ]
-   },
-   {
-    "id": "7203583a412842c2846f5fea8e110b16",
-    "question": [
-     "What are the top menu items by revenue at store 113 over the last 30 days?"
-    ]
-   },
-   {
-    "id": "7e050aed386942a18b71e507cec89886",
-    "question": [
-     "Which stores have the highest order cancellation rate this month?"
-    ]
-   },
-   {
-    "id": "a747879f52e64feeb7193ff3e5b968c0",
-    "question": [
-     "Which stores have the largest average delivery-time gap?"
-    ]
-   },
-   {
-    "id": "d421f1625b9344f79aa910c249ba6b67",
+    "id": "39154fc53f7d4aa78663a70ccf8f7240",
     "question": [
      "What is the SOS breach rate by channel over the last 14 days?"
     ]
    },
    {
-    "id": "d79aaed3e64647a8b8df41dab1d2da47",
+    "id": "5aaa343c581349279bbae99a625c4e72",
+    "question": [
+     "Which stores have the highest order cancellation rate this month?"
+    ]
+   },
+   {
+    "id": "5c0d0d2218874531a8fd4f24979c9eb4",
+    "question": [
+     "What hours of the day have the highest SOS breach rate?"
+    ]
+   },
+   {
+    "id": "71b0e45fa9bf40a5a6c9f8a8e4868323",
+    "question": [
+     "What was total revenue and average order value by channel over the last 30 days?"
+    ]
+   },
+   {
+    "id": "77d18bd7223646b19e077fbd9b05232c",
+    "question": [
+     "For the 8 worst SOS stores, show order volume and SOS breach rate over the last 14 days"
+    ]
+   },
+   {
+    "id": "8257481997a84b169f397c5b4c9a6b39",
     "question": [
      "Which stores have the highest SOS breach rate over the last 14 days?"
     ]
    },
    {
-    "id": "e2b931fb85da42d4ae2d22c4405e1104",
+    "id": "847354fe0bc845c7bbf3f7f453565913",
+    "question": [
+     "How many orders were cancelled vs fulfilled over the last 14 days?"
+    ]
+   },
+   {
+    "id": "94964c9a525c4435972caca504d66540",
+    "question": [
+     "What is the revenue by order type (delivery, carryout, catering) over the last 30 days?"
+    ]
+   },
+   {
+    "id": "ac103c45d6da4367b6228a2c04b36ea2",
+    "question": [
+     "What is the average gap between actual and estimated delivery time over the last 30 days?"
+    ]
+   },
+   {
+    "id": "e1e54472a26d431ca3cb401a93dc1189",
     "question": [
      "What is the late-delivery rate by channel over the last 14 days?"
     ]
    },
    {
-    "id": "ebcef9848e454668937f570d46adccaf",
+    "id": "e8b1914dc472460caef42218fd04ddea",
     "question": [
-     "Show the daily revenue trend for store 85 over the last 30 days"
+     "Which stores have the largest average delivery-time gap over the last 30 days?"
+    ]
+   },
+   {
+    "id": "ff79d42ae3ce43dca5654f0b853c0d4b",
+    "question": [
+     "What are the top menu items by revenue at store 113 over the last 30 days?"
     ]
    }
   ]
@@ -83,9 +95,6 @@
    },
    {
     "identifier": "jmrdemo.synth_metrics.order_performance"
-   },
-   {
-    "identifier": "jmrdemo.synth_ref.financial_period"
    },
    {
     "identifier": "jmrdemo.synth_ref.franchisee"
@@ -100,19 +109,41 @@
     "identifier": "jmrdemo.synth_silver.delivery_order"
    },
    {
-    "identifier": "jmrdemo.synth_silver.guest_order"
+    "identifier": "jmrdemo.synth_silver.guest_order",
+    "column_configs": [
+     {
+      "column_name": "channel",
+      "synonyms": [
+       "order channel",
+       "fulfillment channel"
+      ],
+      "enable_format_assistance": true,
+      "enable_entity_matching": true
+     },
+     {
+      "column_name": "order_status",
+      "synonyms": [
+       "status",
+       "state"
+      ],
+      "enable_format_assistance": true,
+      "enable_entity_matching": true
+     },
+     {
+      "column_name": "order_type",
+      "synonyms": [
+       "fulfillment type"
+      ],
+      "enable_format_assistance": true,
+      "enable_entity_matching": true
+     }
+    ]
    },
    {
     "identifier": "jmrdemo.synth_silver.order_item"
    },
    {
-    "identifier": "jmrdemo.synth_silver.payment"
-   },
-   {
     "identifier": "jmrdemo.synth_silver.sos_compliance_summary"
-   },
-   {
-    "identifier": "jmrdemo.synth_silver.status_event"
    },
    {
     "identifier": "jmrdemo.synth_silver.unit_performance_daily"
@@ -122,90 +153,30 @@
  "instructions": {
   "text_instructions": [
    {
-    "id": "01c78b0b60bb417aaa327db5c7c10ff9",
+    "id": "fb1a3cbaa13040f7a3e1992c2052ff87",
     "content": [
-     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Orders & Speed-of-Service. Order header = synth_silver.guest_order (one row per order, grain guest_order_id). Line items = synth_silver.order_item (grain order_item_id; join to guest_order on guest_order_id, to menu_item on menu_item_id).\n\nRevenue = SUM(guest_order.total_amount), where total_amount = subtotal - discount_amount + tax_amount. Average Order Value (AOV) = AVG(guest_order.total_amount). Line-level revenue = SUM(order_item.line_net_amount).\n\nSpeed of Service (SOS): an order breached SOS when guest_order.sos_breach = TRUE. SOS breach rate = AVG(CASE WHEN sos_breach THEN 1 ELSE 0 END). For fast daily trends use synth_silver.sos_compliance_summary (sos_compliance_pct = 1 - sos_breaches/total_orders, avg_prep_seconds). Stage-level timing detail is in synth_silver.status_event (is_sos_breach, elapsed_seconds_in_prior_state vs sos_target_seconds).\n\nChannels: '3pd_delivery' (third-party marketplaces), 'own_delivery' (first-party), 'carryout', 'catering'. order_type: 'delivery','carryout','catering'. A delivery is LATE when delivery_order.actual_delivery_seconds > estimated_delivery_seconds.\n\nCancellation rate = AVG(CASE WHEN order_status = 'cancelled' THEN 1 ELSE 0 END) on guest_order. synth_metrics.order_performance is a pre-aggregate (Title-Case columns incl. `SOS Breach Rate`); prefer guest_order for flexible slicing.\n\nPrefer the trusted functions when they fit: f_sos_compliance(days), f_revenue_by_channel(days), f_top_menu_items(unit, days), f_late_delivery_rate(days). The metric view synth_genie.metric_orders_sos exposes governed measures (Orders, Revenue, Average Order Value, SOS Breach Rate, Cancellation Rate) \u2014 query with MEASURE()."
+     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Orders & Speed-of-Service. Order header = synth_silver.guest_order (one row per order, grain guest_order_id). Line items = synth_silver.order_item (grain order_item_id; join to guest_order on guest_order_id, to menu_item on menu_item_id).\n\nRevenue = SUM(guest_order.total_amount) (= subtotal - discount_amount + tax_amount). AOV = AVG(total_amount). SOS breach rate = AVG(CASE WHEN sos_breach THEN 1 ELSE 0 END). Cancellation rate = AVG(CASE WHEN order_status='cancelled' THEN 1 ELSE 0 END). A delivery is LATE when delivery_order.actual_delivery_seconds > estimated_delivery_seconds.\n\nChannels: '3pd_delivery', 'own_delivery', 'carryout', 'catering'. For fast daily SOS trends use synth_silver.sos_compliance_summary.\n\nASSET SELECTION (follow in order): (1) For standard business measures, query the metric view with MEASURE(). (2) For time-windowed operational questions (last N days) prefer the trusted SQL functions (f_*). (3) For ad-hoc slicing not covered by either, query the silver tables directly using the joins and formulas above. The functions and metric view are the canonical definitions \u2014 do not re-derive a metric in raw SQL if a function or MEASURE() already provides it."
     ]
    }
   ],
   "join_specs": [
    {
-    "id": "76061ed0e44c420bbf8bb769d7eb89a9",
+    "id": "81fff3048a6a44578cca2453f8a34a93",
     "left": {
-     "identifier": "jmrdemo.synth_silver.guest_order",
-     "alias": "guest_order"
-    },
-    "right": {
-     "identifier": "jmrdemo.synth_ref.unit",
-     "alias": "unit"
-    },
-    "sql": [
-     "`guest_order`.`unit_id` = `unit`.`unit_id`",
-     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
-    ]
-   },
-   {
-    "id": "7c97ae6b780c42898fc6905be72555b3",
-    "left": {
-     "identifier": "jmrdemo.synth_silver.payment",
-     "alias": "payment"
+     "identifier": "jmrdemo.synth_silver.delivery_order",
+     "alias": "delivery_order"
     },
     "right": {
      "identifier": "jmrdemo.synth_silver.guest_order",
      "alias": "guest_order"
     },
     "sql": [
-     "`payment`.`guest_order_id` = `guest_order`.`guest_order_id`",
+     "`delivery_order`.`guest_order_id` = `guest_order`.`guest_order_id`",
      "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
     ]
    },
    {
-    "id": "91f5e4d419754dba84040b2009e7ae24",
-    "left": {
-     "identifier": "jmrdemo.synth_silver.status_event",
-     "alias": "status_event"
-    },
-    "right": {
-     "identifier": "jmrdemo.synth_silver.guest_order",
-     "alias": "guest_order"
-    },
-    "sql": [
-     "`status_event`.`guest_order_id` = `guest_order`.`guest_order_id`",
-     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
-    ]
-   },
-   {
-    "id": "930f5bd65eb9486e84b9a18331e42513",
-    "left": {
-     "identifier": "jmrdemo.synth_silver.order_item",
-     "alias": "order_item"
-    },
-    "right": {
-     "identifier": "jmrdemo.synth_ref.menu_item",
-     "alias": "menu_item"
-    },
-    "sql": [
-     "`order_item`.`menu_item_id` = `menu_item`.`menu_item_id`",
-     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
-    ]
-   },
-   {
-    "id": "9af32447bc284ae58b9e52a37082e643",
-    "left": {
-     "identifier": "jmrdemo.synth_silver.guest_order",
-     "alias": "guest_order"
-    },
-    "right": {
-     "identifier": "jmrdemo.synth_ref.franchisee",
-     "alias": "franchisee"
-    },
-    "sql": [
-     "`guest_order`.`franchisee_id` = `franchisee`.`franchisee_id`",
-     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
-    ]
-   },
-   {
-    "id": "d575492b851b4757b271c8f9f46f2aeb",
+    "id": "9fab153895fc457fb87649ade5b1bb2a",
     "left": {
      "identifier": "jmrdemo.synth_silver.order_item",
      "alias": "order_item"
@@ -220,37 +191,208 @@
     ]
    },
    {
-    "id": "e50452ac64aa43b19a621ea67b26fcb0",
+    "id": "a473112ca19b42ac885314f334e344ca",
     "left": {
-     "identifier": "jmrdemo.synth_silver.delivery_order",
-     "alias": "delivery_order"
+     "identifier": "jmrdemo.synth_silver.order_item",
+     "alias": "order_item"
     },
     "right": {
+     "identifier": "jmrdemo.synth_ref.menu_item",
+     "alias": "menu_item"
+    },
+    "sql": [
+     "`order_item`.`menu_item_id` = `menu_item`.`menu_item_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "da4952740d114db0b1e479f40d18b53b",
+    "left": {
      "identifier": "jmrdemo.synth_silver.guest_order",
      "alias": "guest_order"
     },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
     "sql": [
-     "`delivery_order`.`guest_order_id` = `guest_order`.`guest_order_id`",
+     "`guest_order`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "e5fefbe515594f4bbe433f049109609c",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.guest_order",
+     "alias": "guest_order"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.franchisee",
+     "alias": "franchisee"
+    },
+    "sql": [
+     "`guest_order`.`franchisee_id` = `franchisee`.`franchisee_id`",
      "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
     ]
    }
   ],
   "sql_functions": [
    {
-    "id": "1acac016db1a48cea8a8cb5c1940276e",
-    "identifier": "jmrdemo.synth_genie.f_sos_compliance"
-   },
-   {
-    "id": "1e60a24eed0a438ca8ed46e2ff767eb9",
-    "identifier": "jmrdemo.synth_genie.f_revenue_by_channel"
-   },
-   {
-    "id": "79012a2680644864b734d84eb34d671c",
+    "id": "6fe1a014239f4ab88ec395b752e2da6e",
     "identifier": "jmrdemo.synth_genie.f_late_delivery_rate"
    },
    {
-    "id": "87f26fe8b57f44d2ac7f35419eedb0f9",
+    "id": "b2f96931f6be48ebb96322a26e7ebe68",
+    "identifier": "jmrdemo.synth_genie.f_revenue_by_channel"
+   },
+   {
+    "id": "e1c7ec8fee374da480d950bec217fc5f",
+    "identifier": "jmrdemo.synth_genie.f_sos_compliance"
+   },
+   {
+    "id": "ee59ccd22cfd4b80b052557183175237",
     "identifier": "jmrdemo.synth_genie.f_top_menu_items"
+   }
+  ],
+  "example_question_sqls": [
+   {
+    "id": "82455e8d239a4b86baa0f1cfde136e53",
+    "question": [
+     "What was total revenue and average order value by channel over the last 30 days?"
+    ],
+    "sql": [
+     "SELECT channel, COUNT(*) AS orders, SUM(total_amount) AS revenue, AVG(total_amount) AS aov FROM jmrdemo.synth_silver.guest_order WHERE placed_at >= current_timestamp() - INTERVAL 30 DAYS GROUP BY channel ORDER BY revenue DESC"
+    ],
+    "usage_guidance": [
+     "Equivalent to f_revenue_by_channel(30); use the function when only channel revenue is needed."
+    ]
+   },
+   {
+    "id": "870f1a80853b4573ad0f19819bbb777d",
+    "question": [
+     "What is the average gap between actual and estimated delivery time over the last 30 days?"
+    ],
+    "sql": [
+     "SELECT AVG(actual_delivery_seconds - estimated_delivery_seconds) AS avg_gap_seconds FROM jmrdemo.synth_silver.delivery_order WHERE created_at >= current_timestamp() - INTERVAL 30 DAYS"
+    ],
+    "usage_guidance": [
+     "Use for the overall delivery-time gap; group by unit_id for per-store."
+    ]
+   },
+   {
+    "id": "a7720c8b5189445d83ae70181502c98d",
+    "question": [
+     "What hours of the day have the highest SOS breach rate?"
+    ],
+    "sql": [
+     "SELECT hour(placed_at) AS hour_of_day, AVG(CASE WHEN sos_breach THEN 1.0 ELSE 0.0 END) AS sos_breach_rate, COUNT(*) AS orders FROM jmrdemo.synth_silver.guest_order WHERE placed_at >= current_timestamp() - INTERVAL 14 DAYS GROUP BY hour(placed_at) ORDER BY hour_of_day"
+    ],
+    "usage_guidance": [
+     "Use for hour-of-day SOS breach analysis."
+    ]
+   },
+   {
+    "id": "affc711e6a104892b607f0b9a313009b",
+    "question": [
+     "Which franchisees have the highest revenue this month?"
+    ],
+    "sql": [
+     "SELECT f.franchisee_name, SUM(go.total_amount) AS revenue FROM jmrdemo.synth_silver.guest_order go JOIN jmrdemo.synth_ref.franchisee f ON f.franchisee_id = go.franchisee_id WHERE go.placed_at >= date_trunc('month', current_date()) GROUP BY f.franchisee_name ORDER BY revenue DESC"
+    ],
+    "usage_guidance": [
+     "Use for franchisee revenue ranking in the current month."
+    ]
+   },
+   {
+    "id": "fdf6810f7baa45a88779542f8fb7d5c3",
+    "question": [
+     "Which stores have the highest order cancellation rate this month?"
+    ],
+    "sql": [
+     "SELECT unit_id, AVG(CASE WHEN order_status='cancelled' THEN 1.0 ELSE 0.0 END) AS cancellation_rate, COUNT(*) AS orders FROM jmrdemo.synth_silver.guest_order WHERE placed_at >= date_trunc('month', current_date()) GROUP BY unit_id ORDER BY cancellation_rate DESC LIMIT 20"
+    ],
+    "usage_guidance": [
+     "Use for store-level cancellation-rate ranking within the current month."
+    ]
+   }
+  ],
+  "sql_snippets": {
+   "filters": [],
+   "expressions": [],
+   "measures": []
+  }
+ },
+ "benchmarks": {
+  "questions": [
+   {
+    "id": "2f3759039354432a89f0b4e1364f1ab7",
+    "question": [
+     "What was total revenue and average order value by channel over the last 30 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT * FROM jmrdemo.synth_genie.f_revenue_by_channel(p_days => 30)"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "3f3b5f5c0dd440d9b0d695b167c7713e",
+    "question": [
+     "What are the top menu items by revenue at store 113 over the last 30 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT * FROM jmrdemo.synth_genie.f_top_menu_items(p_unit => 113, p_days => 30)"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "97827b5aa0d048d8986d4ac013486c97",
+    "question": [
+     "Which franchisees have the highest revenue this month?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT f.franchisee_name, SUM(go.total_amount) AS revenue FROM jmrdemo.synth_silver.guest_order go JOIN jmrdemo.synth_ref.franchisee f ON f.franchisee_id = go.franchisee_id WHERE go.placed_at >= date_trunc('month', current_date()) GROUP BY f.franchisee_name ORDER BY revenue DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "cc154943c2304ba4859a67575127abe8",
+    "question": [
+     "Which stores have the highest SOS breach rate over the last 14 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT * FROM jmrdemo.synth_genie.f_sos_compliance(p_days => 14) ORDER BY sos_breach_rate DESC LIMIT 10"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "db04268473904b7d9744bba1e6f54ff1",
+    "question": [
+     "What is the late-delivery rate by channel over the last 14 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT * FROM jmrdemo.synth_genie.f_late_delivery_rate(p_days => 14)"
+      ],
+      "format": "SQL"
+     }
+    ]
    }
   ]
  }

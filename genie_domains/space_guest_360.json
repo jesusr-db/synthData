@@ -1,0 +1,308 @@
+{
+ "version": 2,
+ "config": {
+  "sample_questions": [
+   {
+    "id": "04b11209567c48e5807fa7af291805fa",
+    "question": [
+     "How many guests have never placed an order?"
+    ]
+   },
+   {
+    "id": "0a04b697ddc1491f823d4f5072f4b824",
+    "question": [
+     "What is the inactive (churn) rate by store?"
+    ]
+   },
+   {
+    "id": "0f0859b24a3e459ba811b4fb66e45006",
+    "question": [
+     "Which stores have the highest churn (inactive) rate?"
+    ]
+   },
+   {
+    "id": "6da61175b136430e82e697c4f2999bd5",
+    "question": [
+     "Which stores added the most new guests over the last 30 days?"
+    ]
+   },
+   {
+    "id": "6dd3769a467941bc9a94a4ba3c6beea0",
+    "question": [
+     "Show the new-registration trend by week"
+    ]
+   },
+   {
+    "id": "7434c46891a24f7dbf92b17c7ff1ebf8",
+    "question": [
+     "What share of guests are active by franchisee?"
+    ]
+   },
+   {
+    "id": "9e3698f440f445b685a12f4b7d3a458f",
+    "question": [
+     "How many active digital accounts are there by store?"
+    ]
+   },
+   {
+    "id": "b04632a2380d4e50a91369c8cb645683",
+    "question": [
+     "What is the ratio of digital accounts to guest profiles by store?"
+    ]
+   },
+   {
+    "id": "b162857c85df417b8357675fbe70afac",
+    "question": [
+     "How many new guest profiles were created this month?"
+    ]
+   },
+   {
+    "id": "f0cde39d168345079765233fa8e539ec",
+    "question": [
+     "What is the digital account adoption rate by store?"
+    ]
+   },
+   {
+    "id": "f6b90b24a774471281ccc8b4a58e62d3",
+    "question": [
+     "Which metro areas have the most suspended accounts?"
+    ]
+   },
+   {
+    "id": "f792416f15b4476a91afa0235ba66b56",
+    "question": [
+     "How many guest profiles are active vs inactive vs suspended?"
+    ]
+   }
+  ]
+ },
+ "data_sources": {
+  "tables": [
+   {
+    "identifier": "jmrdemo.synth_genie.metric_guest"
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.unit"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.digital_account",
+    "column_configs": [
+     {
+      "column_name": "account_status",
+      "synonyms": [
+       "status"
+      ],
+      "enable_format_assistance": true,
+      "enable_entity_matching": true
+     }
+    ]
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.guest_order"
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.guest_profile",
+    "column_configs": [
+     {
+      "column_name": "account_status",
+      "synonyms": [
+       "status",
+       "lifecycle state"
+      ],
+      "enable_format_assistance": true,
+      "enable_entity_matching": true
+     }
+    ]
+   }
+  ]
+ },
+ "instructions": {
+  "text_instructions": [
+   {
+    "id": "ff09b0cb6e10431f9c33f8d72f58b8c1",
+    "content": [
+     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Guest / Customer 360 (account lifecycle, NOT loyalty points \u2014 use the Loyalty space for points). Guest master = synth_silver.guest_profile (grain guest_profile_id; account_status in active/inactive/suspended, unit_id = home store, created_at). Digital accounts = synth_silver.digital_account (one per guest_profile_id; account_status).\n\nChurn/inactive rate = AVG(CASE WHEN account_status='inactive' THEN 1 ELSE 0 END). Active = account_status='active'. Digital adoption = digital_account with account_status='active'. New registrations = guest_profile by created_at. Use f_guest_churn(days) for the per-store lifecycle rollup (pass a large p_days e.g. 3650 for all-time). Metric view synth_genie.metric_guest exposes governed measures (Profiles, Active Profiles, Inactive Profiles, Churn Rate) by Account Status/Store/Metro/Created Date \u2014 query with MEASURE().\n\nASSET SELECTION (follow in order): (1) For standard business measures, query the metric view with MEASURE(). (2) For time-windowed operational questions (last N days) prefer the trusted SQL functions (f_*). (3) For ad-hoc slicing not covered by either, query the silver tables directly using the joins and formulas above. The functions and metric view are the canonical definitions \u2014 do not re-derive a metric in raw SQL if a function or MEASURE() already provides it."
+    ]
+   }
+  ],
+  "join_specs": [
+   {
+    "id": "4da932e9cb164359861607d2cc837a63",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.guest_profile",
+     "alias": "guest_profile"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`guest_profile`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "554a4e5ae9a149ae90e482753e74efaa",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.digital_account",
+     "alias": "digital_account"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_silver.guest_profile",
+     "alias": "guest_profile"
+    },
+    "sql": [
+     "`digital_account`.`guest_profile_id` = `guest_profile`.`guest_profile_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   }
+  ],
+  "sql_functions": [
+   {
+    "id": "4877870ba163499f99c8d041a23bdc80",
+    "identifier": "jmrdemo.synth_genie.f_guest_churn"
+   }
+  ],
+  "example_question_sqls": [
+   {
+    "id": "3b33992b6ec44c429621ab4239b15e5f",
+    "question": [
+     "How many guest profiles are active vs inactive vs suspended?"
+    ],
+    "sql": [
+     "SELECT account_status, COUNT(*) AS profiles FROM jmrdemo.synth_silver.guest_profile GROUP BY account_status ORDER BY profiles DESC"
+    ],
+    "usage_guidance": [
+     "Use for the overall account-status breakdown."
+    ]
+   },
+   {
+    "id": "9c6307a51e2b4657956b3d7fb8e6893c",
+    "question": [
+     "How many new guest profiles were created this month?"
+    ],
+    "sql": [
+     "SELECT COUNT(*) AS new_profiles FROM jmrdemo.synth_silver.guest_profile WHERE created_at >= date_trunc('month', current_date())"
+    ],
+    "usage_guidance": [
+     "Use for new-registration counts this month."
+    ]
+   },
+   {
+    "id": "c2086b9138d5401997783a6f506b08b5",
+    "question": [
+     "What is the digital account adoption rate by store?"
+    ],
+    "sql": [
+     "SELECT gp.unit_id, COUNT(DISTINCT da.guest_profile_id) / NULLIF(COUNT(DISTINCT gp.guest_profile_id),0) AS digital_adoption_rate FROM jmrdemo.synth_silver.guest_profile gp LEFT JOIN jmrdemo.synth_silver.digital_account da ON da.guest_profile_id = gp.guest_profile_id AND da.account_status='active' GROUP BY gp.unit_id ORDER BY digital_adoption_rate DESC"
+    ],
+    "usage_guidance": [
+     "Digital adoption = active digital accounts / guest profiles, by store."
+    ]
+   },
+   {
+    "id": "c66d3b0630ea441aa4bb7feffae08037",
+    "question": [
+     "Show the new-registration trend by week"
+    ],
+    "sql": [
+     "SELECT date_trunc('week', created_at) AS week, COUNT(*) AS new_profiles FROM jmrdemo.synth_silver.guest_profile WHERE created_at >= current_timestamp() - INTERVAL 90 DAYS GROUP BY date_trunc('week', created_at) ORDER BY week"
+    ],
+    "usage_guidance": [
+     "Use for weekly new-registration trend."
+    ]
+   },
+   {
+    "id": "e972730b3d8243eca3330b6acd5c0c87",
+    "question": [
+     "Which metro areas have the most suspended accounts?"
+    ],
+    "sql": [
+     "SELECT u.metro_area, COUNT(*) AS suspended FROM jmrdemo.synth_silver.guest_profile gp JOIN jmrdemo.synth_ref.unit u ON u.unit_id = gp.unit_id WHERE gp.account_status='suspended' GROUP BY u.metro_area ORDER BY suspended DESC"
+    ],
+    "usage_guidance": [
+     "Use for suspended-account concentration by metro."
+    ]
+   }
+  ],
+  "sql_snippets": {
+   "filters": [],
+   "expressions": [],
+   "measures": []
+  }
+ },
+ "benchmarks": {
+  "questions": [
+   {
+    "id": "14967c2128b24b4da91defacc542e1c7",
+    "question": [
+     "How many guest profiles are active vs inactive vs suspended?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT account_status, COUNT(*) AS profiles FROM jmrdemo.synth_silver.guest_profile GROUP BY account_status ORDER BY profiles DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "51ba16966f414f8985a57009e565136c",
+    "question": [
+     "How many new guest profiles were created this month?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT COUNT(*) AS new_profiles FROM jmrdemo.synth_silver.guest_profile WHERE created_at >= date_trunc('month', current_date())"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "5fcae08c097745bcbadde2319e3e1cd5",
+    "question": [
+     "How many active digital accounts are there by store?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT gp.unit_id, COUNT(*) AS active_digital FROM jmrdemo.synth_silver.digital_account da JOIN jmrdemo.synth_silver.guest_profile gp ON gp.guest_profile_id = da.guest_profile_id WHERE da.account_status='active' GROUP BY gp.unit_id ORDER BY active_digital DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "611b365e663545578eefc88310e6ca05",
+    "question": [
+     "Which metro areas have the most suspended accounts?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT u.metro_area, COUNT(*) AS suspended FROM jmrdemo.synth_silver.guest_profile gp JOIN jmrdemo.synth_ref.unit u ON u.unit_id = gp.unit_id WHERE gp.account_status='suspended' GROUP BY u.metro_area ORDER BY suspended DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "990d97a8a836483db7d198e088548f88",
+    "question": [
+     "What is the inactive (churn) rate by store?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT unit_id, inactive_rate FROM jmrdemo.synth_genie.f_guest_churn(p_days => 3650) ORDER BY inactive_rate DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   }
+  ]
+ }
+}

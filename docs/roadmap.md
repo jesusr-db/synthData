@@ -128,13 +128,52 @@ See `docs/handoff.md` for full deploy + test instructions. Summary:
 
 ---
 
-## Phase 3.5 — Genie Spaces Quality Pass
+## Phase 3.5 — Genie Spaces Quality Pass + Expansion ✅
 
-> Status: Planned — audit + best-practices review complete (2026-07-01)
-> Scope: `genie_domains/build_spaces.py` — all 4 QSR spaces (Orders & SOS, Loyalty, Inventory, Workforce)
-> No schema or generator changes; pure Genie configuration improvements.
+> Status: DONE (2026-07-08)
+> Scope: `genie_domains/` (shared `_spaces.py` + `_domains.py` modules) + setup/destroy jobs.
+> No schema or generator changes; grounding SQL + Genie configuration + governance only.
 
-The four Genie spaces are live and validated end-to-end. This phase hardens them for consistent, accurate answers based on a cross-referenced audit of the space configs against Databricks Genie best-practices documentation.
+Reworked the 4 original spaces to best-practice standard AND added 7 new spaces (11 total), all
+grouped under 4 Business-Unit governed-tag Domains, fully managed by setup_job/destroy_job.
+
+### What shipped
+- **11 best-practice spaces** (4 reworked + 7 new). Each has ≥5 `example_question_sqls`
+  (question→SQL pairs), ≥5 `benchmarks` (SME-verified answer SQL, `format: "SQL"`), `column_configs`
+  with synonyms + `enable_format_assistance`/`enable_entity_matching` on categoricals, explicit
+  join_specs, trusted functions / metric views as canonical, and a MEASURE-hierarchy instruction block.
+  - New spaces: Demand Risk & External Signals, Franchisee & Executive, Delivery & 3PD Operations,
+    Menu & Product Performance, Payments & Tender Mix, Guest & Customer 360, Customer ML Features.
+  - Excluded (data doesn't support): **Marketing** (discount_type never persisted; no campaign tables)
+    and **Supply Chain supplier scorecards** (`receiving_order` has no `supplier_id`).
+- **Retired** the broad 14-table catch-all space (`create_genie_space.py` deleted).
+- **4 BU governed-tag Domains** (Store Operations, Customer & Loyalty, Supply Chain & Merchandising,
+  Finance & Franchise) with parent/child tag-key hierarchy (`BU/Space`) via `parent_domain_id`.
+  Replaced the 4 flat domains. Governed tags applied to each space's UC assets + space entity.
+- **Fully job-managed:** setup DAG `create_metric_views → apply_grounding_sql → build_genie_spaces →
+  apply_bu_domains`; destroy notebook Step 0g tears down domains + tags + spaces + `synth_genie`
+  before schema drops. Shared modules imported by both notebooks and local `.sh`/CLI wrappers.
+
+### Empirically verified (2026-07-08, jmrdemo workspace)
+- v2 serialized_space persists `example_question_sqls`, `benchmarks.questions`, `column_configs`
+  (round-trip confirmed). Field shapes: question/sql/usage_guidance are string ARRAYS;
+  benchmark answer = `[{content:[sql], format:"SQL"}]`; column_configs use v2 names
+  `enable_format_assistance`/`enable_entity_matching` and must be sorted by `column_name`.
+- All 11 spaces built (4 updated, 7 created); all round-trip with 5 example SQL + 5 benchmarks.
+- All **55 benchmark SQL answers execute** against the warehouse with sane row counts.
+- 4 BU parent + 11 child Domain cards published (`effective_draft=false`), no duplicates.
+
+### Metric view per space (2026-07-08 follow-up)
+Every one of the 11 spaces now has a dedicated `synth_genie.metric_*` view (11 total, up from 5) so the
+"query the metric view with MEASURE()" instruction is never a dangling reference (finding #4). Added 6:
+`metric_delivery`, `metric_menu`, `metric_payments`, `metric_guest`, `metric_demand_risk`, `metric_customer`,
+all verified with live `MEASURE()` queries. Also fixed a pagination bug in `existing_spaces()` /
+`list_spaces_by_title()` (the list endpoint caps ~10/page) that caused duplicate spaces on re-run —
+builder is now idempotent (11 UPDATED, 0 CREATED), and teardown now also removes space tag-assignments.
+
+### Original audit findings (all addressed)
+The four original spaces used the fundamentals well but missed the highest-leverage levers; the
+audit below (against Databricks Genie best-practices docs) drove the rework.
 
 ### Background — Audit Findings Summary
 

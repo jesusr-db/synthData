@@ -3,73 +3,85 @@
  "config": {
   "sample_questions": [
    {
-    "id": "0a1b77d0349a4a7494f04d83c888658d",
-    "question": [
-     "Which suppliers are associated with the most received orders?"
-    ]
-   },
-   {
-    "id": "180001bb644d471b85b087552240f8c9",
-    "question": [
-     "Show the overproduction waste trend by week"
-    ]
-   },
-   {
-    "id": "191b9425215f42f4970b93a616eb864f",
-    "question": [
-     "Which stores have the most SKUs below par right now?"
-    ]
-   },
-   {
-    "id": "1a25520432d7442aa6f7bfa9a17e97d4",
-    "question": [
-     "What is the average waste cost per event by store?"
-    ]
-   },
-   {
-    "id": "21d4e24c66f342ea84b3710a739a8e5f",
-    "question": [
-     "Which menu items consume the most expensive ingredients?"
-    ]
-   },
-   {
-    "id": "2fd4a41477b94cc3b2e88bce1f47671b",
-    "question": [
-     "Show waste cost by category over the last 30 days"
-    ]
-   },
-   {
-    "id": "31a5eda0201c4af4aad41f05234b8e3f",
-    "question": [
-     "Which waste category drives the most cost across all stores?"
-    ]
-   },
-   {
-    "id": "58ec17caa6e649a984141ba0c643b851",
+    "id": "055a1fbdc718458d9696cb0b9acb0088",
     "question": [
      "Which SKUs are currently below par at store 31 and by how much?"
     ]
    },
    {
-    "id": "70905856a7674ed184942c5c6d986809",
+    "id": "17ff6917bb2d4116b5b7e10169a9e1d4",
     "question": [
-     "Which stores have the highest total waste cost this month?"
+     "Show waste cost by category over the last 30 days"
     ]
    },
    {
-    "id": "ab22d2584af1468db384db4814be9b7a",
-    "question": [
-     "What share of total waste cost is overproduction over the last 30 days?"
-    ]
-   },
-   {
-    "id": "b9788b9b30244768a89145db1a2c2ecd",
+    "id": "3a56ef0ae26c4efdbbdb2ac2fa273cff",
     "question": [
      "Which stores have the highest overproduction waste over the last 30 days?"
     ]
    },
    {
-    "id": "e48f3d63db304a068b8863d184394bba",
+    "id": "3e51cb1b1a6f42f58bf1eff155212b6d",
+    "question": [
+     "What is the average waste cost per event by store?"
+    ]
+   },
+   {
+    "id": "4e39cc80290b4c209b7978a3aadac340",
+    "question": [
+     "Which waste category drives the most cost across all stores?"
+    ]
+   },
+   {
+    "id": "542c949923884427a48d9f08a00842e0",
+    "question": [
+     "What is the receiving quality failure rate over the last 30 days?"
+    ]
+   },
+   {
+    "id": "8e3328e76b424e8693b03234eb1b01bd",
+    "question": [
+     "How many replenishment orders are still open?"
+    ]
+   },
+   {
+    "id": "950a5508253c4665b99c4a727f73e96d",
+    "question": [
+     "Which menu items consume the most expensive ingredients by total extended ingredient cost?"
+    ]
+   },
+   {
+    "id": "a9f33c35e2b540348a18968444b75962",
+    "question": [
+     "What is the cold-chain compliance rate on receiving over the last 30 days?"
+    ]
+   },
+   {
+    "id": "c2fb9c716c8e4e4f8dfe703c1802f159",
+    "question": [
+     "Which stores have the most SKUs below par right now?"
+    ]
+   },
+   {
+    "id": "cb85f0070ce94d30bfb85c42cb1d7aad",
+    "question": [
+     "What share of total waste cost is overproduction over the last 30 days?"
+    ]
+   },
+   {
+    "id": "d0a7f666194c4cf68c17477c72d2d421",
+    "question": [
+     "Show the overproduction waste trend by week"
+    ]
+   },
+   {
+    "id": "e00afdc8b4084e89aed4360105992850",
+    "question": [
+     "Which stores have the highest total waste cost this month?"
+    ]
+   },
+   {
+    "id": "e8f821d12ab543dc9c0f7631df38ac39",
     "question": [
      "Show the waste cost trend by week for store 85"
     ]
@@ -83,9 +95,6 @@
    },
    {
     "identifier": "jmrdemo.synth_metrics.inventory_waste"
-   },
-   {
-    "identifier": "jmrdemo.synth_ref.franchisee"
    },
    {
     "identifier": "jmrdemo.synth_ref.menu_item"
@@ -112,37 +121,48 @@
     "identifier": "jmrdemo.synth_silver.replenishment_order"
    },
    {
-    "identifier": "jmrdemo.synth_silver.waste_log"
+    "identifier": "jmrdemo.synth_silver.waste_log",
+    "column_configs": [
+     {
+      "column_name": "waste_category",
+      "synonyms": [
+       "waste reason",
+       "waste type"
+      ],
+      "enable_format_assistance": true,
+      "enable_entity_matching": true
+     }
+    ]
    }
   ]
  },
  "instructions": {
   "text_instructions": [
    {
-    "id": "c5f4081fd4df4de290bbf527e4bdd40a",
+    "id": "742418ae699448e7bf3e5824347f045c",
     "content": [
-     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Inventory & Waste. Waste events = synth_silver.waste_log (grain waste_log_id). waste_category in (expired, overproduction, damaged, spoilage, theft). Waste cost = SUM(waste_cost); waste quantity = SUM(waste_quantity); waste events = COUNT(*). For fast trends use synth_silver.inventory_waste_summary (total_waste_cost, total_waste_qty, waste_event_count per unit+date+category).\n\nOn-hand inventory = synth_silver.on_hand_balance (snapshots; grain unit_id+stock_sku+snapshot_at). A SKU is BELOW PAR / at stockout risk when quantity_on_hand < par_level. For CURRENT state, use the latest snapshot_at per unit+stock_sku (ROW_NUMBER() OVER (PARTITION BY unit_id, stock_sku ORDER BY snapshot_at DESC) = 1). Use trusted function f_below_par_skus(unit) for this.\n\nReceiving = synth_silver.receiving_order. Quality failure rate = share where quality_inspection_result != 'pass'. Cold-chain compliance = temperature_check_pass (boolean). Replenishment / purchase orders = synth_silver.replenishment_order (order_status tracks PO lifecycle; 'open' = not yet completed).\n\nIngredient bill-of-materials = synth_ref.recipe_ingredient (menu_item_id -> stock_sku, quantity, cost_per_unit). Suppliers = synth_ref.supplier. synth_metrics.inventory_waste is a pre-aggregate (Title-Case columns).\n\nPrefer trusted functions when they fit: f_waste_by_category(days), f_top_waste_stores(days), f_below_par_skus(unit). Metric view synth_genie.metric_waste exposes governed measures (Waste Cost, Waste Quantity, Waste Events, Avg Cost per Event) \u2014 use MEASURE()."
+     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Inventory & Waste. Waste events = synth_silver.waste_log (grain waste_log_id). waste_category in (expired, overproduction, damaged, spoilage, theft). Waste cost = SUM(waste_cost); waste events = COUNT(*). Fast trends = synth_silver.inventory_waste_summary.\n\nOn-hand = synth_silver.on_hand_balance (snapshots; grain unit_id+stock_sku+snapshot_at). BELOW PAR when quantity_on_hand < par_level. For CURRENT state use latest snapshot_at per unit+stock_sku (ROW_NUMBER() OVER (PARTITION BY unit_id, stock_sku ORDER BY snapshot_at DESC) = 1), or f_below_par_skus(unit).\n\nReceiving = synth_silver.receiving_order. Quality failure rate = share where quality_inspection_result != 'pass'. Cold-chain = temperature_check_pass. Replenishment/POs = synth_silver.replenishment_order (order_status; 'open'=not completed). BOM = synth_ref.recipe_ingredient (menu_item_id -> stock_sku, quantity, cost_per_unit).\n\nASSET SELECTION (follow in order): (1) For standard business measures, query the metric view with MEASURE(). (2) For time-windowed operational questions (last N days) prefer the trusted SQL functions (f_*). (3) For ad-hoc slicing not covered by either, query the silver tables directly using the joins and formulas above. The functions and metric view are the canonical definitions \u2014 do not re-derive a metric in raw SQL if a function or MEASURE() already provides it."
     ]
    }
   ],
   "join_specs": [
    {
-    "id": "17e37fa1667e4ff092693b6b1fecbde3",
+    "id": "75e711951b6a4cb99d6031f5f5de0e72",
     "left": {
-     "identifier": "jmrdemo.synth_silver.replenishment_order",
-     "alias": "replenishment_order"
+     "identifier": "jmrdemo.synth_silver.waste_log",
+     "alias": "waste_log"
     },
     "right": {
      "identifier": "jmrdemo.synth_ref.unit",
      "alias": "unit"
     },
     "sql": [
-     "`replenishment_order`.`unit_id` = `unit`.`unit_id`",
+     "`waste_log`.`unit_id` = `unit`.`unit_id`",
      "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
     ]
    },
    {
-    "id": "67b96423d61946e19bdff9c82171c7d6",
+    "id": "7b6aa1532b4d48a199fad26ff7d6d20f",
     "left": {
      "identifier": "jmrdemo.synth_ref.recipe_ingredient",
      "alias": "recipe_ingredient"
@@ -157,22 +177,7 @@
     ]
    },
    {
-    "id": "77a8ded9318c4fb392c793faee887996",
-    "left": {
-     "identifier": "jmrdemo.synth_silver.receiving_order",
-     "alias": "receiving_order"
-    },
-    "right": {
-     "identifier": "jmrdemo.synth_ref.unit",
-     "alias": "unit"
-    },
-    "sql": [
-     "`receiving_order`.`unit_id` = `unit`.`unit_id`",
-     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
-    ]
-   },
-   {
-    "id": "7d9bfbd85f6d4bd09e31e997bde89df2",
+    "id": "9c3d5e33601e4c62b790ae1387f635b3",
     "left": {
      "identifier": "jmrdemo.synth_silver.on_hand_balance",
      "alias": "on_hand_balance"
@@ -187,33 +192,189 @@
     ]
    },
    {
-    "id": "ba7a1275447e4daa919b6cd9aaaee5a5",
+    "id": "c7448b06c95a4d178716815d5ccea9e6",
     "left": {
-     "identifier": "jmrdemo.synth_silver.waste_log",
-     "alias": "waste_log"
+     "identifier": "jmrdemo.synth_silver.replenishment_order",
+     "alias": "replenishment_order"
     },
     "right": {
      "identifier": "jmrdemo.synth_ref.unit",
      "alias": "unit"
     },
     "sql": [
-     "`waste_log`.`unit_id` = `unit`.`unit_id`",
+     "`replenishment_order`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "e097274b3068489da8087ed59f006187",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.receiving_order",
+     "alias": "receiving_order"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`receiving_order`.`unit_id` = `unit`.`unit_id`",
      "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
     ]
    }
   ],
   "sql_functions": [
    {
-    "id": "3f03be006a6c4fe0b2f0cfd5ca87cc09",
+    "id": "32a214445d3a4ee98cb1ec44d9efb397",
+    "identifier": "jmrdemo.synth_genie.f_below_par_skus"
+   },
+   {
+    "id": "4ffd381fbe8e4404afc711e254f40d10",
     "identifier": "jmrdemo.synth_genie.f_waste_by_category"
    },
    {
-    "id": "b86c9041911240588f64a7e27b9491db",
+    "id": "7260c1e5ae20415fa3c5688c3bb089cc",
     "identifier": "jmrdemo.synth_genie.f_top_waste_stores"
+   }
+  ],
+  "example_question_sqls": [
+   {
+    "id": "7ad77ddbba2c47d4858b763a6c4b03d9",
+    "question": [
+     "Which menu items consume the most expensive ingredients by total extended ingredient cost?"
+    ],
+    "sql": [
+     "SELECT mi.item_name, SUM(ri.quantity * ri.cost_per_unit) AS extended_ingredient_cost FROM jmrdemo.synth_ref.recipe_ingredient ri JOIN jmrdemo.synth_ref.menu_item mi ON mi.menu_item_id = ri.menu_item_id GROUP BY mi.item_name ORDER BY extended_ingredient_cost DESC LIMIT 20"
+    ],
+    "usage_guidance": [
+     "Extended ingredient cost = SUM(quantity * cost_per_unit) from the BOM."
+    ]
    },
    {
-    "id": "bebc0c833e3642ecb43b9dc0b02599a1",
-    "identifier": "jmrdemo.synth_genie.f_below_par_skus"
+    "id": "9c2633b2f3bc4770a7b7a6d8b3ed7906",
+    "question": [
+     "What share of total waste cost is overproduction over the last 30 days?"
+    ],
+    "sql": [
+     "SELECT SUM(CASE WHEN waste_category='overproduction' THEN waste_cost ELSE 0 END) / NULLIF(SUM(waste_cost),0) AS overproduction_share FROM jmrdemo.synth_silver.waste_log WHERE logged_at >= current_timestamp() - INTERVAL 30 DAYS"
+    ],
+    "usage_guidance": [
+     "Use for overproduction's share of total waste cost."
+    ]
+   },
+   {
+    "id": "b25d4827f38f4876ab0d7123ca697a98",
+    "question": [
+     "How many replenishment orders are still open?"
+    ],
+    "sql": [
+     "SELECT COUNT(*) AS open_pos FROM jmrdemo.synth_silver.replenishment_order WHERE order_status = 'open'"
+    ],
+    "usage_guidance": [
+     "Use for open purchase-order counts; order_status 'open' = not yet completed."
+    ]
+   },
+   {
+    "id": "b96531f916624d66a739aed8d60ce3c6",
+    "question": [
+     "What is the receiving quality failure rate over the last 30 days?"
+    ],
+    "sql": [
+     "SELECT AVG(CASE WHEN quality_inspection_result != 'pass' THEN 1.0 ELSE 0.0 END) AS quality_failure_rate, COUNT(*) AS receipts FROM jmrdemo.synth_silver.receiving_order WHERE created_at >= current_timestamp() - INTERVAL 30 DAYS"
+    ],
+    "usage_guidance": [
+     "Use for receiving-quality failure rate."
+    ]
+   },
+   {
+    "id": "d46aff51d8be4da1bd620caca2461409",
+    "question": [
+     "What is the cold-chain compliance rate on receiving over the last 30 days?"
+    ],
+    "sql": [
+     "SELECT AVG(CASE WHEN temperature_check_pass THEN 1.0 ELSE 0.0 END) AS cold_chain_compliance_rate FROM jmrdemo.synth_silver.receiving_order WHERE created_at >= current_timestamp() - INTERVAL 30 DAYS"
+    ],
+    "usage_guidance": [
+     "Use for cold-chain (temperature check) compliance."
+    ]
+   }
+  ],
+  "sql_snippets": {
+   "filters": [],
+   "expressions": [],
+   "measures": []
+  }
+ },
+ "benchmarks": {
+  "questions": [
+   {
+    "id": "1b7ce200b00b42b6a3f85dc4a80c4e0e",
+    "question": [
+     "Show waste cost by category over the last 30 days"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT * FROM jmrdemo.synth_genie.f_waste_by_category(p_days => 30)"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "bce2d8052d564a0899f96be39e31c604",
+    "question": [
+     "Which SKUs are currently below par at store 31 and by how much?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT * FROM jmrdemo.synth_genie.f_below_par_skus(p_unit => 31)"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "c05514a6a1cc4280ae6766e1e75e5563",
+    "question": [
+     "Which menu items consume the most expensive ingredients by total extended ingredient cost?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT mi.item_name, SUM(ri.quantity * ri.cost_per_unit) AS extended_ingredient_cost FROM jmrdemo.synth_ref.recipe_ingredient ri JOIN jmrdemo.synth_ref.menu_item mi ON mi.menu_item_id = ri.menu_item_id GROUP BY mi.item_name ORDER BY extended_ingredient_cost DESC LIMIT 20"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "cc0d8406a95b4b3ea5efbf5682e1ac21",
+    "question": [
+     "What is the receiving quality failure rate over the last 30 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT AVG(CASE WHEN quality_inspection_result != 'pass' THEN 1.0 ELSE 0.0 END) AS quality_failure_rate FROM jmrdemo.synth_silver.receiving_order WHERE created_at >= current_timestamp() - INTERVAL 30 DAYS"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "f1f6cde757e64e6e8d79691ace4a5a1e",
+    "question": [
+     "Which stores have the highest total waste cost this month?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT * FROM jmrdemo.synth_genie.f_top_waste_stores(p_days => 30)"
+      ],
+      "format": "SQL"
+     }
+    ]
    }
   ]
  }

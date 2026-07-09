@@ -68,8 +68,27 @@ COMMENT ON TABLE jmrdemo.synth_ref.menu_item IS 'Menu item master. Grain: menu_i
 ;;;
 COMMENT ON TABLE jmrdemo.synth_ref.franchisee IS 'Franchisee/owner master. Grain: franchisee_id. A franchisee owns many units (stores).'
 ;;;
+-- ---- External signals + demand risk (Demand Risk space) ----
+COMMENT ON TABLE jmrdemo.synth_ref.weather_conditions IS 'Daily weather per metro area (30-day history + 14-day forecast). Grain: metro_area + forecast_date. weather_condition (clear, rain, snow, extreme_heat, extreme_cold, ...); alert_level from NOAA (none/advisory/watch/warning); high_temp_f/low_temp_f; precipitation_inches; demand_multiplier (>1 raises demand, <1 lowers); channel_shift_delivery (share shifting to delivery in bad weather). Join to synth_ref.unit on metro_area.'
+;;;
+COMMENT ON TABLE jmrdemo.synth_ref.local_events IS 'Local events (holidays, sports, concerts) affecting demand. Grain: event_id. event_category (holiday, sports, concert, ...); venue; est_attendance; est_demand_multiplier (expected demand lift); source (nager_holidays, ticketmaster, seatgeek). Join to synth_ref.unit on metro_area and to a date on event_date.'
+;;;
+COMMENT ON TABLE jmrdemo.synth_metrics.demand_risk_forecast IS 'Forward-looking (unit, date) demand-risk signal for the next 14 days, joining units x weather x events. Grain: unit_id + forecast_date. combined_demand_multiplier = weather x event multiplier (clamped 0.3..2.5). risk_level: demand_risk (<0.8, expect a slowdown), capacity_risk (>1.4, expect a surge), or normal. Use this view for "which units have the highest demand/capacity risk this week".'
+;;;
+-- ---- Customer ML features (Customer ML space) ----
+COMMENT ON TABLE jmrdemo.synth_features.customer_features IS 'Per-customer ML feature record (RFM + category affinity). Grain: profile_id (= guest_order.profile_id, the order-history key; NOT guest_profile.guest_profile_id). total_orders, monetary_total (lifetime spend), aov, recency_days (days since last order; -1 = never), tier (bronze/silver/gold/platinum/none), and affinity_<category> (share of spend on pizza/wings/sides/salads/drinks/desserts, 0..1). High recency_days = churn risk.'
+;;;
+COMMENT ON TABLE jmrdemo.synth_features.store_features IS 'Per-store ML feature record. Grain: unit_id. store_orders, store_aov, category popularity, and top item per category. Use for store-level demand/popularity analysis.'
+;;;
+COMMENT ON COLUMN jmrdemo.synth_features.customer_features.recency_days IS 'Days since the customer''s last order; -1 means no orders on record. Higher = more likely churned.'
+;;;
+COMMENT ON COLUMN jmrdemo.synth_features.customer_features.monetary_total IS 'Lifetime spend (sum of order total_amount) for the customer. The M in RFM.'
+;;;
 -- ---------------------------------------------------------------------------
 -- KEY COLUMN COMMENTS (disambiguation)
+-- Note: payment.tender_type value guidance lives in the Payments space text
+-- instructions + f_tender_mix (COMMENT ON COLUMN is blocked on silver streaming tables,
+-- so the COMMENT ON COLUMN statements below are best-effort and may no-op).
 -- ---------------------------------------------------------------------------
 COMMENT ON COLUMN jmrdemo.synth_silver.guest_order.sos_breach IS 'TRUE if the order missed its Speed-of-Service (SOS) prep-time target. SOS breach rate = AVG(sos_breach).'
 ;;;
@@ -207,6 +226,68 @@ CREATE OR REPLACE FUNCTION jmrdemo.synth_genie.f_overtime_employees(p_days INT D
          WHERE punch_in >= current_timestamp() - make_interval(0,0,0,p_days,0,0,0)
          GROUP BY employee_id HAVING SUM(hours_worked) > 40 ORDER BY hours DESC
 ;;;
+-- ---- Demand Risk & External Signals ----
+CREATE OR REPLACE FUNCTION jmrdemo.synth_genie.f_demand_risk(p_days INT DEFAULT 7)
+  RETURNS TABLE(unit_id BIGINT, metro_area STRING, risk_days BIGINT, avg_demand_multiplier DOUBLE, demand_risk_days BIGINT, capacity_risk_days BIGINT)
+  COMMENT 'Demand-risk outlook by store over the next p_days days from metrics.demand_risk_forecast: average combined demand multiplier, count of demand_risk days (slowdown) and capacity_risk days (surge). Use for "which units have the highest demand/capacity risk this week". Default 7 days.'
+  RETURN SELECT unit_id, MAX(metro_area) AS metro_area, COUNT(*) AS risk_days,
+                AVG(combined_demand_multiplier) AS avg_demand_multiplier,
+                SUM(CASE WHEN risk_level = 'demand_risk' THEN 1 ELSE 0 END) AS demand_risk_days,
+                SUM(CASE WHEN risk_level = 'capacity_risk' THEN 1 ELSE 0 END) AS capacity_risk_days
+         FROM jmrdemo.synth_metrics.demand_risk_forecast
+         WHERE forecast_date BETWEEN current_date() AND date_add(current_date(), p_days)
+         GROUP BY unit_id ORDER BY avg_demand_multiplier DESC
+;;;
+-- ---- Franchisee / Executive ----
+CREATE OR REPLACE FUNCTION jmrdemo.synth_genie.f_franchisee_scorecard(p_days INT DEFAULT 30)
+  RETURNS TABLE(franchisee_id BIGINT, stores BIGINT, revenue DOUBLE, orders BIGINT, avg_order_value DOUBLE, sos_breach_rate DOUBLE, waste_cost DOUBLE, labor_hours DOUBLE)
+  COMMENT 'Cross-domain franchisee scorecard over last p_days days: store count, revenue, orders, AOV, SOS breach rate, waste cost, and labor hours per franchisee. Use for ranking/benchmarking franchisees. Default 30 days.'
+  RETURN WITH ord AS (
+           SELECT u.franchisee_id, COUNT(DISTINCT go.unit_id) AS stores, SUM(go.total_amount) AS revenue,
+                  COUNT(*) AS orders, AVG(go.total_amount) AS aov,
+                  AVG(CASE WHEN go.sos_breach THEN 1.0 ELSE 0.0 END) AS sos_breach_rate
+           FROM jmrdemo.synth_silver.guest_order go JOIN jmrdemo.synth_ref.unit u ON u.unit_id = go.unit_id
+           WHERE go.placed_at >= current_timestamp() - make_interval(0,0,0,p_days,0,0,0)
+           GROUP BY u.franchisee_id),
+         wst AS (
+           SELECT u.franchisee_id, SUM(w.waste_cost) AS waste_cost
+           FROM jmrdemo.synth_silver.waste_log w JOIN jmrdemo.synth_ref.unit u ON u.unit_id = w.unit_id
+           WHERE w.logged_at >= current_timestamp() - make_interval(0,0,0,p_days,0,0,0)
+           GROUP BY u.franchisee_id),
+         lab AS (
+           SELECT u.franchisee_id, SUM(t.hours_worked) AS labor_hours
+           FROM jmrdemo.synth_silver.time_punch t JOIN jmrdemo.synth_ref.unit u ON u.unit_id = t.unit_id
+           WHERE t.punch_in >= current_timestamp() - make_interval(0,0,0,p_days,0,0,0)
+           GROUP BY u.franchisee_id)
+         SELECT ord.franchisee_id, ord.stores, ord.revenue, ord.orders, ord.aov AS avg_order_value,
+                ord.sos_breach_rate, wst.waste_cost, lab.labor_hours
+         FROM ord LEFT JOIN wst ON wst.franchisee_id = ord.franchisee_id
+                  LEFT JOIN lab ON lab.franchisee_id = ord.franchisee_id
+         ORDER BY ord.revenue DESC
+;;;
+-- ---- Payments & Tender Mix ----
+CREATE OR REPLACE FUNCTION jmrdemo.synth_genie.f_tender_mix(p_days INT DEFAULT 30)
+  RETURNS TABLE(tender_type STRING, payments BIGINT, amount DOUBLE, pct_of_amount DOUBLE)
+  COMMENT 'Payment tender mix over last p_days days: payment count, total amount, and each tender_type share of total amount (credit_card, digital_wallet, loyalty_redemption, cash). Default 30 days.'
+  RETURN SELECT tender_type, COUNT(*) AS payments, SUM(amount) AS amount,
+                SUM(amount) / NULLIF(SUM(SUM(amount)) OVER (),0) AS pct_of_amount
+         FROM jmrdemo.synth_silver.payment
+         WHERE paid_at >= current_timestamp() - make_interval(0,0,0,p_days,0,0,0)
+         GROUP BY tender_type ORDER BY amount DESC
+;;;
+-- ---- Guest / Customer 360 ----
+CREATE OR REPLACE FUNCTION jmrdemo.synth_genie.f_guest_churn(p_days INT DEFAULT 30)
+  RETURNS TABLE(unit_id BIGINT, total_profiles BIGINT, active_profiles BIGINT, inactive_profiles BIGINT, suspended_profiles BIGINT, inactive_rate DOUBLE)
+  COMMENT 'Guest account lifecycle by home store: total profiles and active/inactive/suspended counts plus inactive (churn) rate. p_days filters to profiles created in the last p_days days; use a large value (e.g. 3650) for all-time. Default 30 days.'
+  RETURN SELECT unit_id, COUNT(*) AS total_profiles,
+                SUM(CASE WHEN account_status = 'active' THEN 1 ELSE 0 END) AS active_profiles,
+                SUM(CASE WHEN account_status = 'inactive' THEN 1 ELSE 0 END) AS inactive_profiles,
+                SUM(CASE WHEN account_status = 'suspended' THEN 1 ELSE 0 END) AS suspended_profiles,
+                AVG(CASE WHEN account_status = 'inactive' THEN 1.0 ELSE 0.0 END) AS inactive_rate
+         FROM jmrdemo.synth_silver.guest_profile
+         WHERE created_at >= current_timestamp() - make_interval(0,0,0,p_days,0,0,0)
+         GROUP BY unit_id ORDER BY inactive_rate DESC
+;;;
 -- ============================================================================
 -- METRIC VIEWS  (semantic / ontology layer)
 -- ============================================================================
@@ -330,4 +411,211 @@ measures:
     expr: "COUNT(1)"
   - name: Avg Hours per Punch
     expr: "AVG(hours_worked)"
+$$
+;;;
+CREATE OR REPLACE VIEW jmrdemo.synth_genie.metric_franchisee
+  COMMENT 'Franchisee / executive metric view: revenue, orders, AOV, and SOS breach rate rolled up to the franchisee (and store) grain. Use for franchisee ranking and cross-store executive summaries.'
+  WITH METRICS LANGUAGE YAML AS $$
+version: 0.1
+source: jmrdemo.synth_silver.guest_order
+joins:
+  - name: unit
+    source: jmrdemo.synth_ref.unit
+    on: source.unit_id = unit.unit_id
+  - name: franchisee
+    source: jmrdemo.synth_ref.franchisee
+    on: source.franchisee_id = franchisee.franchisee_id
+dimensions:
+  - name: Order Date
+    expr: "DATE(placed_at)"
+  - name: Franchisee
+    expr: "franchisee.franchisee_name"
+  - name: Store
+    expr: "unit.unit_name"
+  - name: Metro
+    expr: "unit.metro_area"
+  - name: Region
+    expr: "unit.region_id"
+measures:
+  - name: Revenue
+    expr: "SUM(total_amount)"
+  - name: Orders
+    expr: "COUNT(1)"
+  - name: Average Order Value
+    expr: "AVG(total_amount)"
+  - name: SOS Breach Rate
+    expr: "AVG(CASE WHEN sos_breach THEN 1.0 ELSE 0.0 END)"
+  - name: Stores
+    expr: "COUNT(DISTINCT unit.unit_id)"
+$$
+;;;
+CREATE OR REPLACE VIEW jmrdemo.synth_genie.metric_delivery
+  COMMENT 'Delivery & 3PD metric view: deliveries, late-delivery rate, and avg delivery-time gap by store/metro/channel/date.'
+  WITH METRICS LANGUAGE YAML AS $$
+version: 0.1
+source: jmrdemo.synth_silver.delivery_order
+joins:
+  - name: guest_order
+    source: jmrdemo.synth_silver.guest_order
+    on: source.guest_order_id = guest_order.guest_order_id
+  - name: unit
+    source: jmrdemo.synth_ref.unit
+    on: source.unit_id = unit.unit_id
+dimensions:
+  - name: Delivery Date
+    expr: "DATE(created_at)"
+  - name: Channel
+    expr: "guest_order.channel"
+  - name: Store
+    expr: "unit.unit_name"
+  - name: Metro
+    expr: "unit.metro_area"
+measures:
+  - name: Deliveries
+    expr: "COUNT(1)"
+  - name: Late Deliveries
+    expr: "SUM(CASE WHEN actual_delivery_seconds > estimated_delivery_seconds THEN 1 ELSE 0 END)"
+  - name: Late Delivery Rate
+    expr: "AVG(CASE WHEN actual_delivery_seconds > estimated_delivery_seconds THEN 1.0 ELSE 0.0 END)"
+  - name: Avg Delivery Gap Seconds
+    expr: "AVG(actual_delivery_seconds - estimated_delivery_seconds)"
+$$
+;;;
+CREATE OR REPLACE VIEW jmrdemo.synth_genie.metric_menu
+  COMMENT 'Menu & product metric view: units sold, net revenue, and line count by item/category/daypart/date.'
+  WITH METRICS LANGUAGE YAML AS $$
+version: 0.1
+source: jmrdemo.synth_silver.order_item
+joins:
+  - name: menu_item
+    source: jmrdemo.synth_ref.menu_item
+    on: source.menu_item_id = menu_item.menu_item_id
+  - name: unit
+    source: jmrdemo.synth_ref.unit
+    on: source.unit_id = unit.unit_id
+dimensions:
+  - name: Order Date
+    expr: "DATE(placed_at)"
+  - name: Item
+    expr: "menu_item.item_name"
+  - name: Category
+    expr: "menu_item.category"
+  - name: Daypart
+    expr: "menu_item.daypart"
+  - name: Store
+    expr: "unit.unit_name"
+measures:
+  - name: Units Sold
+    expr: "SUM(quantity)"
+  - name: Net Revenue
+    expr: "SUM(line_net_amount)"
+  - name: Line Items
+    expr: "COUNT(1)"
+$$
+;;;
+CREATE OR REPLACE VIEW jmrdemo.synth_genie.metric_payments
+  COMMENT 'Payments metric view: payment amount, count, and average by tender type/channel/store/date.'
+  WITH METRICS LANGUAGE YAML AS $$
+version: 0.1
+source: jmrdemo.synth_silver.payment
+joins:
+  - name: guest_order
+    source: jmrdemo.synth_silver.guest_order
+    on: source.guest_order_id = guest_order.guest_order_id
+  - name: unit
+    source: jmrdemo.synth_ref.unit
+    on: source.unit_id = unit.unit_id
+dimensions:
+  - name: Payment Date
+    expr: "DATE(paid_at)"
+  - name: Tender Type
+    expr: "tender_type"
+  - name: Channel
+    expr: "guest_order.channel"
+  - name: Store
+    expr: "unit.unit_name"
+  - name: Metro
+    expr: "unit.metro_area"
+measures:
+  - name: Payment Amount
+    expr: "SUM(amount)"
+  - name: Payments
+    expr: "COUNT(1)"
+  - name: Average Payment
+    expr: "AVG(amount)"
+$$
+;;;
+CREATE OR REPLACE VIEW jmrdemo.synth_genie.metric_guest
+  COMMENT 'Guest / customer 360 metric view: profiles and active/inactive/suspended counts + churn rate by store/metro.'
+  WITH METRICS LANGUAGE YAML AS $$
+version: 0.1
+source: jmrdemo.synth_silver.guest_profile
+joins:
+  - name: unit
+    source: jmrdemo.synth_ref.unit
+    on: source.unit_id = unit.unit_id
+dimensions:
+  - name: Created Date
+    expr: "DATE(created_at)"
+  - name: Account Status
+    expr: "account_status"
+  - name: Store
+    expr: "unit.unit_name"
+  - name: Metro
+    expr: "unit.metro_area"
+measures:
+  - name: Profiles
+    expr: "COUNT(1)"
+  - name: Active Profiles
+    expr: "SUM(CASE WHEN account_status = 'active' THEN 1 ELSE 0 END)"
+  - name: Inactive Profiles
+    expr: "SUM(CASE WHEN account_status = 'inactive' THEN 1 ELSE 0 END)"
+  - name: Churn Rate
+    expr: "AVG(CASE WHEN account_status = 'inactive' THEN 1.0 ELSE 0.0 END)"
+$$
+;;;
+CREATE OR REPLACE VIEW jmrdemo.synth_genie.metric_demand_risk
+  COMMENT 'Demand risk metric view: avg combined demand multiplier + demand/capacity risk day counts by store/metro/risk level/date.'
+  WITH METRICS LANGUAGE YAML AS $$
+version: 0.1
+source: jmrdemo.synth_metrics.demand_risk_forecast
+dimensions:
+  - name: Forecast Date
+    expr: "forecast_date"
+  - name: Metro
+    expr: "metro_area"
+  - name: Risk Level
+    expr: "risk_level"
+  - name: Weather Condition
+    expr: "weather_condition"
+measures:
+  - name: Avg Demand Multiplier
+    expr: "AVG(combined_demand_multiplier)"
+  - name: Demand Risk Days
+    expr: "SUM(CASE WHEN risk_level = 'demand_risk' THEN 1 ELSE 0 END)"
+  - name: Capacity Risk Days
+    expr: "SUM(CASE WHEN risk_level = 'capacity_risk' THEN 1 ELSE 0 END)"
+  - name: Store Days
+    expr: "COUNT(1)"
+$$
+;;;
+CREATE OR REPLACE VIEW jmrdemo.synth_genie.metric_customer
+  COMMENT 'Customer ML metric view: customer count, avg lifetime spend, avg AOV, and avg recency by tier.'
+  WITH METRICS LANGUAGE YAML AS $$
+version: 0.1
+source: jmrdemo.synth_features.customer_features
+dimensions:
+  - name: Tier
+    expr: "tier"
+measures:
+  - name: Customers
+    expr: "COUNT(1)"
+  - name: Avg Lifetime Spend
+    expr: "AVG(monetary_total)"
+  - name: Avg Order Value
+    expr: "AVG(aov)"
+  - name: Avg Recency Days
+    expr: "AVG(CASE WHEN recency_days >= 0 THEN recency_days END)"
+  - name: Avg Total Orders
+    expr: "AVG(total_orders)"
 $$

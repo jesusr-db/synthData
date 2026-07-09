@@ -1,0 +1,329 @@
+{
+ "version": 2,
+ "config": {
+  "sample_questions": [
+   {
+    "id": "13c41c6ab504493880176422f4c451c3",
+    "question": [
+     "Which upcoming local events have the highest expected demand multiplier?"
+    ]
+   },
+   {
+    "id": "2681b58194ba4d9bbf0f251ea3c72589",
+    "question": [
+     "Which metro areas have the most demand-risk days in the next two weeks?"
+    ]
+   },
+   {
+    "id": "50d95071be3445cbab709a9d97b2b9c7",
+    "question": [
+     "Which events in the next two weeks have the highest estimated attendance?"
+    ]
+   },
+   {
+    "id": "6117cd399e0649fe81d0dbbbb3e0d1c9",
+    "question": [
+     "What is the average demand multiplier by weather condition?"
+    ]
+   },
+   {
+    "id": "80a99c42bbd94f7d9551cd0877163dca",
+    "question": [
+     "How does the combined demand multiplier vary by store over the next 7 days?"
+    ]
+   },
+   {
+    "id": "9a24d272e6954730a66b796bba2a6cf5",
+    "question": [
+     "Which stores should prepare for extra staffing due to capacity risk this week?"
+    ]
+   },
+   {
+    "id": "9da008c44d2a440b930e898ac8dbd3e4",
+    "question": [
+     "Show the daily combined demand multiplier for the Chicago metro over the next 14 days"
+    ]
+   },
+   {
+    "id": "9fe7872cf073453394ac11f5ee5bfaae",
+    "question": [
+     "How many demand-risk vs capacity-risk days does each metro have this week?"
+    ]
+   },
+   {
+    "id": "a00f7dd0d156436aabc8a19e32fbe477",
+    "question": [
+     "Which stores face a capacity risk (surge) over the next 14 days?"
+    ]
+   },
+   {
+    "id": "a351dd277f4b47b795818e5b061bd917",
+    "question": [
+     "Which stores have severe weather alerts in the next 14 days?"
+    ]
+   },
+   {
+    "id": "c1fa622017904e38b1e038ed3f7dd0b5",
+    "question": [
+     "What is the weather forecast and demand multiplier for store 42 over the next 7 days?"
+    ]
+   },
+   {
+    "id": "cb670d2b33e747a49be0f66b1f3d3d0b",
+    "question": [
+     "Which units have the highest demand risk this week?"
+    ]
+   }
+  ]
+ },
+ "data_sources": {
+  "tables": [
+   {
+    "identifier": "jmrdemo.synth_genie.metric_demand_risk"
+   },
+   {
+    "identifier": "jmrdemo.synth_metrics.demand_risk_forecast",
+    "column_configs": [
+     {
+      "column_name": "event_category",
+      "synonyms": [
+       "event type"
+      ],
+      "enable_format_assistance": true,
+      "enable_entity_matching": true
+     },
+     {
+      "column_name": "risk_level",
+      "synonyms": [
+       "risk",
+       "risk category"
+      ],
+      "enable_format_assistance": true,
+      "enable_entity_matching": true
+     },
+     {
+      "column_name": "weather_condition",
+      "synonyms": [
+       "weather"
+      ],
+      "enable_format_assistance": true,
+      "enable_entity_matching": true
+     }
+    ]
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.local_events"
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.unit"
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.weather_conditions"
+   }
+  ]
+ },
+ "instructions": {
+  "text_instructions": [
+   {
+    "id": "664e701a35934008a147cace013f59ee",
+    "content": [
+     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Demand Risk & External Signals (forward-looking). Primary source = synth_metrics.demand_risk_forecast (grain unit_id + forecast_date, next ~14 days). combined_demand_multiplier = weather x event multiplier (clamped 0.3..2.5). risk_level: 'demand_risk' (<0.8, expect slowdown), 'capacity_risk' (>1.4, expect surge), 'normal'.\n\nWeather detail = synth_ref.weather_conditions (per metro_area + forecast_date: weather_condition, alert_level, high_temp_f, low_temp_f, precipitation_inches, demand_multiplier, channel_shift_delivery). Events = synth_ref.local_events (per metro_area + event_date: event_name, event_category, venue, est_attendance, est_demand_multiplier).\n\nJoin weather/events to stores on metro_area (synth_ref.unit.metro_area). 'This week'/'next 7 days' = forecast_date BETWEEN current_date() AND date_add(current_date(),7). Use f_demand_risk(days) for the per-store risk rollup. Metric view synth_genie.metric_demand_risk exposes governed measures (Avg Demand Multiplier, Demand Risk Days, Capacity Risk Days, Store Days) by Metro/Risk Level/Weather Condition/Forecast Date \u2014 query with MEASURE().\n\nASSET SELECTION (follow in order): (1) For standard business measures, query the metric view with MEASURE(). (2) For time-windowed operational questions (last N days) prefer the trusted SQL functions (f_*). (3) For ad-hoc slicing not covered by either, query the silver tables directly using the joins and formulas above. The functions and metric view are the canonical definitions \u2014 do not re-derive a metric in raw SQL if a function or MEASURE() already provides it."
+    ]
+   }
+  ],
+  "join_specs": [
+   {
+    "id": "25b401c0a3554701970d43b93e7117b0",
+    "left": {
+     "identifier": "jmrdemo.synth_metrics.demand_risk_forecast",
+     "alias": "demand_risk_forecast"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`demand_risk_forecast`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "3b15bbf4889e40c4a76c56ec25f2f9c3",
+    "left": {
+     "identifier": "jmrdemo.synth_ref.local_events",
+     "alias": "local_events"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`local_events`.`metro_area` = `unit`.`metro_area`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_MANY--"
+    ]
+   },
+   {
+    "id": "f7a237f377434f0a98e1dc6a45296c89",
+    "left": {
+     "identifier": "jmrdemo.synth_ref.weather_conditions",
+     "alias": "weather_conditions"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`weather_conditions`.`metro_area` = `unit`.`metro_area`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_MANY--"
+    ]
+   }
+  ],
+  "sql_functions": [
+   {
+    "id": "799a2b0aa74d48cf95dd38edb944c5a6",
+    "identifier": "jmrdemo.synth_genie.f_demand_risk"
+   }
+  ],
+  "example_question_sqls": [
+   {
+    "id": "50b80db8761540a2b059dd01699f6513",
+    "question": [
+     "Which units have the highest demand risk this week?"
+    ],
+    "sql": [
+     "SELECT unit_id, metro_area, avg_demand_multiplier, demand_risk_days, capacity_risk_days FROM jmrdemo.synth_genie.f_demand_risk(p_days => 7) ORDER BY demand_risk_days DESC, avg_demand_multiplier ASC LIMIT 20"
+    ],
+    "usage_guidance": [
+     "Use for the per-store demand-risk outlook this week (low multiplier / many demand_risk days = slowdown risk)."
+    ]
+   },
+   {
+    "id": "694a636ac28b4d5ab3f7563db3c67eaa",
+    "question": [
+     "Which metro areas have the most demand-risk days in the next two weeks?"
+    ],
+    "sql": [
+     "SELECT metro_area, SUM(CASE WHEN risk_level='demand_risk' THEN 1 ELSE 0 END) AS demand_risk_days FROM jmrdemo.synth_metrics.demand_risk_forecast WHERE forecast_date BETWEEN current_date() AND date_add(current_date(),14) GROUP BY metro_area ORDER BY demand_risk_days DESC"
+    ],
+    "usage_guidance": [
+     "Use for metro-level demand-risk concentration."
+    ]
+   },
+   {
+    "id": "a86ec215bf0a4c1a92f8d428d7d52fa9",
+    "question": [
+     "What is the average demand multiplier by weather condition?"
+    ],
+    "sql": [
+     "SELECT weather_condition, AVG(demand_multiplier) AS avg_multiplier, COUNT(*) AS days FROM jmrdemo.synth_ref.weather_conditions WHERE forecast_date >= current_date() GROUP BY weather_condition ORDER BY avg_multiplier DESC"
+    ],
+    "usage_guidance": [
+     "Use to see how each weather condition shifts demand."
+    ]
+   },
+   {
+    "id": "d52d208423134580b92aebbcb07cd2cc",
+    "question": [
+     "Which upcoming local events have the highest expected demand multiplier?"
+    ],
+    "sql": [
+     "SELECT event_name, metro_area, event_date, event_category, est_attendance, est_demand_multiplier FROM jmrdemo.synth_ref.local_events WHERE event_date BETWEEN current_date() AND date_add(current_date(),14) ORDER BY est_demand_multiplier DESC LIMIT 20"
+    ],
+    "usage_guidance": [
+     "Use for ranking upcoming events by expected demand lift."
+    ]
+   },
+   {
+    "id": "f26670c371204547b24e379173fd28fe",
+    "question": [
+     "Which stores face a capacity risk (surge) over the next 14 days?"
+    ],
+    "sql": [
+     "SELECT unit_id, metro_area, capacity_risk_days, avg_demand_multiplier FROM jmrdemo.synth_genie.f_demand_risk(p_days => 14) WHERE capacity_risk_days > 0 ORDER BY capacity_risk_days DESC"
+    ],
+    "usage_guidance": [
+     "Use for surge/capacity planning; capacity_risk = combined multiplier > 1.4."
+    ]
+   }
+  ],
+  "sql_snippets": {
+   "filters": [],
+   "expressions": [],
+   "measures": []
+  }
+ },
+ "benchmarks": {
+  "questions": [
+   {
+    "id": "18bc2157cd2243f694406e1a3ceb4a1a",
+    "question": [
+     "Which upcoming local events have the highest expected demand multiplier?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT event_name, metro_area, event_date, est_demand_multiplier FROM jmrdemo.synth_ref.local_events WHERE event_date BETWEEN current_date() AND date_add(current_date(),14) ORDER BY est_demand_multiplier DESC LIMIT 20"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "372b2cb1f9da4032bc4f083f0628449f",
+    "question": [
+     "Which stores face a capacity risk (surge) over the next 14 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT unit_id, metro_area, capacity_risk_days FROM jmrdemo.synth_genie.f_demand_risk(p_days => 14) WHERE capacity_risk_days > 0 ORDER BY capacity_risk_days DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "3eb98d38453f4dd4bc773d4cf4441beb",
+    "question": [
+     "Which metro areas have the most demand-risk days in the next two weeks?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT metro_area, SUM(CASE WHEN risk_level='demand_risk' THEN 1 ELSE 0 END) AS demand_risk_days FROM jmrdemo.synth_metrics.demand_risk_forecast WHERE forecast_date BETWEEN current_date() AND date_add(current_date(),14) GROUP BY metro_area ORDER BY demand_risk_days DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "82caafd5030d4fe8ac737954bacef3dd",
+    "question": [
+     "What is the average demand multiplier by weather condition?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT weather_condition, AVG(demand_multiplier) AS avg_multiplier FROM jmrdemo.synth_ref.weather_conditions WHERE forecast_date >= current_date() GROUP BY weather_condition ORDER BY avg_multiplier DESC"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "cf9af95a2027448db92bac0948ebbf00",
+    "question": [
+     "Which units have the highest demand risk this week?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT * FROM jmrdemo.synth_genie.f_demand_risk(p_days => 7) ORDER BY demand_risk_days DESC, avg_demand_multiplier ASC LIMIT 20"
+      ],
+      "format": "SQL"
+     }
+    ]
+   }
+  ]
+ }
+}
