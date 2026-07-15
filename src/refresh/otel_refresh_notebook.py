@@ -90,6 +90,7 @@ try:
                 CAST(time_unix_nano AS BIGINT)       AS time_unix_nano,
                 CAST(to_timestamp(time_unix_nano / 1e9) AS TIMESTAMP) AS event_ts,
                 attributes['app.order.id']           AS `app.order.id`,
+                attributes['app.order.member_id']    AS `app.order.member_id`,
                 CAST(attributes['app.order.amount'] AS DOUBLE) AS `app.order.amount`,
                 CAST(attributes['app.order.items.count'] AS INT) AS `app.order.items.count`,
                 CAST(attributes['app.shipping.amount'] AS DOUBLE) AS `app.shipping.amount`,

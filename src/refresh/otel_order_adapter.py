@@ -19,6 +19,12 @@ _TAX_RATE = 0.085
 _SKU_MIN = 1
 _SKU_MAX = 75
 
+# Synth customer-key range (inclusive). guest_order.member_id / profile_id and
+# customer_features.profile_id all live in [1, 50000]. A web-injected
+# app.order.member_id in this range reconciles to an existing synth customer.
+_MEMBER_MIN = 1
+_MEMBER_MAX = 50000
+
 # OTel channel vocab → synth channel vocab
 _CHANNEL_MAP = {
     "delivery": "own_delivery",
@@ -64,6 +70,25 @@ def parse_skus(skus_raw: Any) -> list[tuple[int, int]]:
             continue
         result.append((mid, qty))
     return result
+
+
+def parse_member_id(raw: Any) -> Optional[int]:
+    """Parse a web-injected app.order.member_id into a synth customer key.
+
+    Returns an int in [1, 50000] (the synth guest_order.member_id /
+    customer_features.profile_id space) so real orders reconcile to an existing
+    synth customer. Returns None on missing / non-numeric / out-of-range input
+    (order stays anonymous, matching the pre-injection behaviour).
+    """
+    if raw is None:
+        return None
+    try:
+        mid = int(str(raw).strip())
+    except (ValueError, TypeError):
+        return None
+    if _MEMBER_MIN <= mid <= _MEMBER_MAX:
+        return mid
+    return None
 
 
 def map_store_to_unit(
@@ -171,6 +196,13 @@ def reshape_otel_orders(
         guest_order_id = make_id("otel", trace_id)
         payment_id = make_id("otel-pay", trace_id)
 
+        # --- customer identity (web-injected app.order.member_id) ---
+        # Synth semantics: member_id == profile_id when a customer is present,
+        # both NULL when anonymous. A valid member_id (1..50000) reconciles the
+        # real order to an existing synth customer / customer_features row.
+        member_id = parse_member_id(log.get("app.order.member_id"))
+        profile_id = member_id
+
         # --- SOS ---
         prep_seconds = int((span or {}).get("order.prep_seconds") or 0)
         sos_target = int((span or {}).get("sos.target_seconds") or 1800)
@@ -188,8 +220,8 @@ def reshape_otel_orders(
             "channel": synth_channel,
             "order_type": order_type,
             "order_status": "fulfilled",
-            "profile_id": None,
-            "member_id": None,
+            "profile_id": profile_id,
+            "member_id": member_id,
             "subtotal": subtotal,
             "discount_amount": 0.0,
             "tax_amount": tax_amount,

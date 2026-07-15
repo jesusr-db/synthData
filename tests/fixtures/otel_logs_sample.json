@@ -4,6 +4,7 @@
     "time_unix_nano": 1749686400000000000,
     "event_ts": "2025-06-12T04:00:00",
     "app.order.id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "app.order.member_id": "12345",
     "app.order.amount": 54.29,
     "app.order.items.count": 3,
     "app.shipping.amount": 4.99,

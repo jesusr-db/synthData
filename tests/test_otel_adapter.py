@@ -62,6 +62,39 @@ class TestParseSkus:
 
 
 # ---------------------------------------------------------------------------
+# parse_member_id — web-injected app.order.member_id → synth customer key
+# ---------------------------------------------------------------------------
+
+class TestParseMemberId:
+    def test_valid_in_range(self):
+        from src.refresh.otel_order_adapter import parse_member_id
+        assert parse_member_id("12345") == 12345
+        assert parse_member_id(12345) == 12345
+
+    def test_boundaries(self):
+        from src.refresh.otel_order_adapter import parse_member_id
+        assert parse_member_id(1) == 1
+        assert parse_member_id(50000) == 50000
+
+    def test_none_and_empty(self):
+        from src.refresh.otel_order_adapter import parse_member_id
+        assert parse_member_id(None) is None
+        assert parse_member_id("") is None
+
+    def test_out_of_range_returns_none(self):
+        """Values outside the synth customer space [1,50000] don't reconcile → None."""
+        from src.refresh.otel_order_adapter import parse_member_id
+        assert parse_member_id(0) is None
+        assert parse_member_id(50001) is None
+        assert parse_member_id(-5) is None
+
+    def test_non_numeric_returns_none(self):
+        from src.refresh.otel_order_adapter import parse_member_id
+        assert parse_member_id("abc") is None
+        assert parse_member_id("a1b2c3d4-uuid") is None
+
+
+# ---------------------------------------------------------------------------
 # ID bridge: stable + namespaced
 # ---------------------------------------------------------------------------
 
@@ -306,3 +339,28 @@ class TestReshapeOtelOrders:
         # Should have emitted the 2 valid real orders
         guest_orders = [r for r in result if r["event_type"] == "guest_order"]
         assert len(guest_orders) == 2
+
+    def test_injected_member_id_sets_profile_and_member(self):
+        """A web-injected app.order.member_id (12345) sets BOTH member_id and
+        profile_id on the guest_order (synth semantics: member_id == profile_id)."""
+        from src.refresh.otel_order_adapter import reshape_otel_orders
+        from src.generator.id_utils import make_id
+        logs, spans = _load_sample()
+        result = reshape_otel_orders(logs, spans, UNIT_IDS_BY_STATE, ALL_UNIT_IDS)
+        # Row 1 (trace aaaa...) carries app.order.member_id = "12345"
+        go_id = make_id("otel", "aaaa1111bbbb2222cccc3333dddd4444")
+        go = next(r for r in result if r["event_type"] == "guest_order" and r["guest_order_id"] == go_id)
+        assert go["member_id"] == 12345
+        assert go["profile_id"] == 12345
+
+    def test_order_without_member_id_stays_anonymous(self):
+        """A real order with no app.order.member_id keeps member_id/profile_id None."""
+        from src.refresh.otel_order_adapter import reshape_otel_orders
+        from src.generator.id_utils import make_id
+        logs, spans = _load_sample()
+        result = reshape_otel_orders(logs, spans, UNIT_IDS_BY_STATE, ALL_UNIT_IDS)
+        # Row 2 (trace bbbb...) has no member_id
+        go_id = make_id("otel", "bbbb2222cccc3333dddd4444eeee5555")
+        go = next(r for r in result if r["event_type"] == "guest_order" and r["guest_order_id"] == go_id)
+        assert go["member_id"] is None
+        assert go["profile_id"] is None

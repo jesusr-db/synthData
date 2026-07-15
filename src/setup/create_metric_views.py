@@ -232,12 +232,13 @@ try:
     spark.sql(f"SELECT 1 FROM {otel_catalog}.{otel_schema}.otel_logs LIMIT 1")
     spark.sql(f"""
         CREATE OR REPLACE VIEW {c}.{schema_prefix}metrics.order_reconciliation
-        COMMENT 'Reconciles real PizzaTel web orders (OTel) to their synth-pipeline rows. web_order_id is the storefront app.order.id (UUID); guest_order_id is the bridged synth key = make_id("otel", trace_id). reconciled=true means the web order flowed through to silver.guest_order. amount_diff should be ~0.'
+        COMMENT 'Reconciles real PizzaTel web orders (OTel) to their synth-pipeline rows AND to the customer record. web_order_id is the storefront app.order.id (UUID); guest_order_id is the bridged synth key = make_id("otel", trace_id). reconciled=true means the web order flowed through to silver.guest_order. member_id is the web-injected app.order.member_id (synth customer key, 1..50000; NULL = anonymous); customer_matched=true means it joined an existing customer_features record, exposing customer_tier and customer_lifetime_spend. amount_diff should be ~0.'
         AS
         WITH web AS (
             SELECT
                 attributes['app.order.id']                          AS web_order_id,
                 trace_id,
+                CAST(attributes['app.order.member_id'] AS BIGINT)   AS member_id,
                 CAST(attributes['app.order.amount'] AS DOUBLE)      AS web_amount,
                 CAST(attributes['app.order.items.count'] AS INT)    AS web_item_count,
                 attributes['app.shipping.tracking.id']              AS web_tracking_id,
@@ -249,6 +250,7 @@ try:
         web_dedup AS (
             SELECT web_order_id,
                    MAX(trace_id)       AS trace_id,
+                   MAX(member_id)       AS member_id,
                    MAX(web_amount)      AS web_amount,
                    MAX(web_item_count)  AS web_item_count,
                    MAX(web_tracking_id) AS web_tracking_id,
@@ -259,6 +261,7 @@ try:
             w.web_order_id,
             w.trace_id,
             CAST(CONV(SUBSTR(SHA2(CONCAT_WS(':','otel', w.trace_id),256),1,14),16,10) AS BIGINT) AS guest_order_id,
+            w.member_id,
             w.web_amount,
             w.web_item_count,
             w.web_tracking_id,
@@ -269,10 +272,16 @@ try:
             g.order_status,
             g.total_amount                             AS silver_total_amount,
             g.placed_at                                AS silver_placed_at,
-            ROUND(w.web_amount - g.total_amount, 2)    AS amount_diff
+            ROUND(w.web_amount - g.total_amount, 2)    AS amount_diff,
+            (cf.profile_id IS NOT NULL)                AS customer_matched,
+            cf.tier                                    AS customer_tier,
+            cf.total_orders                            AS customer_total_orders,
+            cf.monetary_total                          AS customer_lifetime_spend
         FROM web_dedup w
         LEFT JOIN {c}.{schema_prefix}silver.guest_order g
             ON g.guest_order_id = CAST(CONV(SUBSTR(SHA2(CONCAT_WS(':','otel', w.trace_id),256),1,14),16,10) AS BIGINT)
+        LEFT JOIN {c}.{schema_prefix}features.customer_features cf
+            ON cf.profile_id = w.member_id
     """)
     print(f"[INFO] View ready: {c}.{schema_prefix}metrics.order_reconciliation")
 except Exception as e:
