@@ -53,3 +53,31 @@
   - databricks bundle validate -p DEFAULT: Validation OK
   - 15 contract artifacts present (7 src/refresh, 1 conf, 5 fixtures, 1 test file, 1 resource yml)
   - 9 contract compliance checks (seeder schema, build_context signature, backfill_ticks signature, refresh_weather_events.yml cron+libs, setup_job.yml task+deps, databricks.yml vars) all PASS
+
+### Feature "otel-live-orders" — Phase 1: otel-live-orders-implementation + Phase 2: qa (2026-07-15T09:10:00-04:00)
+
+#### What worked
+- Same disjoint-ownership pattern as weather-events, and it worked again cleanly. data-engineer owned `src/refresh/otel_*`, `tests/*`, and the `write_batch` default in `src/generator/main.py`; deploy-engineer owned `resources/refresh_otel_orders.yml`, `resources/setup_job.yml`, `databricks.yml`, `src/setup/setup_notebook.py`, `src/setup/destroy_notebook.py`. 11 files touched, data ∩ deploy = ∅ — zero merge conflicts in a shared tree (no worktree).
+- Pattern B (best-effort adapter → append to the existing `staging.order_events` DLT streaming source) kept `src/pipeline/mvm_pipeline.py` byte-for-byte UNCHANGED — the real orders flow through the existing silver/gold/Genie path with no source threading. Confirmed via `git diff main -- src/pipeline/mvm_pipeline.py` = empty.
+- TDD again eliminated rework: the pure adapter (`otel_order_adapter.py`) is hermetic (no spark/dbutils/network — pools and rows injected), so 28 new tests run in 0.07s with zero fixtures needing a live workspace. Both phases passed QA on attempt 1.
+- The namespaced `make_id` bridge (`make_id("otel", trace_id)` vs synth `make_id("o", ...)`) gives stable, collision-proof IDs across refresh runs — idempotency comes from the high-water-mark, not MERGE.
+
+#### What failed or needed fixing
+- **The project `.venv` had to be stood up from scratch, and the plan's baseline count was stale.** The machine's default `python3` (Homebrew 3.14) is depless; there was no venv. `requirements.txt` was also missing `pandas` and `mlflow`, which a newer test (`tests/test_recommender_model.py`) imports — so even after `pip install -r requirements.txt` the suite died at collection. The orchestrator installed `pandas`+`mlflow` into `.venv` to get a clean baseline of **192** (not the plan doc's stale "~118"). All pytest gates were run via `.venv/bin/python -m pytest -q`, never bare `python3`. NOTE: `requirements.txt` still does not pin pandas/mlflow — future runs on a fresh machine will hit the same collection error until those are added.
+- **The deploy-engineer sub-agent got stuck in plan mode** (a harness-level state the parent prompt cannot override) and only emitted a plan, never executing. The orchestrator applied the deploy-engineer's exact 5-file plan directly instead of fighting the sub-agent state. Small, well-specified DAB change — safe to execute from the orchestrator. The data-engineer sub-agent executed and committed normally.
+
+#### Patterns to watch for
+- **`.venv` is self-ignored by Python's `venv` module**, which writes `.venv/.gitignore` containing `*`. So `.venv` never shows in `git status` even though the repo's top-level `.gitignore` does not list it. Safe from accidental `git add` — but only if agents use explicit `git add <paths>`, never `git add .`.
+- **Append-only is non-negotiable for `staging.order_events`** — it is a DLT streaming source. The refresh notebook uses `.write.mode("append").option("mergeSchema","true")` and NEVER MERGE/UPDATE/DELETE (that would break the stream). This is the opposite of the weather-events `refresh_notebook.py`, which MERGEs into a batch ref table — do NOT copy that idiom here.
+- **`source` column stays internal to staging.** It exists only for the otel high-water-mark (`WHERE source='otel'`) and is deliberately NOT threaded into silver/gold/Genie — real orders are indistinguishable from synth downstream. Bonus: not touching the streaming-table schema avoids a forced DLT full-refresh. The `write_batch` default (`row.setdefault("source","synth")`) is scoped to order-domain event types only so the other 4 staging tables don't churn.
+- **`order_item.unit_price` must floor > 0.** `mvm_pipeline.py` order_item has `@dp.expect_or_drop("positive_price","unit_price > 0")` — distributed line prices are floored at 0.01 (`max(0.01, round(subtotal*qty/total_qty, 2))`) or otel items silently vanish from silver.
+- **Correlation is strictly `trace_id`.** The otel log `app.order.id` (UUID) and the span `order.id` (int) are different fields — never equate them. The adapter never reads either; the notebook projects them for columns only, and all `make_id` seeds + the log⋈span join use `trace_id`.
+- **DAB DAG: `initial_otel_backfill` mirrors `initial_weather_refresh`** — runs after `setup` (staging table exists) and gates `backfill`. `backfill.depends_on` is now `[setup, initial_weather_refresh, initial_otel_backfill]`. Best-effort ⇒ it must SUCCEED (print `[WARN]`) even if otel is unreachable, never blocking setup.
+- **Operational precondition (not verifiable by any agent):** the job principal needs `SELECT` on `jmrdemo.zerobus.otel_logs` and `otel_spans`. Missing grant degrades to a graceful no-op — the pipeline stays green but the demo shows no real orders. Grant before demoing.
+
+#### QA iterations
+- Attempt 1: PASS
+  - pytest: 220 passed (192 baseline + 28 new otel), 0 failed, 0 errors — via `.venv/bin/python`
+  - databricks bundle validate -p DEFAULT: Validation OK
+  - collision check: 11 files, data ∩ deploy = ∅; `mvm_pipeline.py` zero diff; all 6 new files present
+  - 14/14 contract-compliance checks PASS (graceful empty, positive_price floor, SKU clamp 1..75, namespaced+stable ID bridge, source STRING DDL, setup_job DAG deps, refresh job cron, databricks.yml vars, mvm UNCHANGED, append-only, trace_id-only correlation, load-gen filter, fee-test filter, source='otel')
