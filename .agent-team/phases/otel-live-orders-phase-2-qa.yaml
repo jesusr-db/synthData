@@ -1,0 +1,26 @@
+id: 2
+name: qa
+description: >
+  Validate the OTel Live-Order bolt-on. Confirm graceful degradation, append-only semantics,
+  hermetic tests, and adherence to the DAB + setup_job + destroy_job deployment standard.
+depends_on: [1]
+agents:
+  - qa-engineer
+parallel_groups:
+  - [qa-engineer]
+contracts:
+  - otel-live-orders
+qa_gate:
+  run: python3 -m pytest -q
+  expected: baseline suite (~118) unchanged + ~12 new otel tests, zero failures
+  also: databricks bundle validate -p DEFAULT
+  contract_checks:
+    - reshape_otel_orders([], [], ...) == []  (graceful empty)
+    - every emitted order_item unit_price > 0  (guards positive_price expectation)
+    - parse_skus clamps menu_item_id to 1..75 and drops garbage
+    - ID bridge stable + namespaced (no collision with synth make_id("o",...))
+    - setup_notebook.py staging.order_events DDL includes `source STRING`
+    - setup_job.yml initial_otel_backfill depends on setup; backfill depends on it
+    - refresh_otel_orders.yml runs otel_refresh_notebook.py on otel_refresh_cron
+    - databricks.yml has otel_catalog, otel_schema, otel_refresh_cron
+    - mvm_pipeline.py UNCHANGED (seamless — no source threading in silver)
