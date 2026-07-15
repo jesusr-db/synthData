@@ -102,6 +102,7 @@ DOMAINS = {
                                  "order_status": ["status","state"]}),
      ] + tbl([f"{S}.order_item", f"{S}.delivery_order", f"{S}.sos_compliance_summary",
              f"{S}.unit_performance_daily", f"{M}.order_performance", f"{G}.metric_orders_sos",
+             f"{M}.order_reconciliation",
              f"{R}.unit", f"{R}.menu_item", f"{R}.franchisee"]),
   "questions": sq([
      "Which stores have the highest SOS breach rate over the last 14 days?",
@@ -117,7 +118,9 @@ DOMAINS = {
      "Show the daily revenue trend for store 85 over the last 30 days",
      "Which franchisees have the highest revenue this month?",
      "What is the revenue by order type (delivery, carryout, catering) over the last 30 days?",
-     "How many orders were cancelled vs fulfilled over the last 14 days?"]),
+     "How many orders were cancelled vs fulfilled over the last 14 days?",
+     "How many real web orders have reconciled to the synth data?",
+     "Did web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb make it into the data?"]),
   "instructions": ti([
      GLOSSARY,
      "DOMAIN = Orders & Speed-of-Service. Order header = synth_silver.guest_order (one row per order, grain guest_order_id). "
@@ -126,6 +129,10 @@ DOMAINS = {
      "SOS breach rate = AVG(CASE WHEN sos_breach THEN 1 ELSE 0 END). Cancellation rate = AVG(CASE WHEN order_status='cancelled' THEN 1 ELSE 0 END). "
      "A delivery is LATE when delivery_order.actual_delivery_seconds > estimated_delivery_seconds.",
      "Channels: '3pd_delivery', 'own_delivery', 'carryout', 'catering'. For fast daily SOS trends use synth_silver.sos_compliance_summary.",
+     "RECONCILING REAL WEB ORDERS: synth_metrics.order_reconciliation maps each real PizzaTel storefront order to its synth-pipeline row. "
+     "web_order_id = the storefront order UUID (app.order.id); guest_order_id = the bridged synth key in synth_silver.guest_order. "
+     "reconciled=TRUE means the web order reached silver (amount_diff ~ 0). Use this view for questions like 'did web order <UUID> land in the data?', "
+     "'how many real web orders reconciled to synth?', or 'show real vs synthetic order counts'. It only exists when the live OTel source is configured.",
      MEASURE_HIERARCHY]),
   "functions": fn([f"{G}.f_sos_compliance", f"{G}.f_revenue_by_channel", f"{G}.f_top_menu_items", f"{G}.f_late_delivery_rate"]),
   "joins": [
@@ -159,6 +166,14 @@ DOMAINS = {
            "FROM jmrdemo.synth_silver.guest_order WHERE placed_at >= current_timestamp() - INTERVAL 30 DAYS "
            "GROUP BY channel ORDER BY revenue DESC",
            "Equivalent to f_revenue_by_channel(30); use the function when only channel revenue is needed."),
+     exsql("How many real web orders have reconciled to the synth data?",
+           "SELECT reconciled, COUNT(*) AS orders, ROUND(SUM(web_amount),2) AS web_revenue "
+           "FROM jmrdemo.synth_metrics.order_reconciliation GROUP BY reconciled",
+           "Use synth_metrics.order_reconciliation to audit real web orders vs their synth rows; reconciled=TRUE means it reached silver."),
+     exsql("Did web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb make it into the data?",
+           "SELECT web_order_id, guest_order_id, reconciled, web_amount, silver_total_amount, amount_diff "
+           "FROM jmrdemo.synth_metrics.order_reconciliation WHERE web_order_id = 'b2b4819f-8080-11f1-9d1b-3641fe8bc2eb'",
+           "Look up a single web order UUID and its bridged synth guest_order_id; reconciled tells you if it reached silver."),
   ],
   "benchmarks": [
      bench("Which stores have the highest SOS breach rate over the last 14 days?",

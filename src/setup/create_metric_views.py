@@ -17,6 +17,16 @@ try:
 except Exception:
     schema_prefix = "synth_"
 
+try:
+    otel_catalog = dbutils.widgets.get("otel_catalog")
+except Exception:
+    otel_catalog = "jmrdemo"
+
+try:
+    otel_schema = dbutils.widgets.get("otel_schema")
+except Exception:
+    otel_schema = "zerobus"
+
 print(f"[INFO] create_metric_views: catalog={catalog_name}, schema_prefix={schema_prefix}")
 c = catalog_name
 
@@ -214,4 +224,59 @@ spark.sql(f"""
 print(f"[INFO] View ready: {c}.{schema_prefix}metrics.demand_risk_forecast")
 
 # COMMAND ----------
-print("[INFO] create_metric_views complete — 5 metric views created in metrics schema")
+# 6. Order Reconciliation — maps real PizzaTel web orders (OTel) to their synth rows.
+# Best-effort: if the OTel tables are missing/ungranted, skip gracefully (bolt-on contract).
+# The web app.order.id (UUID) has no native column in silver by design (seamless blend);
+# this view recomputes the id-bridge make_id("otel", trace_id) so web ↔ synth orders reconcile.
+try:
+    spark.sql(f"SELECT 1 FROM {otel_catalog}.{otel_schema}.otel_logs LIMIT 1")
+    spark.sql(f"""
+        CREATE OR REPLACE VIEW {c}.{schema_prefix}metrics.order_reconciliation
+        COMMENT 'Reconciles real PizzaTel web orders (OTel) to their synth-pipeline rows. web_order_id is the storefront app.order.id (UUID); guest_order_id is the bridged synth key = make_id("otel", trace_id). reconciled=true means the web order flowed through to silver.guest_order. amount_diff should be ~0.'
+        AS
+        WITH web AS (
+            SELECT
+                attributes['app.order.id']                          AS web_order_id,
+                trace_id,
+                CAST(attributes['app.order.amount'] AS DOUBLE)      AS web_amount,
+                CAST(attributes['app.order.items.count'] AS INT)    AS web_item_count,
+                attributes['app.shipping.tracking.id']              AS web_tracking_id,
+                CAST(to_timestamp(time_unix_nano/1e9) AS TIMESTAMP) AS web_order_ts
+            FROM {otel_catalog}.{otel_schema}.otel_logs
+            WHERE attributes['app.order.id'] IS NOT NULL
+              AND CAST(attributes['app.order.amount'] AS DOUBLE) > 0
+        ),
+        web_dedup AS (
+            SELECT web_order_id,
+                   MAX(trace_id)       AS trace_id,
+                   MAX(web_amount)      AS web_amount,
+                   MAX(web_item_count)  AS web_item_count,
+                   MAX(web_tracking_id) AS web_tracking_id,
+                   MAX(web_order_ts)    AS web_order_ts
+            FROM web GROUP BY web_order_id
+        )
+        SELECT
+            w.web_order_id,
+            w.trace_id,
+            CAST(CONV(SUBSTR(SHA2(CONCAT_WS(':','otel', w.trace_id),256),1,14),16,10) AS BIGINT) AS guest_order_id,
+            w.web_amount,
+            w.web_item_count,
+            w.web_tracking_id,
+            w.web_order_ts,
+            (g.guest_order_id IS NOT NULL)             AS reconciled,
+            g.unit_id,
+            g.channel,
+            g.order_status,
+            g.total_amount                             AS silver_total_amount,
+            g.placed_at                                AS silver_placed_at,
+            ROUND(w.web_amount - g.total_amount, 2)    AS amount_diff
+        FROM web_dedup w
+        LEFT JOIN {c}.{schema_prefix}silver.guest_order g
+            ON g.guest_order_id = CAST(CONV(SUBSTR(SHA2(CONCAT_WS(':','otel', w.trace_id),256),1,14),16,10) AS BIGINT)
+    """)
+    print(f"[INFO] View ready: {c}.{schema_prefix}metrics.order_reconciliation")
+except Exception as e:
+    print(f"[WARN] order_reconciliation view skipped (OTel source unavailable): {e}")
+
+# COMMAND ----------
+print("[INFO] create_metric_views complete — order/loyalty/inventory/labor/demand-risk + order_reconciliation views")

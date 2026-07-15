@@ -115,6 +115,8 @@ resources:
             base_parameters:
               catalog_name: ${var.catalog_name}
               schema_prefix: ${var.schema_prefix}
+              otel_catalog: ${var.otel_catalog}
+              otel_schema: ${var.otel_schema}
 
         - task_key: apply_grounding_sql
           depends_on:
