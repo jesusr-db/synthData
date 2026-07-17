@@ -30,7 +30,11 @@ try:
     from datetime import datetime
     from collections import defaultdict
 
-    from src.refresh.otel_order_adapter import reshape_otel_orders
+    from src.refresh.otel_order_adapter import (
+        reshape_otel_orders,
+        otel_logs_time_expr,
+        build_ts_filter,
+    )
 
     # -------------------------------------------------------------------
     # 1. High-water-mark  (skipped in backfill mode)
@@ -79,16 +83,18 @@ try:
     log_rows: list[dict] = []
     try:
         logs_table = f"{otel_catalog}.{otel_schema}.otel_logs"
-        # Build time filter clause for incremental mode
-        ts_filter = ""
-        if since_ts is not None:
-            ts_filter = f"AND event_ts > TIMESTAMP '{since_ts.isoformat()}'"
+        # Build time filter clause for incremental mode. MUST filter on the raw
+        # time_unix_nano expression, NOT the `event_ts` SELECT alias — otel_logs
+        # has no event_ts base column, and SQL cannot reference a SELECT alias in
+        # WHERE (this was the frozen-refresh root cause). Single source of truth
+        # for the expression lives in otel_order_adapter.
+        ts_filter = build_ts_filter(since_ts)
 
         log_df = spark.sql(f"""
             SELECT
                 trace_id,
                 CAST(time_unix_nano AS BIGINT)       AS time_unix_nano,
-                CAST(to_timestamp(time_unix_nano / 1e9) AS TIMESTAMP) AS event_ts,
+                {otel_logs_time_expr()} AS event_ts,
                 attributes['app.order.id']           AS `app.order.id`,
                 attributes['app.order.member_id']    AS `app.order.member_id`,
                 CAST(attributes['app.order.amount'] AS DOUBLE) AS `app.order.amount`,

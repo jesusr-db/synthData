@@ -49,6 +49,37 @@ _STAGE_STATE_MAP = {
 # Public helpers
 # ---------------------------------------------------------------------------
 
+# Canonical SQL expression that reconstructs an event timestamp from the
+# otel_logs base column. `otel_logs` has NO `event_ts` column — the notebook
+# SELECT exposes `event_ts` only as an alias. A WHERE clause therefore MUST
+# reference this raw expression, never the alias (SQL cannot reference a SELECT
+# alias in WHERE → UNRESOLVED_COLUMN). Single source of truth for both the
+# SELECT projection and the incremental time filter so they can never drift.
+_OTEL_LOGS_TS_EXPR = "CAST(to_timestamp(time_unix_nano / 1e9) AS TIMESTAMP)"
+
+
+def otel_logs_time_expr() -> str:
+    """SQL expression deriving the event timestamp from otel_logs base columns.
+
+    Use this in both the SELECT projection (aliased AS event_ts) and any WHERE
+    filter. Never filter on the bare `event_ts` alias — it is not a base column.
+    """
+    return _OTEL_LOGS_TS_EXPR
+
+
+def build_ts_filter(since_ts: Optional[datetime]) -> str:
+    """Build the incremental time-filter clause for the otel_logs read.
+
+    Returns "" when since_ts is None (backfill / first run). Otherwise returns
+    an `AND <raw expr> > TIMESTAMP '...'` clause that filters on the raw
+    time_unix_nano expression — NOT the `event_ts` SELECT alias, which SQL
+    cannot resolve in WHERE (root cause of the 2026-07-17 frozen-refresh bug).
+    """
+    if since_ts is None:
+        return ""
+    return f"AND {_OTEL_LOGS_TS_EXPR} > TIMESTAMP '{since_ts.isoformat()}'"
+
+
 def parse_skus(skus_raw: Any) -> list[tuple[int, int]]:
     """Parse otel SKU string into (menu_item_id, qty) tuples.
 

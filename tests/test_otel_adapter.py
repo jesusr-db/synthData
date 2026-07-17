@@ -364,3 +364,41 @@ class TestReshapeOtelOrders:
         go = next(r for r in result if r["event_type"] == "guest_order" and r["guest_order_id"] == go_id)
         assert go["member_id"] is None
         assert go["profile_id"] is None
+
+
+# ---------------------------------------------------------------------------
+# otel_logs_time_expr / build_ts_filter
+#
+# Regression coverage for the frozen-incremental-refresh bug (2026-07-17):
+# the notebook built the incremental WHERE clause as `event_ts > TIMESTAMP ...`,
+# but `event_ts` is a SELECT alias derived from `time_unix_nano` — not a base
+# column of otel_logs. SQL cannot reference a SELECT alias in WHERE, so the
+# query raised UNRESOLVED_COLUMN, step 3 swallowed it to log_rows=[], and the
+# run exited green having appended nothing. The filter MUST reference the raw
+# time_unix_nano expression, never the alias.
+# ---------------------------------------------------------------------------
+
+class TestTimeFilter:
+    def test_time_expr_uses_raw_column_not_alias(self):
+        from src.refresh.otel_order_adapter import otel_logs_time_expr
+        expr = otel_logs_time_expr()
+        # Must derive from the real base column, never the alias.
+        assert "time_unix_nano" in expr
+        assert "event_ts" not in expr
+
+    def test_build_ts_filter_none_returns_empty(self):
+        from src.refresh.otel_order_adapter import build_ts_filter
+        assert build_ts_filter(None) == ""
+
+    def test_build_ts_filter_references_raw_expr_not_alias(self):
+        from src.refresh.otel_order_adapter import build_ts_filter
+        since = datetime(2026, 7, 15, 16, 5, 55)
+        clause = build_ts_filter(since)
+        # The whole point: filter on the raw expression, NOT the bare alias.
+        assert "time_unix_nano" in clause
+        # The clause must not filter on the bare `event_ts` alias (the bug).
+        # (An alias substring inside a comment is impossible here — this is SQL.)
+        assert "event_ts >" not in clause
+        assert "event_ts>" not in clause
+        # Carries the actual timestamp so the filter is effective.
+        assert "2026-07-15" in clause
