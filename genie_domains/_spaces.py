@@ -129,10 +129,13 @@ DOMAINS = {
      "SOS breach rate = AVG(CASE WHEN sos_breach THEN 1 ELSE 0 END). Cancellation rate = AVG(CASE WHEN order_status='cancelled' THEN 1 ELSE 0 END). "
      "A delivery is LATE when delivery_order.actual_delivery_seconds > estimated_delivery_seconds.",
      "Channels: '3pd_delivery', 'own_delivery', 'carryout', 'catering'. For fast daily SOS trends use synth_silver.sos_compliance_summary.",
-     "RECONCILING REAL WEB ORDERS: synth_metrics.order_reconciliation maps each real PizzaTel storefront order to its synth-pipeline row. "
-     "web_order_id = the storefront order UUID (app.order.id); guest_order_id = the bridged synth key in synth_silver.guest_order. "
-     "reconciled=TRUE means the web order reached silver (amount_diff ~ 0). Use this view for questions like 'did web order <UUID> land in the data?', "
-     "'how many real web orders reconciled to synth?', or 'show real vs synthetic order counts'. It only exists when the live OTel source is configured.",
+     "RECONCILING REAL WEB ORDERS: when the user gives a web/website/online order ID (a UUID = the storefront app.order.id), "
+     "query synth_metrics.order_reconciliation filtered WHERE web_order_id = '<uuid>'. It maps each real PizzaTel storefront order to "
+     "its synth-pipeline row: web_order_id = storefront UUID; guest_order_id = bridged synth key in synth_silver.guest_order; "
+     "reconciled=TRUE means it reached silver (amount_diff ~ 0). When the storefront injected app.order.member_id, the view also carries "
+     "member_id (synth customer key), customer_matched, customer_tier, customer_total_orders, customer_lifetime_spend. "
+     "Use it for 'did web order <UUID> land in the data?', 'which customer placed web order X?', 'how many real web orders reconciled?', "
+     "or 'real vs synthetic order counts'. It only exists when the live OTel source is configured.",
      MEASURE_HIERARCHY]),
   "functions": fn([f"{G}.f_sos_compliance", f"{G}.f_revenue_by_channel", f"{G}.f_top_menu_items", f"{G}.f_late_delivery_rate"]),
   "joins": [
@@ -870,7 +873,8 @@ DOMAINS = {
   "tables": [
      colcfg(f"{S}.guest_profile", {"account_status": ["status","lifecycle state"]}),
      colcfg(f"{S}.digital_account", {"account_status": ["status"]}),
-     ] + tbl([f"{S}.guest_order", f"{G}.metric_guest", f"{R}.unit"]),
+     ] + tbl([f"{S}.guest_order", f"{G}.metric_guest", f"{R}.unit",
+             f"{M}.order_reconciliation", f"{F}.customer_features"]),
   "questions": sq([
      "What is the inactive (churn) rate by store?",
      "How many guest profiles are active vs inactive vs suspended?",
@@ -883,7 +887,10 @@ DOMAINS = {
      "What share of guests are active by franchisee?",
      "Which stores added the most new guests over the last 30 days?",
      "How many guests have never placed an order?",
-     "What is the ratio of digital accounts to guest profiles by store?"]),
+     "What is the ratio of digital accounts to guest profiles by store?",
+     "Which customer placed web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb?",
+     "Did web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb reconcile, and what tier is the customer?",
+     "How many real web orders are tied to a known customer vs anonymous?"]),
   "instructions": ti([
      GLOSSARY,
      "DOMAIN = Guest / Customer 360 (account lifecycle, NOT loyalty points — use the Loyalty space for points). "
@@ -894,6 +901,17 @@ DOMAINS = {
      "Use f_guest_churn(days) for the per-store lifecycle rollup (pass a large p_days e.g. 3650 for all-time). "
      "Metric view synth_genie.metric_guest exposes governed measures (Profiles, Active Profiles, Inactive Profiles, "
      "Churn Rate) by Account Status/Store/Metro/Created Date — query with MEASURE().",
+     "WEB ORDER LOOKUP / RECONCILIATION: when the user gives a web order ID (a UUID like "
+     "'b2b4819f-8080-11f1-9d1b-3641fe8bc2eb', i.e. the storefront app.order.id), ALWAYS query "
+     "synth_metrics.order_reconciliation — filter WHERE web_order_id = '<uuid>'. That view maps the web order "
+     "to its synth guest_order_id (= make_id('otel', trace_id)) and, when the storefront injected app.order.member_id, "
+     "to the customer: member_id (synth customer key), customer_matched, customer_tier, customer_total_orders, "
+     "customer_lifetime_spend. reconciled=TRUE means the order reached silver.guest_order (amount_diff ~ 0); "
+     "customer_matched=TRUE means member_id joined an existing customer_features record. If member_id IS NULL the web "
+     "order was anonymous (no customer to reconcile). Use this view for ANY question mentioning a web/website/online "
+     "order id or UUID, 'which customer placed web order X', 'did order X reconcile', or 'real vs synthetic orders'. "
+     "To pull the full customer 360 for a reconciled web order, join order_reconciliation.member_id to "
+     "synth_features.customer_features.profile_id.",
      MEASURE_HIERARCHY]),
   "functions": fn([f"{G}.f_guest_churn"]),
   "joins": [
@@ -920,6 +938,17 @@ DOMAINS = {
            "JOIN jmrdemo.synth_ref.unit u ON u.unit_id = gp.unit_id WHERE gp.account_status='suspended' "
            "GROUP BY u.metro_area ORDER BY suspended DESC",
            "Use for suspended-account concentration by metro."),
+     exsql("Which customer placed web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb?",
+           "SELECT web_order_id, guest_order_id, reconciled, member_id, customer_matched, customer_tier, "
+           "customer_total_orders, customer_lifetime_spend, web_amount, silver_total_amount "
+           "FROM jmrdemo.synth_metrics.order_reconciliation "
+           "WHERE web_order_id = 'b2b4819f-8080-11f1-9d1b-3641fe8bc2eb'",
+           "Look up a single web order UUID: its bridged synth guest_order_id, whether it reconciled to silver, "
+           "and the injected customer (member_id/tier/lifetime spend). member_id NULL = anonymous web order."),
+     exsql("How many real web orders are tied to a known customer vs anonymous?",
+           "SELECT customer_matched, COUNT(*) AS orders FROM jmrdemo.synth_metrics.order_reconciliation "
+           "GROUP BY customer_matched",
+           "customer_matched=TRUE means the web order's injected member_id matched a synth customer_features record."),
   ],
   "benchmarks": [
      bench("What is the inactive (churn) rate by store?",
