@@ -51,6 +51,19 @@ resources:
               seatgeek_secret_scope: ${var.seatgeek_secret_scope}
               seatgeek_secret_key: "seatgeek_client_id"
 
+        - task_key: initial_otel_backfill
+          depends_on:
+            - task_key: setup
+          environment_key: refresh
+          notebook_task:
+            notebook_path: ../src/refresh/otel_refresh_notebook.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
+              schema_prefix: ${var.schema_prefix}
+              otel_catalog: ${var.otel_catalog}
+              otel_schema: ${var.otel_schema}
+              mode: backfill
+
         - task_key: start_pipeline
           depends_on:
             - task_key: backfill
@@ -102,6 +115,8 @@ resources:
             base_parameters:
               catalog_name: ${var.catalog_name}
               schema_prefix: ${var.schema_prefix}
+              otel_catalog: ${var.otel_catalog}
+              otel_schema: ${var.otel_schema}
 
         - task_key: apply_grounding_sql
           depends_on:
@@ -164,6 +179,7 @@ resources:
           depends_on:
             - task_key: setup
             - task_key: initial_weather_refresh
+            - task_key: initial_otel_backfill
           environment_key: generator
           notebook_task:
             notebook_path: ../src/generator/main.py

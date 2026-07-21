@@ -349,6 +349,12 @@ print(f"[INFO] Dropped schema: {catalog_name}.{schema_prefix}ref")
 # COMMAND ----------
 # Note: staging schema is intentionally preserved so historical data survives destroy/redeploy cycles.
 # Gold/Silver schemas are managed by the DLT pipeline and dropped via `databricks bundle destroy`.
+#
+# OTel live-order bolt-on teardown: the otel refresh adapter creates NO new UC objects — it only
+# APPENDS rows (source='otel') into this preserved staging.order_events table. Those rows are NOT
+# deleted here: staging.order_events is a live DLT streaming source, and deleting from it would
+# break the append-only stream. The otel_orders_refresh_job itself is DAB-managed and is removed by
+# `databricks bundle destroy` (like weather_events_refresh_job). No otel-specific delete logic needed.
 
 # COMMAND ----------
 # Step 7: Tear down ontos ontological layer (best-effort)

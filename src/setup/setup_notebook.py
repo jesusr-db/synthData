@@ -112,7 +112,8 @@ spark.sql(f"""
         platform_order_reference        STRING,
         estimated_delivery_seconds      BIGINT,
         actual_delivery_seconds         BIGINT,
-        delivery_status                 STRING
+        delivery_status                 STRING,
+        source                          STRING
     )
     USING DELTA
     TBLPROPERTIES (

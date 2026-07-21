@@ -3,73 +3,97 @@
  "config": {
   "sample_questions": [
    {
-    "id": "04b11209567c48e5807fa7af291805fa",
-    "question": [
-     "How many guests have never placed an order?"
-    ]
-   },
-   {
-    "id": "0a04b697ddc1491f823d4f5072f4b824",
-    "question": [
-     "What is the inactive (churn) rate by store?"
-    ]
-   },
-   {
-    "id": "0f0859b24a3e459ba811b4fb66e45006",
-    "question": [
-     "Which stores have the highest churn (inactive) rate?"
-    ]
-   },
-   {
-    "id": "6da61175b136430e82e697c4f2999bd5",
-    "question": [
-     "Which stores added the most new guests over the last 30 days?"
-    ]
-   },
-   {
-    "id": "6dd3769a467941bc9a94a4ba3c6beea0",
+    "id": "0e0a1697c71b4317a4e5b175c1606d5e",
     "question": [
      "Show the new-registration trend by week"
     ]
    },
    {
-    "id": "7434c46891a24f7dbf92b17c7ff1ebf8",
-    "question": [
-     "What share of guests are active by franchisee?"
-    ]
-   },
-   {
-    "id": "9e3698f440f445b685a12f4b7d3a458f",
-    "question": [
-     "How many active digital accounts are there by store?"
-    ]
-   },
-   {
-    "id": "b04632a2380d4e50a91369c8cb645683",
+    "id": "18f6bcb4c7a04199acc7af2f5b3f9812",
     "question": [
      "What is the ratio of digital accounts to guest profiles by store?"
     ]
    },
    {
-    "id": "b162857c85df417b8357675fbe70afac",
+    "id": "1a5dc10e77b74cb29513c8634341a96e",
     "question": [
-     "How many new guest profiles were created this month?"
+     "Did web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb reconcile, and what tier is the customer?"
     ]
    },
    {
-    "id": "f0cde39d168345079765233fa8e539ec",
+    "id": "24cb1bc10c644bf59ac90a5135a957f9",
     "question": [
-     "What is the digital account adoption rate by store?"
+     "What share of guests are active by franchisee?"
     ]
    },
    {
-    "id": "f6b90b24a774471281ccc8b4a58e62d3",
+    "id": "562abd907b354f37ba37d59022b4ebd8",
     "question": [
      "Which metro areas have the most suspended accounts?"
     ]
    },
    {
-    "id": "f792416f15b4476a91afa0235ba66b56",
+    "id": "57adb0fe7f2846dcaae3b7d89552afa6",
+    "question": [
+     "What is the digital account adoption rate by store?"
+    ]
+   },
+   {
+    "id": "5bf1f559565d42d4a16a747f1a541e24",
+    "question": [
+     "How many guests have never placed an order?"
+    ]
+   },
+   {
+    "id": "7725b2aefb29427098a0fc1e4f3e8dc8",
+    "question": [
+     "What is the inactive (churn) rate by store?"
+    ]
+   },
+   {
+    "id": "82b49604b4f141c2bf3f1758b8d6730c",
+    "question": [
+     "Give me the full details of web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb: order items, customer, and amount"
+    ]
+   },
+   {
+    "id": "87a94281f1a24156b3c11c9f3a6e65c5",
+    "question": [
+     "Which customer placed web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb?"
+    ]
+   },
+   {
+    "id": "9751a2e96c4945798f430c191f512acb",
+    "question": [
+     "How many new guest profiles were created this month?"
+    ]
+   },
+   {
+    "id": "b7ecf2f6198b4d02ba971a2d8e89cdbb",
+    "question": [
+     "How many active digital accounts are there by store?"
+    ]
+   },
+   {
+    "id": "db84670ed4cb43c6a9e70167aefeee10",
+    "question": [
+     "Which stores added the most new guests over the last 30 days?"
+    ]
+   },
+   {
+    "id": "f45906ef587844198ab833d4e43d15d8",
+    "question": [
+     "Which stores have the highest churn (inactive) rate?"
+    ]
+   },
+   {
+    "id": "fc2f57cc548d43d79887c1cc5f84bdde",
+    "question": [
+     "How many real web orders are tied to a known customer vs anonymous?"
+    ]
+   },
+   {
+    "id": "ff500bdbd11d467c95e913c7ea4c98fe",
     "question": [
      "How many guest profiles are active vs inactive vs suspended?"
     ]
@@ -79,7 +103,22 @@
  "data_sources": {
   "tables": [
    {
+    "identifier": "jmrdemo.synth_features.customer_features"
+   },
+   {
     "identifier": "jmrdemo.synth_genie.metric_guest"
+   },
+   {
+    "identifier": "jmrdemo.synth_metrics.order_reconciliation"
+   },
+   {
+    "identifier": "jmrdemo.synth_metrics.web_order_item_live"
+   },
+   {
+    "identifier": "jmrdemo.synth_metrics.web_order_live"
+   },
+   {
+    "identifier": "jmrdemo.synth_ref.menu_item"
    },
    {
     "identifier": "jmrdemo.synth_ref.unit"
@@ -113,36 +152,24 @@
       "enable_entity_matching": true
      }
     ]
+   },
+   {
+    "identifier": "jmrdemo.synth_silver.order_item"
    }
   ]
  },
  "instructions": {
   "text_instructions": [
    {
-    "id": "ff09b0cb6e10431f9c33f8d72f58b8c1",
+    "id": "f77eacf2bc47464a9af2cf604cf2a20a",
     "content": [
-     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Guest / Customer 360 (account lifecycle, NOT loyalty points \u2014 use the Loyalty space for points). Guest master = synth_silver.guest_profile (grain guest_profile_id; account_status in active/inactive/suspended, unit_id = home store, created_at). Digital accounts = synth_silver.digital_account (one per guest_profile_id; account_status).\n\nChurn/inactive rate = AVG(CASE WHEN account_status='inactive' THEN 1 ELSE 0 END). Active = account_status='active'. Digital adoption = digital_account with account_status='active'. New registrations = guest_profile by created_at. Use f_guest_churn(days) for the per-store lifecycle rollup (pass a large p_days e.g. 3650 for all-time). Metric view synth_genie.metric_guest exposes governed measures (Profiles, Active Profiles, Inactive Profiles, Churn Rate) by Account Status/Store/Metro/Created Date \u2014 query with MEASURE().\n\nASSET SELECTION (follow in order): (1) For standard business measures, query the metric view with MEASURE(). (2) For time-windowed operational questions (last N days) prefer the trusted SQL functions (f_*). (3) For ad-hoc slicing not covered by either, query the silver tables directly using the joins and formulas above. The functions and metric view are the canonical definitions \u2014 do not re-derive a metric in raw SQL if a function or MEASURE() already provides it."
+     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Guest / Customer 360 (account lifecycle, NOT loyalty points \u2014 use the Loyalty space for points). Guest master = synth_silver.guest_profile (grain guest_profile_id; account_status in active/inactive/suspended, unit_id = home store, created_at). Digital accounts = synth_silver.digital_account (one per guest_profile_id; account_status).\n\nChurn/inactive rate = AVG(CASE WHEN account_status='inactive' THEN 1 ELSE 0 END). Active = account_status='active'. Digital adoption = digital_account with account_status='active'. New registrations = guest_profile by created_at. Use f_guest_churn(days) for the per-store lifecycle rollup (pass a large p_days e.g. 3650 for all-time). Metric view synth_genie.metric_guest exposes governed measures (Profiles, Active Profiles, Inactive Profiles, Churn Rate) by Account Status/Store/Metro/Created Date \u2014 query with MEASURE().\n\nWEB ORDER LOOKUP (a UUID like 'b2b4819f-8080-11f1-9d1b-3641fe8bc2eb' = the storefront app.order.id). Two views, pick by intent: (1) WHICH CUSTOMER / DETAILS / ITEMS / STORE of a web order -> use the LIVE, pipeline-independent views synth_metrics.web_order_live (header, one row per UUID) + synth_metrics.web_order_item_live (line items), joined on web_order_id. Populated within SECONDS of the order, straight from OTel \u2014 do NOT wait for or read silver. web_order_live carries the customer 360 (member_id, customer_matched, customer_tier, customer_total_orders, customer_lifetime_spend; NULL member = anonymous), the REAL storefront (web_store_id/city/state/zip), channel, order_stage (live status), and web_amount (true total). For 'which customer placed web order X' read member_id + customer_* directly from web_order_live; join member_id to synth_features.customer_features.profile_id only if you need extra customer attributes. web_order_item_live gives menu_item_id/item_name/category/quantity/unit_price (catalog base_price)/line_amount. See the 'full details of web order' example SQL. (2) RECONCILIATION AUDIT only ('did web order X reach the synth pipeline / silver?', 'how many reconciled?', 'real vs synthetic counts') -> synth_metrics.order_reconciliation, reconciled=TRUE means it flowed to synth_silver.guest_order. Do not use it for item/store/customer lookups. REAL vs SYNTH STORE: web_store_id/city/state/zip are the ACTUAL storefront; synth unit_id is the blended synth store (NOT the real one). For 'which store did web order <UUID> come from', answer with web_store_id + web_store_city/state. Both live views only exist when the OTel source is configured.\n\nASSET SELECTION (follow in order): (1) For standard business measures, query the metric view with MEASURE(). (2) For time-windowed operational questions (last N days) prefer the trusted SQL functions (f_*). (3) For ad-hoc slicing not covered by either, query the silver tables directly using the joins and formulas above. The functions and metric view are the canonical definitions \u2014 do not re-derive a metric in raw SQL if a function or MEASURE() already provides it."
     ]
    }
   ],
   "join_specs": [
    {
-    "id": "4da932e9cb164359861607d2cc837a63",
-    "left": {
-     "identifier": "jmrdemo.synth_silver.guest_profile",
-     "alias": "guest_profile"
-    },
-    "right": {
-     "identifier": "jmrdemo.synth_ref.unit",
-     "alias": "unit"
-    },
-    "sql": [
-     "`guest_profile`.`unit_id` = `unit`.`unit_id`",
-     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
-    ]
-   },
-   {
-    "id": "554a4e5ae9a149ae90e482753e74efaa",
+    "id": "50a74bdf31344f3eb5d5f4ccc1cde192",
     "left": {
      "identifier": "jmrdemo.synth_silver.digital_account",
      "alias": "digital_account"
@@ -155,17 +182,116 @@
      "`digital_account`.`guest_profile_id` = `guest_profile`.`guest_profile_id`",
      "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
     ]
+   },
+   {
+    "id": "59892f6334444bd5ac11eeee9b981c62",
+    "left": {
+     "identifier": "jmrdemo.synth_metrics.order_reconciliation",
+     "alias": "order_reconciliation"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_silver.guest_order",
+     "alias": "guest_order"
+    },
+    "sql": [
+     "`order_reconciliation`.`guest_order_id` = `guest_order`.`guest_order_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "847885e1f8794028ab47c2626ab0ddde",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.order_item",
+     "alias": "order_item"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.menu_item",
+     "alias": "menu_item"
+    },
+    "sql": [
+     "`order_item`.`menu_item_id` = `menu_item`.`menu_item_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "c5b96edbc1d149d387d6c99fb345aeb6",
+    "left": {
+     "identifier": "jmrdemo.synth_metrics.web_order_item_live",
+     "alias": "web_order_item_live"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_metrics.web_order_live",
+     "alias": "web_order_live"
+    },
+    "sql": [
+     "`web_order_item_live`.`web_order_id` = `web_order_live`.`web_order_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "f11b6a74ad1e41fd83bbe54dca2afad9",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.order_item",
+     "alias": "order_item"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_silver.guest_order",
+     "alias": "guest_order"
+    },
+    "sql": [
+     "`order_item`.`guest_order_id` = `guest_order`.`guest_order_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "f72df8ff160545f5986e05ab3b9dcc12",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.guest_profile",
+     "alias": "guest_profile"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_ref.unit",
+     "alias": "unit"
+    },
+    "sql": [
+     "`guest_profile`.`unit_id` = `unit`.`unit_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
    }
   ],
   "sql_functions": [
    {
-    "id": "4877870ba163499f99c8d041a23bdc80",
+    "id": "9d70666cd7d94426a764f07797e995f2",
     "identifier": "jmrdemo.synth_genie.f_guest_churn"
    }
   ],
   "example_question_sqls": [
    {
-    "id": "3b33992b6ec44c429621ab4239b15e5f",
+    "id": "13f03cb7229048a7bd88747ec46ba860",
+    "question": [
+     "Which customer placed web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb?"
+    ],
+    "sql": [
+     "SELECT web_order_id, member_id, customer_matched, customer_tier, customer_total_orders, customer_lifetime_spend, web_store_city, web_store_state, web_amount FROM jmrdemo.synth_metrics.web_order_live WHERE web_order_id = 'b2b4819f-8080-11f1-9d1b-3641fe8bc2eb'"
+    ],
+    "usage_guidance": [
+     "Look up the customer for a single web order UUID from the LIVE header view: member_id + customer 360 (tier/orders/lifetime spend), plus the real store and amount. member_id NULL = anonymous. Live \u2014 no pipeline wait."
+    ]
+   },
+   {
+    "id": "1a5eeb663829432c80ac5b84a023fe56",
+    "question": [
+     "Which metro areas have the most suspended accounts?"
+    ],
+    "sql": [
+     "SELECT u.metro_area, COUNT(*) AS suspended FROM jmrdemo.synth_silver.guest_profile gp JOIN jmrdemo.synth_ref.unit u ON u.unit_id = gp.unit_id WHERE gp.account_status='suspended' GROUP BY u.metro_area ORDER BY suspended DESC"
+    ],
+    "usage_guidance": [
+     "Use for suspended-account concentration by metro."
+    ]
+   },
+   {
+    "id": "1bb7ae4ab0d74c2093651cb0213afd8e",
     "question": [
      "How many guest profiles are active vs inactive vs suspended?"
     ],
@@ -177,31 +303,7 @@
     ]
    },
    {
-    "id": "9c6307a51e2b4657956b3d7fb8e6893c",
-    "question": [
-     "How many new guest profiles were created this month?"
-    ],
-    "sql": [
-     "SELECT COUNT(*) AS new_profiles FROM jmrdemo.synth_silver.guest_profile WHERE created_at >= date_trunc('month', current_date())"
-    ],
-    "usage_guidance": [
-     "Use for new-registration counts this month."
-    ]
-   },
-   {
-    "id": "c2086b9138d5401997783a6f506b08b5",
-    "question": [
-     "What is the digital account adoption rate by store?"
-    ],
-    "sql": [
-     "SELECT gp.unit_id, COUNT(DISTINCT da.guest_profile_id) / NULLIF(COUNT(DISTINCT gp.guest_profile_id),0) AS digital_adoption_rate FROM jmrdemo.synth_silver.guest_profile gp LEFT JOIN jmrdemo.synth_silver.digital_account da ON da.guest_profile_id = gp.guest_profile_id AND da.account_status='active' GROUP BY gp.unit_id ORDER BY digital_adoption_rate DESC"
-    ],
-    "usage_guidance": [
-     "Digital adoption = active digital accounts / guest profiles, by store."
-    ]
-   },
-   {
-    "id": "c66d3b0630ea441aa4bb7feffae08037",
+    "id": "572aee20573b4793b0162fa2a85b61be",
     "question": [
      "Show the new-registration trend by week"
     ],
@@ -213,15 +315,51 @@
     ]
    },
    {
-    "id": "e972730b3d8243eca3330b6acd5c0c87",
+    "id": "97efe0be8f684e6699a30e57381db12f",
     "question": [
-     "Which metro areas have the most suspended accounts?"
+     "How many real web orders are tied to a known customer vs anonymous?"
     ],
     "sql": [
-     "SELECT u.metro_area, COUNT(*) AS suspended FROM jmrdemo.synth_silver.guest_profile gp JOIN jmrdemo.synth_ref.unit u ON u.unit_id = gp.unit_id WHERE gp.account_status='suspended' GROUP BY u.metro_area ORDER BY suspended DESC"
+     "SELECT customer_matched, COUNT(*) AS orders FROM jmrdemo.synth_metrics.order_reconciliation GROUP BY customer_matched"
     ],
     "usage_guidance": [
-     "Use for suspended-account concentration by metro."
+     "customer_matched=TRUE means the web order's injected member_id matched a synth customer_features record."
+    ]
+   },
+   {
+    "id": "d7672863cc0e4e1a8384959f976ed65d",
+    "question": [
+     "Give me the full details of web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb: order items, customer, and amount"
+    ],
+    "sql": [
+     "SELECT h.web_order_id,        h.web_store_id, h.web_store_city, h.web_store_state, h.web_store_zip,        h.channel, h.order_stage, h.web_amount, h.web_item_count, h.web_total_quantity,        h.web_order_ts,        li.menu_item_id, li.item_name, li.category, li.quantity, li.unit_price, li.line_amount,        h.member_id, h.customer_matched, h.customer_tier, h.customer_total_orders,        h.customer_lifetime_spend FROM jmrdemo.synth_metrics.web_order_live h LEFT JOIN jmrdemo.synth_metrics.web_order_item_live li ON li.web_order_id = h.web_order_id WHERE h.web_order_id = 'b2b4819f-8080-11f1-9d1b-3641fe8bc2eb' ORDER BY li.menu_item_id"
+    ],
+    "usage_guidance": [
+     "CANONICAL full web-order drill-down for the Guest 360 space \u2014 LIVE, works within seconds of the order (no pipeline wait). web_order_live is the header (one row per web order UUID); web_order_item_live is the line items (parsed straight from OTel). web_store_id / web_store_city / web_store_state / web_store_zip are the REAL storefront the guest ordered from \u2014 answer 'what store' with these. order_stage is the live fulfillment status. web_amount is the true order total; unit_price/line_amount are CATALOG price x qty (line sums need NOT equal web_amount). customer_* is the injected customer 360. One row per line item; header columns repeat across rows. Do NOT use order_reconciliation/silver for this \u2014 those lag by up to an hour."
+    ]
+   },
+   {
+    "id": "ebb0dbc7e29b4b2e8eea9d2474257939",
+    "question": [
+     "How many new guest profiles were created this month?"
+    ],
+    "sql": [
+     "SELECT COUNT(*) AS new_profiles FROM jmrdemo.synth_silver.guest_profile WHERE created_at >= date_trunc('month', current_date())"
+    ],
+    "usage_guidance": [
+     "Use for new-registration counts this month."
+    ]
+   },
+   {
+    "id": "fe1364b8233d4357b10dcef28d18dbac",
+    "question": [
+     "What is the digital account adoption rate by store?"
+    ],
+    "sql": [
+     "SELECT gp.unit_id, COUNT(DISTINCT da.guest_profile_id) / NULLIF(COUNT(DISTINCT gp.guest_profile_id),0) AS digital_adoption_rate FROM jmrdemo.synth_silver.guest_profile gp LEFT JOIN jmrdemo.synth_silver.digital_account da ON da.guest_profile_id = gp.guest_profile_id AND da.account_status='active' GROUP BY gp.unit_id ORDER BY digital_adoption_rate DESC"
+    ],
+    "usage_guidance": [
+     "Digital adoption = active digital accounts / guest profiles, by store."
     ]
    }
   ],
@@ -234,7 +372,7 @@
  "benchmarks": {
   "questions": [
    {
-    "id": "14967c2128b24b4da91defacc542e1c7",
+    "id": "0ec61e7a7ce94cfa96b31433a3ed019f",
     "question": [
      "How many guest profiles are active vs inactive vs suspended?"
     ],
@@ -248,21 +386,21 @@
     ]
    },
    {
-    "id": "51ba16966f414f8985a57009e565136c",
+    "id": "ae893e1733a345dfbf96f8a7d04d024a",
     "question": [
-     "How many new guest profiles were created this month?"
+     "What is the inactive (churn) rate by store?"
     ],
     "answer": [
      {
       "content": [
-       "SELECT COUNT(*) AS new_profiles FROM jmrdemo.synth_silver.guest_profile WHERE created_at >= date_trunc('month', current_date())"
+       "SELECT unit_id, inactive_rate FROM jmrdemo.synth_genie.f_guest_churn(p_days => 3650) ORDER BY inactive_rate DESC"
       ],
       "format": "SQL"
      }
     ]
    },
    {
-    "id": "5fcae08c097745bcbadde2319e3e1cd5",
+    "id": "db13437422e8472598e252bc29f34dd2",
     "question": [
      "How many active digital accounts are there by store?"
     ],
@@ -276,7 +414,21 @@
     ]
    },
    {
-    "id": "611b365e663545578eefc88310e6ca05",
+    "id": "f5361d367a3048fb8cb8a750e88bf77b",
+    "question": [
+     "How many new guest profiles were created this month?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT COUNT(*) AS new_profiles FROM jmrdemo.synth_silver.guest_profile WHERE created_at >= date_trunc('month', current_date())"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "fb08fb629cba4af8a0c0fb9e79118522",
     "question": [
      "Which metro areas have the most suspended accounts?"
     ],
@@ -284,20 +436,6 @@
      {
       "content": [
        "SELECT u.metro_area, COUNT(*) AS suspended FROM jmrdemo.synth_silver.guest_profile gp JOIN jmrdemo.synth_ref.unit u ON u.unit_id = gp.unit_id WHERE gp.account_status='suspended' GROUP BY u.metro_area ORDER BY suspended DESC"
-      ],
-      "format": "SQL"
-     }
-    ]
-   },
-   {
-    "id": "990d97a8a836483db7d198e088548f88",
-    "question": [
-     "What is the inactive (churn) rate by store?"
-    ],
-    "answer": [
-     {
-      "content": [
-       "SELECT unit_id, inactive_rate FROM jmrdemo.synth_genie.f_guest_churn(p_days => 3650) ORDER BY inactive_rate DESC"
       ],
       "format": "SQL"
      }

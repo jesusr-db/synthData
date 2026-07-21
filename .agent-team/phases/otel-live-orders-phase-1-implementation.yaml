@@ -1,0 +1,20 @@
+id: 1
+name: otel-live-orders-implementation
+description: >
+  Parallel implementation of the OTel Live-Order bolt-on.
+  data-engineer implements the pure reshape adapter, the best-effort refresh notebook,
+  hermetic tests + fixtures, and the write_batch source='synth' default.
+  deploy-engineer wires the DAB refresh job, the initial_otel_backfill setup task, the
+  staging source column, databricks.yml vars, and documents destroy_job coverage.
+  No file overlap — safe to run in parallel. mvm_pipeline.py stays UNCHANGED (seamless).
+agents:
+  - otel-order-data-engineer
+  - otel-order-deploy-engineer
+parallel_groups:
+  - [otel-order-data-engineer, otel-order-deploy-engineer]
+contracts:
+  - otel-live-orders
+qa_gate:
+  run: python3 -m pytest -q
+  expected: full baseline suite unchanged + new test_otel_adapter tests, all pass
+  also: databricks bundle validate -p DEFAULT

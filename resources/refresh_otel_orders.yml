@@ -1,0 +1,24 @@
+resources:
+  jobs:
+    otel_orders_refresh_job:
+      name: "[${bundle.target} ${workspace.current_user.userName}] OTel Live-Order Refresh [${bundle.target}]"
+      description: "Every-2-min best-effort refresh: reads jmrdemo.zerobus.otel_logs + otel_spans, reshapes real orders into the synth envelope, and appends (source='otel') to staging.order_events. Graceful no-op if otel is missing/empty/ungranted."
+      schedule:
+        quartz_cron_expression: "${var.otel_refresh_cron}"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+      environments:
+        - environment_key: refresh
+          spec:
+            client: "1"
+      tasks:
+        - task_key: refresh_otel_orders
+          environment_key: refresh
+          notebook_task:
+            notebook_path: ../src/refresh/otel_refresh_notebook.py
+            base_parameters:
+              catalog_name: ${var.catalog_name}
+              schema_prefix: ${var.schema_prefix}
+              otel_catalog: ${var.otel_catalog}
+              otel_schema: ${var.otel_schema}
+              mode: incremental

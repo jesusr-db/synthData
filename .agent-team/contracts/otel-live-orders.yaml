@@ -1,0 +1,124 @@
+name: otel-live-orders
+producer: otel-order-data-engineer, otel-order-deploy-engineer
+consumer: qa-engineer
+consumed_in_phase: 2
+
+artifacts:
+  # Read-only inputs
+  - path: docs/superpowers/plans/2026-07-14-otel-live-order-bolt-on.md
+    access: read-only
+    description: Full OTel live-order bolt-on plan (Pattern B, graceful degradation)
+  - path: src/refresh/refresh_notebook.py
+    access: read-only
+    description: Weather-events precedent — notebook structure to mirror (but APPEND, not MERGE)
+  - path: src/refresh/openmeteo_client.py
+    access: read-only
+    description: Best-effort client precedent (return [] on failure)
+  - path: tests/test_refresh.py
+    access: read-only
+    description: Hermetic test precedent (injectable data, JSON fixtures)
+  - path: src/generator/id_utils.py
+    access: read-only
+    description: make_id() — reused for the namespaced OTel ID bridge
+  - path: src/pipeline/mvm_pipeline.py
+    access: read-only
+    description: UNCHANGED. Silver tables auto-consume staging.order_events. order_item has
+                 @dp.expect_or_drop("positive_price","unit_price > 0") — line prices must floor > 0.
+
+  # Existing files modified by data-engineer
+  - path: src/generator/main.py
+    access: read-modify
+    description: write_batch() sets source='synth' default on the 5 order-domain event types only
+
+  # Existing files modified by deploy-engineer
+  - path: src/setup/setup_notebook.py
+    access: read-modify
+    description: Add `source STRING` to staging.order_events DDL (metadata-only; columnMapping=name)
+  - path: resources/setup_job.yml
+    access: read-modify
+    description: Add initial_otel_backfill task (after setup, gating backfill)
+  - path: databricks.yml
+    access: read-modify
+    description: Add otel_catalog, otel_schema, otel_refresh_cron variables
+  - path: src/setup/destroy_notebook.py
+    access: read-modify
+    description: Comment-only — document that otel rows live in preserved staging; no delete logic
+
+outputs:
+  # New files from data-engineer
+  - path: src/refresh/otel_order_adapter.py
+    description: PURE reshape core — parse_skus, map_store_to_unit, reshape_otel_orders; namespaced
+                 make_id bridge on trace_id; SKU clamp 1..75; returns [] on empty/garbage
+  - path: src/refresh/otel_refresh_notebook.py
+    description: Best-effort notebook; guarded otel reads (try/except → []); HWM on source='otel';
+                 append-only write; graceful [WARN] no-op if otel missing
+  - path: tests/fixtures/otel_logs_sample.json
+    description: Order-bearing log rows + 1 load-gen (amount=0) + 1 fee-test user row
+  - path: tests/fixtures/otel_spans_sample.json
+    description: order-tracker received order spans + stage: lifecycle spans
+  - path: tests/test_otel_adapter.py
+    description: ~12 hermetic tests — parse/id-bridge/store-map/reshape/positive-price/loadgen/empty/since_ts
+
+  # New file from deploy-engineer
+  - path: resources/refresh_otel_orders.yml
+    description: DAB job otel_orders_refresh_job; every-2-min cron; runs otel_refresh_notebook.py
+
+schemas:
+  otel_envelope_mapping:
+    correlation_key: trace_id
+    id_bridge:
+      guest_order_id: make_id("otel", trace_id)
+      order_item_id: make_id("otel-item", trace_id, i)
+      payment_id: make_id("otel-pay", trace_id)
+      status_event_id: make_id("otel-status", trace_id, stage)
+      delivery_order_id: make_id("otel-deliv", trace_id)
+    source_value: "otel"
+    channel_map: {delivery: own_delivery, carryout: carryout}
+    sku_range: [1, 75]
+    tax_rate: 0.085
+
+  staging_order_events_ddl:
+    new_column: source STRING
+    note: metadata-only add; columnMapping.mode=name already enabled
+
+  setup_job_dag:
+    new_tasks: [initial_otel_backfill]
+    updated_deps:
+      initial_otel_backfill: [setup]
+      backfill: [setup, initial_weather_refresh, initial_otel_backfill]
+
+  databricks_yml_vars:
+    otel_catalog: jmrdemo
+    otel_schema: zerobus
+    otel_refresh_cron: "0 0/2 * * * ?"
+
+deployment_pattern:
+  dab_managed: resources/refresh_otel_orders.yml  (torn down by `databricks bundle destroy`)
+  setup_job: initial_otel_backfill task (best-effort; succeeds even if otel unreachable)
+  destroy_job: no new UC objects; staging preserved; documented, no unsafe row deletes
+
+validation:
+  - type: artifact_exists
+    description: All 6 new files exist (adapter, notebook, 2 fixtures, test, job yaml)
+  - type: test_pass
+    description: python3 -m pytest -q — full suite + new otel tests pass, zero failures
+  - type: bundle_validate
+    description: databricks bundle validate -p DEFAULT passes without errors
+  - type: schema_match
+    description: reshape_otel_orders([], [], ...) == [] (graceful empty)
+  - type: schema_match
+    description: every emitted order_item has unit_price > 0 (guards positive_price expectation)
+  - type: schema_match
+    description: parse_skus clamps to menu_item_id 1..75 and drops garbage
+  - type: schema_match
+    description: ID bridge is stable across runs and namespaced (no collision with synth make_id("o",...))
+  - type: schema_match
+    description: setup_notebook.py staging.order_events DDL includes `source STRING`
+  - type: schema_match
+    description: setup_job.yml has initial_otel_backfill depending on setup; backfill depends on it
+  - type: schema_match
+    description: refresh_otel_orders.yml runs otel_refresh_notebook.py on the otel_refresh_cron schedule
+  - type: schema_match
+    description: databricks.yml has otel_catalog, otel_schema, otel_refresh_cron
+  - type: schema_match
+    description: mvm_pipeline.py is UNCHANGED (seamless — no source threading in silver)

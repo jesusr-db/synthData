@@ -1,40 +1,58 @@
-# INCREMENTAL FEATURE RUN: weather-events-phase3 (2026-05-22)
+# INCREMENTAL FEATURE RUN: otel-live-orders (2026-07-14)
 # Previous build progress archived in team-manifest.previous.yaml
-version: 4
+version: 5
 project: qsr-synth-data-generator
-branch: feat/weather-events-phase3
-last_updated: "2026-05-22T10:01:00-04:00"
+branch: feat/otel-live-order-bolt-on
+last_updated: "2026-07-15T09:10:00-04:00"
+baseline_pytest: 192  # true full-suite baseline (plan doc "~118" estimate was stale)
 
 phases:
   - id: 1
-    name: weather-events-implementation
+    name: otel-live-orders-implementation
     status: completed
-    completed_at: "2026-05-22T10:00:00-04:00"
     agents:
-      - weather-events-data-engineer
-      - weather-events-deploy-engineer
+      - otel-order-data-engineer
+      - otel-order-deploy-engineer
     steps:
       read_phase_config: completed
       resolve_contracts: completed
       dispatch_agents: completed
       await_agents: completed
-      merge_worktrees: completed
+      merge_worktrees: completed  # N/A — no worktree; disjoint files in shared tree
       qa_gate: completed
       update_progress: completed
-      introspection: completed
+      introspection: completed  # CLAUDE.md otel-live-orders block added
     agent_status:
-      weather-events-data-engineer: DONE
-      weather-events-deploy-engineer: DONE
+      otel-order-data-engineer: COMPLETED
+      otel-order-deploy-engineer: COMPLETED
+    qa_attempts: 1  # PASS on attempt 1
     outputs:
-      - "11 commits on feat/weather-events-phase3 (tasks 1-11)"
-      - "15 files created; 11 modified"
-      - "27 new tests added (test_seeder +1, test_causal_context +4, test_refresh +22)"
+      # New files (6)
+      - src/refresh/otel_order_adapter.py
+      - src/refresh/otel_refresh_notebook.py
+      - tests/fixtures/otel_logs_sample.json
+      - tests/fixtures/otel_spans_sample.json
+      - tests/test_otel_adapter.py
+      - resources/refresh_otel_orders.yml
+      # Modified files (5)
+      - src/generator/main.py
+      - databricks.yml
+      - resources/setup_job.yml
+      - src/setup/setup_notebook.py
+      - src/setup/destroy_notebook.py
+    commits:
+      - b97d2dc  # feat(otel-orders): add otel_order_adapter + fixtures + tests
+      - 0e239b3  # feat(otel-orders): add otel_refresh_notebook IO wrapper
+      - 6c7c960  # feat(otel-orders): default source=synth for order rows in write_batch
+      - cf164b0  # feat(dab): otel live-order refresh job + initial_otel_backfill setup task + staging source col
+    qa_gate_result:
+      pytest: "220 passed (192 baseline + 28 new otel), 0 failed, 0 errors"
+      bundle_validate: "Validation OK"
     errors: []
 
   - id: 2
     name: qa
     status: completed
-    completed_at: "2026-05-22T10:01:00-04:00"
     depends_on: [1]
     agents:
       - qa-engineer
@@ -42,9 +60,13 @@ phases:
       dispatch_agents: completed
       await_agents: completed
       qa_gate: completed
+    qa_attempts: 1  # PASS on attempt 1
+    qa_gate_result:
+      pytest: "220 passed (192 baseline + 28 new otel), 0 failed, 0 errors"
+      bundle_validate: "Validation OK"
+      contract_checks: "14/14 PASS (11 contract checks + load-gen/fee-test/source='otel')"
     outputs:
-      - "pytest: 102 passed in 1.36s (>=75 required)"
-      - "databricks bundle validate -p DEFAULT: Validation OK"
-      - "All 9 contract compliance checks PASS on first attempt"
-    qa_attempts: 1
+      - "PASS/FAIL table: 14/14 PASS — graceful empty, positive_price floor, SKU clamp 1..75,"
+      - "namespaced+stable ID bridge, source STRING DDL, setup_job DAG deps, refresh job cron,"
+      - "databricks.yml vars, mvm_pipeline UNCHANGED, append-only, trace_id-only correlation."
     errors: []

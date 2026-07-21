@@ -27,6 +27,9 @@ Both `apply_ontos.py` (setup) and `destroy_notebook.py` (destroy) check the `ont
 **`features_enabled: false` skips feature store + recommender steps in both setup and destroy.**
 The `features_enabled` variable (default `true`) gates the `build_feature_tables` and `train_recommender` setup tasks and their destroy-side teardown. Set `--var features_enabled=false` at deploy time to provision the core data platform without the feature store or recommender — for example, in a workspace that does not need the PizzaTel recommendation endpoint, or where the `ml` environment dependencies cannot be installed. As with `ontos_enabled`, the gating is inside the notebooks; the task graph structure does not change. (Note: destroy Step 0h currently runs unconditionally regardless of this flag — see Destroy Job below.)
 
+**`initial_otel_backfill` must run after `setup` and gate `backfill` — insert it in series, not parallel.**
+The otel live-order refresh task (`initial_otel_backfill`) mirrors `initial_weather_refresh`: it depends on `setup` (which creates the `staging.order_events` streaming table it appends to) and it gates `backfill`. In `setup_job.yml`, `backfill.depends_on` is now `[setup, initial_weather_refresh, initial_otel_backfill]`. Because the otel source is best-effort, this task must still SUCCEED (printing `[WARN]`) even when otel is unreachable — it must never block `setup` or `backfill`. Adding it as a parallel branch to `backfill` would race the staging-table creation and produce a table-not-found error on day 1.
+
 ---
 
 ## Lakeflow Declarative Pipelines (DLT)
@@ -36,6 +39,15 @@ DLT owns the metadata for tables it materializes. Any externally-applied `COMMEN
 
 **`CREATE OR REPLACE TABLE` on staging tables breaks DLT streaming checkpoints.**
 Streaming tables maintain internal state keyed on the Delta table ID. If `setup_notebook.py` used `CREATE OR REPLACE TABLE`, every re-run would generate a new table ID and invalidate all downstream streaming checkpoints. All staging tables use `CREATE TABLE IF NOT EXISTS` to preserve the ID across re-runs.
+
+**Appending to a DLT streaming source (`staging.order_events`) must be append-only — never MERGE/UPDATE/DELETE.**
+`staging.order_events` is a DLT streaming source. The otel refresh notebook (`otel_refresh_notebook.py`) writes new real-order rows with `.write.mode("append").option("mergeSchema","true")` and NEVER runs MERGE, UPDATE, or DELETE against it — any of those would break the stream's checkpoint. This is the opposite idiom from the weather-events `refresh_notebook.py`, which MERGEs into a batch ref table. Do not copy the MERGE pattern from the weather refresh into anything that writes to a streaming source. Idempotency across refresh runs comes from the high-water-mark (`WHERE source='otel'`), not from MERGE.
+
+**Adding a `source` column to `staging.order_events` avoids a forced DLT full-refresh only because it is not threaded downstream.**
+The `source` column (`'synth'` vs `'otel'`) exists purely so the otel refresh can compute its high-water-mark (`MAX(event_ts) WHERE source='otel'`). It is deliberately NOT read by `mvm_pipeline.py` — silver/gold/Genie never see it, so real orders are indistinguishable from synthetic ones downstream, and the streaming-table schema consumed by DLT is effectively unchanged (no forced full-refresh). If you thread `source` into a `@dp.table` decorator or a downstream view, you reintroduce a schema change that can force a DLT full refresh.
+
+**`order_item.unit_price` must be floored > 0 or otel line items silently vanish from silver.**
+`mvm_pipeline.py`'s `order_item` table has `@dp.expect_or_drop("positive_price","unit_price > 0")`. When the otel adapter distributes an order total across line items, each per-line price is floored at `0.01` (`max(0.01, round(subtotal*qty/total_qty, 2))`). Without the floor, a rounding-to-zero line price is dropped by the expectation and the item disappears from silver with no error.
 
 **CDC tables (`dp.create_auto_cdc_flow`) require the join in the source view, not the target.**
 `guest_profile` is a streaming table populated by `dp.create_auto_cdc_flow` from the `guest_profile_changes` view. There is no `@dp.table` decorator to add columns to. To add `franchisee_id`, the broadcast join must go into the `@dp.view(name="guest_profile_changes")` function, and the column must be declared in `dp.create_streaming_table(schema=...)`.
@@ -79,6 +91,22 @@ The view's `CASE` expression joins against `ref.weather_conditions`. Until `init
 
 **`CausalContext.build_context()` silently ignores `weather_event_data=None` — passing `None` is safe.**
 The `weather_event_data` parameter added in Phase 3 defaults to `None` and is guarded by an `if weather_event_data:` check. Any caller (including backfill tasks that predate Phase 3) that omits the parameter or passes `None` gets identical behavior to the pre-Phase-3 baseline. This guard is the reason the 75 existing tests stayed green without modification.
+
+---
+
+## OTel Live Orders Refresh
+
+**The refresh degrades to a graceful no-op — a missing `SELECT` grant leaves the pipeline green but shows no real orders.**
+The otel refresh job reads `jmrdemo.zerobus.otel_logs` and `otel_spans`. The job principal must have `SELECT` on both. This grant cannot be verified by any build-time check — if it is missing, the refresh catches the read failure, prints `[WARN]`, and appends zero rows. The pipeline stays green and the demo simply shows no live orders. Grant `SELECT` on both source tables to the job principal before demoing.
+
+**Correlation between otel logs and spans is strictly `trace_id` — never equate `app.order.id` and `order.id`.**
+The otel log field `app.order.id` (a UUID) and the span field `order.id` (an int) are different identifiers and must never be treated as equal. The adapter (`otel_order_adapter.py`) reads neither; the notebook projects them only as descriptive columns. Every `make_id` seed and the log⋈span join key on `trace_id` alone. If real orders fail to correlate or IDs collide, check that the join and all ID seeds use `trace_id` and nothing else.
+
+**Live-load-generator and fee-test rows are filtered out before appending.**
+The adapter drops synthetic load-generator traffic and fee-test orders so only genuine orders reach `staging.order_events`. If an expected order is missing from the live feed, confirm it was not classified as load-gen or fee-test traffic by the adapter's filters.
+
+**The `source` column is the sole idempotency mechanism for otel appends.**
+Because appends to a streaming source cannot use MERGE, re-runs stay idempotent by computing a high-water-mark over `MAX(event_ts) WHERE source='otel'` and only appending rows newer than it. All otel rows carry `source='otel'`; the generator's synthetic order rows default to `source='synth'` via `write_batch`. Do not remove or repurpose the `source` column — the refresh would then re-append every historical row on each run.
 
 ---
 
@@ -156,6 +184,12 @@ Step 0h in `destroy_notebook.py` always runs regardless of `features_enabled` �
 **Module-level global counters reset to 0 on every serverless notebook execution.**
 Serverless cluster notebooks run each job task in a fresh Python process. A module-level counter like `_order_counter = 0` starts from 0 on every run, producing duplicate IDs across runs. This was the root cause of 83–87% PK collisions on all order-domain tables. The fix: all IDs are now generated by `make_id(*parts)` in `src/generator/id_utils.py` — a deterministic 56-bit SHA-256 hash keyed on `(domain_prefix, unit_id, tick_ts, seq/sku)`. The same inputs always produce the same ID, making backfill idempotent.
 
+**Namespace the `make_id` domain prefix to keep otel and synth IDs collision-proof.**
+Real orders from otel are bridged into the same ID space via `make_id("otel", trace_id)`, distinct from synthetic orders' `make_id("o", ...)`. The different domain prefixes guarantee the two sources can never collide even if a `trace_id` numerically resembles a synth seed. Stability comes from the hash inputs (same `trace_id` → same id across refresh runs), so idempotency is preserved without any MERGE.
+
+**`write_batch` defaults `source` to `synth` only for order-domain event types.**
+`main.py`'s `write_batch()` calls `row.setdefault("source","synth")`, but scoped to order-domain rows only — the other four staging tables are left untouched so their schemas don't churn. If you widen this default to all event types, you force a schema change on tables that don't need the `source` column.
+
 **`spark.createDataFrame` fails on columns that are `None` in every row.**
 PySpark cannot infer a type for a column where every value is `None`. The `write_batch()` function in `main.py` drops such columns before calling `createDataFrame`, then relies on `mergeSchema=true` (Delta) to fill the missing columns with `NULL` when they do appear in future rows.
 
@@ -187,3 +221,10 @@ Lakehouse Monitors configured with `MonitorDataClassificationConfig(enabled=True
 
 **`spark.write.csv()` creates a directory of part-files, not a single file.**
 `apply_governance.py` exports `menu_catalog_csv/` and `franchise_locations_csv/` as directories of Spark part-files to the UC Volume. The spec refers to `menu_catalog.csv` (singular), but Spark always writes directories. This is acceptable for demo use. If a single file is required, switch to `df.toPandas().to_csv(local_path)` then `dbutils.fs.cp(local_path, volume_path)`.
+
+---
+
+## Local Dev / Testing
+
+**The project `.venv` is self-ignored and `requirements.txt` does not pin `pandas`/`mlflow` — a fresh machine fails at test collection.**
+Python's `venv` module writes `.venv/.gitignore` containing `*`, so `.venv` never appears in `git status` even though the repo's top-level `.gitignore` does not list it. It is safe from accidental commit only if you use explicit `git add <paths>` and never `git add .`. Separately, `requirements.txt` is missing `pandas` and `mlflow`, which `tests/test_recommender_model.py` imports — so even after `pip install -r requirements.txt` the pytest suite dies at collection on a fresh venv. Until those two are pinned in `requirements.txt`, install them manually into `.venv` before running the suite. Run all pytest gates via `.venv/bin/python -m pytest -q`, never bare `python3` (the machine default is a depless Homebrew interpreter). The true full-suite baseline is 192 tests (220 with the 28 new otel tests) — the plan doc's "~118" estimate is stale.

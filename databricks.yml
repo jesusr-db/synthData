@@ -52,6 +52,15 @@ variables:
   llm_gateway_name:
     description: Standalone Unity AI Gateway name for the agent's LLM (e.g. jmr_gateway). Empty = use agent_llm_model FM endpoint instead.
     default: jmr_gateway
+  otel_catalog:
+    default: jmrdemo
+    description: "Catalog holding the live OpenTelemetry tables (otel_logs, otel_spans) for the live-order bolt-on."
+  otel_schema:
+    default: zerobus
+    description: "Schema (in otel_catalog) holding otel_logs and otel_spans. Job principal needs SELECT on both."
+  otel_refresh_cron:
+    default: "0 0/2 * * * ?"
+    description: "Quartz cron for the every-2-min OTel live-order refresh job (hot-demo cadence)."
 
 workspace:
   profile: DEFAULT

@@ -1,0 +1,42 @@
+[
+  {
+    "trace_id": "aaaa1111bbbb2222cccc3333dddd4444",
+    "name": "order-tracker received order",
+    "order.id": 70001,
+    "order.store_id": "store-CA-042",
+    "order.channel": "delivery",
+    "order.skus": "[\"41 x5\",\"7 x10\"]",
+    "order.item_count": 15,
+    "order.prep_seconds": 1200,
+    "order.location.state": "CA",
+    "order.location.city": "Los Angeles",
+    "order.location.zip": "90001",
+    "sos.target_seconds": 1800
+  },
+  {
+    "trace_id": "aaaa1111bbbb2222cccc3333dddd4444",
+    "name": "stage: Prep",
+    "order.id": 70001,
+    "stage": "Prep"
+  },
+  {
+    "trace_id": "aaaa1111bbbb2222cccc3333dddd4444",
+    "name": "stage: Delivered",
+    "order.id": 70001,
+    "stage": "Delivered"
+  },
+  {
+    "trace_id": "bbbb2222cccc3333dddd4444eeee5555",
+    "name": "order-tracker received order",
+    "order.id": 70002,
+    "order.store_id": "store-WA-007",
+    "order.channel": "carryout",
+    "order.skus": "[\"33 x2\"]",
+    "order.item_count": 2,
+    "order.prep_seconds": 600,
+    "order.location.state": "WA",
+    "order.location.city": "Seattle",
+    "order.location.zip": "98101",
+    "sos.target_seconds": 720
+  }
+]

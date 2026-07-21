@@ -1,0 +1,47 @@
+[
+  {
+    "trace_id": "aaaa1111bbbb2222cccc3333dddd4444",
+    "time_unix_nano": 1749686400000000000,
+    "event_ts": "2025-06-12T04:00:00",
+    "app.order.id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "app.order.member_id": "12345",
+    "app.order.amount": 54.29,
+    "app.order.items.count": 3,
+    "app.shipping.amount": 4.99,
+    "app.shipping.tracking.id": "TRK-CA-001",
+    "user.id": "user-1001"
+  },
+  {
+    "trace_id": "bbbb2222cccc3333dddd4444eeee5555",
+    "time_unix_nano": 1749690000000000000,
+    "event_ts": "2025-06-12T05:00:00",
+    "app.order.id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+    "app.order.amount": 23.45,
+    "app.order.items.count": 2,
+    "app.shipping.amount": 0.0,
+    "app.shipping.tracking.id": null,
+    "user.id": "user-1002"
+  },
+  {
+    "trace_id": "cccc3333dddd4444eeee5555ffff6666",
+    "time_unix_nano": 1749693600000000000,
+    "event_ts": "2025-06-12T06:00:00",
+    "app.order.id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+    "app.order.amount": 0.0,
+    "app.order.items.count": 0,
+    "app.shipping.amount": 0.0,
+    "app.shipping.tracking.id": null,
+    "user.id": "load-gen-robot"
+  },
+  {
+    "trace_id": "dddd4444eeee5555ffff6666aaaa1111",
+    "time_unix_nano": 1749697200000000000,
+    "event_ts": "2025-06-12T07:00:00",
+    "app.order.id": "d4e5f6a7-b8c9-0123-def0-234567890123",
+    "app.order.amount": 15.00,
+    "app.order.items.count": 1,
+    "app.shipping.amount": 0.0,
+    "app.shipping.tracking.id": null,
+    "user.id": "fee-test-001"
+  }
+]

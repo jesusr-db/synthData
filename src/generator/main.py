@@ -108,8 +108,20 @@ DOMAIN_TABLE_MAP = {
 }
 
 
+_ORDER_EVENT_TYPES = frozenset({
+    "guest_order", "order_item", "order_modifier",
+    "payment", "status_event", "delivery_order",
+})
+
+
 def write_batch(rows: list[dict]):
     """Route rows by event_type to the appropriate staging Delta table."""
+    # Default source='synth' for order-domain rows so the otel HWM filter
+    # (WHERE source='otel') correctly excludes synthetic rows. Scoped to order
+    # event types only so the other staging tables are unaffected.
+    for row in rows:
+        if row.get("event_type") in _ORDER_EVENT_TYPES:
+            row.setdefault("source", "synth")
     # Group by (table, event_type) — same event_type guarantees a uniform schema
     # per createDataFrame call (mixed types produce AXIS_LENGTH_MISMATCH errors)
     by_table_event: dict[tuple, list[dict]] = defaultdict(list)
