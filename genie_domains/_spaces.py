@@ -140,7 +140,11 @@ DOMAINS = {
      "FULL WEB-ORDER DRILL-DOWN: for 'give me the details / order items / everything about web order <UUID>', start from "
      "order_reconciliation on the UUID, then JOIN its guest_order_id to synth_silver.guest_order, then to "
      "synth_silver.order_item (line items) and synth_ref.menu_item (item names), and read the customer 360 columns the "
-     "view already carries (member_id, customer_tier, customer_lifetime_spend). See the 'full details of web order' example SQL.",
+     "view already carries (member_id, customer_tier, customer_lifetime_spend). See the 'full details of web order' example SQL. "
+     "REAL vs SYNTH STORE: order_reconciliation.web_store_id / web_store_city / web_store_state / web_store_zip are the ACTUAL "
+     "storefront the guest ordered from (from OTel telemetry). guest_order.unit_id (and synth_ref.unit) is the SYNTH store the "
+     "order was blended into for analytics and is NOT the real store. When a user asks 'which store did web order <UUID> come "
+     "from', answer with web_store_id + web_store_city/state, not unit_id.",
      MEASURE_HIERARCHY]),
   "functions": fn([f"{G}.f_sos_compliance", f"{G}.f_revenue_by_channel", f"{G}.f_top_menu_items", f"{G}.f_late_delivery_rate"]),
   "joins": [
@@ -186,10 +190,13 @@ DOMAINS = {
      exsql("Give me the full details of web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb: order items, customer, and amount",
            "WITH rec AS ("
            "  SELECT web_order_id, guest_order_id, member_id, customer_matched, customer_tier, "
-           "         customer_total_orders, customer_lifetime_spend "
+           "         customer_total_orders, customer_lifetime_spend, "
+           "         web_store_id, web_store_city, web_store_state, web_store_zip "
            "  FROM jmrdemo.synth_metrics.order_reconciliation "
            "  WHERE web_order_id = 'b2b4819f-8080-11f1-9d1b-3641fe8bc2eb') "
-           "SELECT rec.web_order_id, go.guest_order_id, go.placed_at, go.order_status, go.total_amount, "
+           "SELECT rec.web_order_id, "
+           "       rec.web_store_id, rec.web_store_city, rec.web_store_state, rec.web_store_zip, "
+           "       go.guest_order_id, go.placed_at, go.order_status, go.total_amount, "
            "       go.channel, go.order_type, go.unit_id, u.unit_name, "
            "       oi.order_item_id, oi.menu_item_id, mi.item_name, oi.quantity, oi.unit_price, "
            "       oi.line_net_amount, "
@@ -203,8 +210,11 @@ DOMAINS = {
            "ORDER BY oi.order_item_id",
            "CANONICAL full web-order drill-down. Given a storefront UUID, this reconciles it to the synth "
            "guest_order (via order_reconciliation.guest_order_id), then returns every line item (order_item -> "
-           "menu_item), the store (unit), and the injected customer 360 (member_id/tier/lifetime spend). "
-           "One row per line item; order/customer columns repeat across rows."),
+           "menu_item) and the injected customer 360 (member_id/tier/lifetime spend). web_store_id / "
+           "web_store_city / web_store_state / web_store_zip are the REAL storefront the guest ordered from; "
+           "u.unit_name / go.unit_id is the SYNTH store the order was blended into (NOT the real store). When the "
+           "user asks 'what store' for a web order, answer with web_store_id + web_store_city/state. "
+           "One row per line item; order/store/customer columns repeat across rows."),
   ],
   "benchmarks": [
      bench("Which stores have the highest SOS breach rate over the last 14 days?",
@@ -944,7 +954,10 @@ DOMAINS = {
      "FULL WEB-ORDER DRILL-DOWN (order items + customer + amount): start from order_reconciliation on the UUID, JOIN its "
      "guest_order_id to synth_silver.guest_order, then to synth_silver.order_item (line items) and synth_ref.menu_item "
      "(item names); the customer 360 columns (member_id, customer_tier, customer_lifetime_spend) are already on the view. "
-     "See the 'full details of web order' example SQL.",
+     "See the 'full details of web order' example SQL. "
+     "REAL vs SYNTH STORE: order_reconciliation.web_store_id / web_store_city / web_store_state / web_store_zip are the ACTUAL "
+     "storefront the guest ordered from; guest_order.unit_id is the SYNTH store the order was blended into (NOT the real store). "
+     "For 'which store did web order <UUID> come from', answer with web_store_id + web_store_city/state.",
      MEASURE_HIERARCHY]),
   "functions": fn([f"{G}.f_guest_churn"]),
   "joins": [
@@ -988,10 +1001,13 @@ DOMAINS = {
      exsql("Give me the full details of web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb: order items, customer, and amount",
            "WITH rec AS ("
            "  SELECT web_order_id, guest_order_id, member_id, customer_matched, customer_tier, "
-           "         customer_total_orders, customer_lifetime_spend "
+           "         customer_total_orders, customer_lifetime_spend, "
+           "         web_store_id, web_store_city, web_store_state, web_store_zip "
            "  FROM jmrdemo.synth_metrics.order_reconciliation "
            "  WHERE web_order_id = 'b2b4819f-8080-11f1-9d1b-3641fe8bc2eb') "
-           "SELECT rec.web_order_id, go.guest_order_id, go.placed_at, go.order_status, go.total_amount, "
+           "SELECT rec.web_order_id, "
+           "       rec.web_store_id, rec.web_store_city, rec.web_store_state, rec.web_store_zip, "
+           "       go.guest_order_id, go.placed_at, go.order_status, go.total_amount, "
            "       go.channel, go.order_type, go.unit_id, u.unit_name, "
            "       oi.order_item_id, oi.menu_item_id, mi.item_name, oi.quantity, oi.unit_price, "
            "       oi.line_net_amount, "
@@ -1005,8 +1021,11 @@ DOMAINS = {
            "ORDER BY oi.order_item_id",
            "CANONICAL full web-order drill-down for the Guest 360 space. Given a storefront UUID, reconcile it to the "
            "synth guest_order (order_reconciliation.guest_order_id), then return every line item (order_item -> "
-           "menu_item), the store (unit), and the injected customer 360 (member_id/tier/lifetime spend). "
-           "One row per line item; order/customer columns repeat across rows."),
+           "menu_item) and the injected customer 360 (member_id/tier/lifetime spend). web_store_id / web_store_city / "
+           "web_store_state / web_store_zip are the REAL storefront the guest ordered from; u.unit_name / go.unit_id is "
+           "the SYNTH store the order was blended into (NOT the real store). When the user asks 'what store' for a web "
+           "order, answer with web_store_id + web_store_city/state. "
+           "One row per line item; order/store/customer columns repeat across rows."),
   ],
   "benchmarks": [
      bench("What is the inactive (churn) rate by store?",

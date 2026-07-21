@@ -232,13 +232,13 @@ try:
     spark.sql(f"SELECT 1 FROM {otel_catalog}.{otel_schema}.otel_logs LIMIT 1")
     spark.sql(f"""
         CREATE OR REPLACE VIEW {c}.{schema_prefix}metrics.order_reconciliation
-        COMMENT 'Reconciles real PizzaTel web orders (OTel) to their synth-pipeline rows AND to the customer record. web_order_id is the storefront app.order.id (UUID); guest_order_id is the bridged synth key = make_id("otel", trace_id). reconciled=true means the web order flowed through to silver.guest_order. member_id is the web-injected app.order.member_id (synth customer key, 1..50000; NULL = anonymous); customer_matched=true means it joined an existing customer_features record, exposing customer_tier and customer_lifetime_spend. amount_diff should be ~0.'
+        COMMENT 'Reconciles real PizzaTel web orders (OTel) to their synth-pipeline rows AND to the customer record. web_order_id is the storefront app.order.id (UUID); guest_order_id is the bridged synth key = make_id("otel", trace_id). reconciled=true means the web order flowed through to silver.guest_order. member_id is the web-injected app.order.member_id (synth customer key, 1..50000; NULL = anonymous); customer_matched=true means it joined an existing customer_features record, exposing customer_tier and customer_lifetime_spend. amount_diff should be ~0. web_store_id / web_store_city / web_store_state / web_store_zip are the REAL storefront location from the OTel order span (attributes order.store_id, order.location.*) — this is the true store the guest ordered from. unit_id is the SYNTH store the order was blended into (a deterministic hash of web_store_id, state-biased), which is NOT the real store; use web_store_id for the actual storefront.'
         AS
         WITH web AS (
             SELECT
                 attributes['app.order.id']                          AS web_order_id,
                 trace_id,
-                CAST(attributes['app.order.member_id'] AS BIGINT)   AS member_id,
+                TRY_CAST(attributes['app.order.member_id'] AS BIGINT) AS member_id,
                 CAST(attributes['app.order.amount'] AS DOUBLE)      AS web_amount,
                 CAST(attributes['app.order.items.count'] AS INT)    AS web_item_count,
                 attributes['app.shipping.tracking.id']              AS web_tracking_id,
@@ -256,6 +256,18 @@ try:
                    MAX(web_tracking_id) AS web_tracking_id,
                    MAX(web_order_ts)    AS web_order_ts
             FROM web GROUP BY web_order_id
+        ),
+        -- Real storefront location from the order-tracker span (keyed by trace_id, unique per order).
+        span AS (
+            SELECT
+                trace_id,
+                MAX(attributes['order.store_id'])       AS web_store_id,
+                MAX(attributes['order.location.city'])  AS web_store_city,
+                MAX(attributes['order.location.state']) AS web_store_state,
+                MAX(attributes['order.location.zip'])   AS web_store_zip
+            FROM {otel_catalog}.{otel_schema}.otel_spans
+            WHERE name = 'order-tracker received order'
+            GROUP BY trace_id
         )
         SELECT
             w.web_order_id,
@@ -266,6 +278,10 @@ try:
             w.web_item_count,
             w.web_tracking_id,
             w.web_order_ts,
+            s.web_store_id,
+            s.web_store_city,
+            s.web_store_state,
+            s.web_store_zip,
             (g.guest_order_id IS NOT NULL)             AS reconciled,
             g.unit_id,
             g.channel,
@@ -278,6 +294,8 @@ try:
             cf.total_orders                            AS customer_total_orders,
             cf.monetary_total                          AS customer_lifetime_spend
         FROM web_dedup w
+        LEFT JOIN span s
+            ON s.trace_id = w.trace_id
         LEFT JOIN {c}.{schema_prefix}silver.guest_order g
             ON g.guest_order_id = CAST(CONV(SUBSTR(SHA2(CONCAT_WS(':','otel', w.trace_id),256),1,14),16,10) AS BIGINT)
         LEFT JOIN {c}.{schema_prefix}features.customer_features cf
