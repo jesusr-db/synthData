@@ -120,7 +120,8 @@ DOMAINS = {
      "What is the revenue by order type (delivery, carryout, catering) over the last 30 days?",
      "How many orders were cancelled vs fulfilled over the last 14 days?",
      "How many real web orders have reconciled to the synth data?",
-     "Did web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb make it into the data?"]),
+     "Did web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb make it into the data?",
+     "Give me the full details of web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb: order items, customer, and amount"]),
   "instructions": ti([
      GLOSSARY,
      "DOMAIN = Orders & Speed-of-Service. Order header = synth_silver.guest_order (one row per order, grain guest_order_id). "
@@ -135,7 +136,11 @@ DOMAINS = {
      "reconciled=TRUE means it reached silver (amount_diff ~ 0). When the storefront injected app.order.member_id, the view also carries "
      "member_id (synth customer key), customer_matched, customer_tier, customer_total_orders, customer_lifetime_spend. "
      "Use it for 'did web order <UUID> land in the data?', 'which customer placed web order X?', 'how many real web orders reconciled?', "
-     "or 'real vs synthetic order counts'. It only exists when the live OTel source is configured.",
+     "or 'real vs synthetic order counts'. It only exists when the live OTel source is configured. "
+     "FULL WEB-ORDER DRILL-DOWN: for 'give me the details / order items / everything about web order <UUID>', start from "
+     "order_reconciliation on the UUID, then JOIN its guest_order_id to synth_silver.guest_order, then to "
+     "synth_silver.order_item (line items) and synth_ref.menu_item (item names), and read the customer 360 columns the "
+     "view already carries (member_id, customer_tier, customer_lifetime_spend). See the 'full details of web order' example SQL.",
      MEASURE_HIERARCHY]),
   "functions": fn([f"{G}.f_sos_compliance", f"{G}.f_revenue_by_channel", f"{G}.f_top_menu_items", f"{G}.f_late_delivery_rate"]),
   "joins": [
@@ -143,7 +148,8 @@ DOMAINS = {
      join(f"{S}.order_item","order_item",f"{S}.guest_order","guest_order","`order_item`.`guest_order_id` = `guest_order`.`guest_order_id`"),
      join(f"{S}.order_item","order_item",f"{R}.menu_item","menu_item","`order_item`.`menu_item_id` = `menu_item`.`menu_item_id`"),
      join(f"{S}.delivery_order","delivery_order",f"{S}.guest_order","guest_order","`delivery_order`.`guest_order_id` = `guest_order`.`guest_order_id`"),
-     join(f"{S}.guest_order","guest_order",f"{R}.franchisee","franchisee","`guest_order`.`franchisee_id` = `franchisee`.`franchisee_id`")],
+     join(f"{S}.guest_order","guest_order",f"{R}.franchisee","franchisee","`guest_order`.`franchisee_id` = `franchisee`.`franchisee_id`"),
+     join(f"{M}.order_reconciliation","order_reconciliation",f"{S}.guest_order","guest_order","`order_reconciliation`.`guest_order_id` = `guest_order`.`guest_order_id`")],
   "example_sqls": [
      exsql("Which stores have the highest order cancellation rate this month?",
            "SELECT unit_id, AVG(CASE WHEN order_status='cancelled' THEN 1.0 ELSE 0.0 END) AS cancellation_rate, COUNT(*) AS orders "
@@ -177,6 +183,28 @@ DOMAINS = {
            "SELECT web_order_id, guest_order_id, reconciled, web_amount, silver_total_amount, amount_diff "
            "FROM jmrdemo.synth_metrics.order_reconciliation WHERE web_order_id = 'b2b4819f-8080-11f1-9d1b-3641fe8bc2eb'",
            "Look up a single web order UUID and its bridged synth guest_order_id; reconciled tells you if it reached silver."),
+     exsql("Give me the full details of web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb: order items, customer, and amount",
+           "WITH rec AS ("
+           "  SELECT web_order_id, guest_order_id, member_id, customer_matched, customer_tier, "
+           "         customer_total_orders, customer_lifetime_spend "
+           "  FROM jmrdemo.synth_metrics.order_reconciliation "
+           "  WHERE web_order_id = 'b2b4819f-8080-11f1-9d1b-3641fe8bc2eb') "
+           "SELECT rec.web_order_id, go.guest_order_id, go.placed_at, go.order_status, go.total_amount, "
+           "       go.channel, go.order_type, go.unit_id, u.unit_name, "
+           "       oi.order_item_id, oi.menu_item_id, mi.item_name, oi.quantity, oi.unit_price, "
+           "       oi.line_net_amount, "
+           "       rec.member_id, rec.customer_matched, rec.customer_tier, rec.customer_total_orders, "
+           "       rec.customer_lifetime_spend "
+           "FROM rec "
+           "LEFT JOIN jmrdemo.synth_silver.guest_order go ON rec.guest_order_id = go.guest_order_id "
+           "LEFT JOIN jmrdemo.synth_ref.unit u ON go.unit_id = u.unit_id "
+           "LEFT JOIN jmrdemo.synth_silver.order_item oi ON go.guest_order_id = oi.guest_order_id "
+           "LEFT JOIN jmrdemo.synth_ref.menu_item mi ON oi.menu_item_id = mi.menu_item_id "
+           "ORDER BY oi.order_item_id",
+           "CANONICAL full web-order drill-down. Given a storefront UUID, this reconciles it to the synth "
+           "guest_order (via order_reconciliation.guest_order_id), then returns every line item (order_item -> "
+           "menu_item), the store (unit), and the injected customer 360 (member_id/tier/lifetime spend). "
+           "One row per line item; order/customer columns repeat across rows."),
   ],
   "benchmarks": [
      bench("Which stores have the highest SOS breach rate over the last 14 days?",
@@ -873,8 +901,8 @@ DOMAINS = {
   "tables": [
      colcfg(f"{S}.guest_profile", {"account_status": ["status","lifecycle state"]}),
      colcfg(f"{S}.digital_account", {"account_status": ["status"]}),
-     ] + tbl([f"{S}.guest_order", f"{G}.metric_guest", f"{R}.unit",
-             f"{M}.order_reconciliation", f"{F}.customer_features"]),
+     ] + tbl([f"{S}.guest_order", f"{S}.order_item", f"{G}.metric_guest", f"{R}.unit",
+             f"{R}.menu_item", f"{M}.order_reconciliation", f"{F}.customer_features"]),
   "questions": sq([
      "What is the inactive (churn) rate by store?",
      "How many guest profiles are active vs inactive vs suspended?",
@@ -890,7 +918,8 @@ DOMAINS = {
      "What is the ratio of digital accounts to guest profiles by store?",
      "Which customer placed web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb?",
      "Did web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb reconcile, and what tier is the customer?",
-     "How many real web orders are tied to a known customer vs anonymous?"]),
+     "How many real web orders are tied to a known customer vs anonymous?",
+     "Give me the full details of web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb: order items, customer, and amount"]),
   "instructions": ti([
      GLOSSARY,
      "DOMAIN = Guest / Customer 360 (account lifecycle, NOT loyalty points — use the Loyalty space for points). "
@@ -911,12 +940,19 @@ DOMAINS = {
      "order was anonymous (no customer to reconcile). Use this view for ANY question mentioning a web/website/online "
      "order id or UUID, 'which customer placed web order X', 'did order X reconcile', or 'real vs synthetic orders'. "
      "To pull the full customer 360 for a reconciled web order, join order_reconciliation.member_id to "
-     "synth_features.customer_features.profile_id.",
+     "synth_features.customer_features.profile_id. "
+     "FULL WEB-ORDER DRILL-DOWN (order items + customer + amount): start from order_reconciliation on the UUID, JOIN its "
+     "guest_order_id to synth_silver.guest_order, then to synth_silver.order_item (line items) and synth_ref.menu_item "
+     "(item names); the customer 360 columns (member_id, customer_tier, customer_lifetime_spend) are already on the view. "
+     "See the 'full details of web order' example SQL.",
      MEASURE_HIERARCHY]),
   "functions": fn([f"{G}.f_guest_churn"]),
   "joins": [
      join(f"{S}.guest_profile","guest_profile",f"{R}.unit","unit","`guest_profile`.`unit_id` = `unit`.`unit_id`"),
-     join(f"{S}.digital_account","digital_account",f"{S}.guest_profile","guest_profile","`digital_account`.`guest_profile_id` = `guest_profile`.`guest_profile_id`")],
+     join(f"{S}.digital_account","digital_account",f"{S}.guest_profile","guest_profile","`digital_account`.`guest_profile_id` = `guest_profile`.`guest_profile_id`"),
+     join(f"{M}.order_reconciliation","order_reconciliation",f"{S}.guest_order","guest_order","`order_reconciliation`.`guest_order_id` = `guest_order`.`guest_order_id`"),
+     join(f"{S}.order_item","order_item",f"{S}.guest_order","guest_order","`order_item`.`guest_order_id` = `guest_order`.`guest_order_id`"),
+     join(f"{S}.order_item","order_item",f"{R}.menu_item","menu_item","`order_item`.`menu_item_id` = `menu_item`.`menu_item_id`")],
   "example_sqls": [
      exsql("How many guest profiles are active vs inactive vs suspended?",
            "SELECT account_status, COUNT(*) AS profiles FROM jmrdemo.synth_silver.guest_profile GROUP BY account_status ORDER BY profiles DESC",
@@ -949,6 +985,28 @@ DOMAINS = {
            "SELECT customer_matched, COUNT(*) AS orders FROM jmrdemo.synth_metrics.order_reconciliation "
            "GROUP BY customer_matched",
            "customer_matched=TRUE means the web order's injected member_id matched a synth customer_features record."),
+     exsql("Give me the full details of web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb: order items, customer, and amount",
+           "WITH rec AS ("
+           "  SELECT web_order_id, guest_order_id, member_id, customer_matched, customer_tier, "
+           "         customer_total_orders, customer_lifetime_spend "
+           "  FROM jmrdemo.synth_metrics.order_reconciliation "
+           "  WHERE web_order_id = 'b2b4819f-8080-11f1-9d1b-3641fe8bc2eb') "
+           "SELECT rec.web_order_id, go.guest_order_id, go.placed_at, go.order_status, go.total_amount, "
+           "       go.channel, go.order_type, go.unit_id, u.unit_name, "
+           "       oi.order_item_id, oi.menu_item_id, mi.item_name, oi.quantity, oi.unit_price, "
+           "       oi.line_net_amount, "
+           "       rec.member_id, rec.customer_matched, rec.customer_tier, rec.customer_total_orders, "
+           "       rec.customer_lifetime_spend "
+           "FROM rec "
+           "LEFT JOIN jmrdemo.synth_silver.guest_order go ON rec.guest_order_id = go.guest_order_id "
+           "LEFT JOIN jmrdemo.synth_ref.unit u ON go.unit_id = u.unit_id "
+           "LEFT JOIN jmrdemo.synth_silver.order_item oi ON go.guest_order_id = oi.guest_order_id "
+           "LEFT JOIN jmrdemo.synth_ref.menu_item mi ON oi.menu_item_id = mi.menu_item_id "
+           "ORDER BY oi.order_item_id",
+           "CANONICAL full web-order drill-down for the Guest 360 space. Given a storefront UUID, reconcile it to the "
+           "synth guest_order (order_reconciliation.guest_order_id), then return every line item (order_item -> "
+           "menu_item), the store (unit), and the injected customer 360 (member_id/tier/lifetime spend). "
+           "One row per line item; order/customer columns repeat across rows."),
   ],
   "benchmarks": [
      bench("What is the inactive (churn) rate by store?",

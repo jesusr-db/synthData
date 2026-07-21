@@ -3,87 +3,105 @@
  "config": {
   "sample_questions": [
    {
-    "id": "1dd44fc67bb948ff9f374a8b8c24490e",
-    "question": [
-     "Which franchisees have the highest revenue this month?"
-    ]
-   },
-   {
-    "id": "26be34518a6c4727beee245ee5ad5b1a",
-    "question": [
-     "Show the daily revenue trend for store 85 over the last 30 days"
-    ]
-   },
-   {
-    "id": "39154fc53f7d4aa78663a70ccf8f7240",
-    "question": [
-     "What is the SOS breach rate by channel over the last 14 days?"
-    ]
-   },
-   {
-    "id": "5aaa343c581349279bbae99a625c4e72",
+    "id": "0178acecd39643a99170c5bbd085cd2b",
     "question": [
      "Which stores have the highest order cancellation rate this month?"
     ]
    },
    {
-    "id": "5c0d0d2218874531a8fd4f24979c9eb4",
-    "question": [
-     "What hours of the day have the highest SOS breach rate?"
-    ]
-   },
-   {
-    "id": "71b0e45fa9bf40a5a6c9f8a8e4868323",
+    "id": "12b131ee85c140b881be0421bee93f8a",
     "question": [
      "What was total revenue and average order value by channel over the last 30 days?"
     ]
    },
    {
-    "id": "77d18bd7223646b19e077fbd9b05232c",
+    "id": "207e0e57c075484cb4ee546a803781d5",
     "question": [
-     "For the 8 worst SOS stores, show order volume and SOS breach rate over the last 14 days"
+     "What hours of the day have the highest SOS breach rate?"
     ]
    },
    {
-    "id": "8257481997a84b169f397c5b4c9a6b39",
-    "question": [
-     "Which stores have the highest SOS breach rate over the last 14 days?"
-    ]
-   },
-   {
-    "id": "847354fe0bc845c7bbf3f7f453565913",
-    "question": [
-     "How many orders were cancelled vs fulfilled over the last 14 days?"
-    ]
-   },
-   {
-    "id": "94964c9a525c4435972caca504d66540",
-    "question": [
-     "What is the revenue by order type (delivery, carryout, catering) over the last 30 days?"
-    ]
-   },
-   {
-    "id": "ac103c45d6da4367b6228a2c04b36ea2",
-    "question": [
-     "What is the average gap between actual and estimated delivery time over the last 30 days?"
-    ]
-   },
-   {
-    "id": "e1e54472a26d431ca3cb401a93dc1189",
-    "question": [
-     "What is the late-delivery rate by channel over the last 14 days?"
-    ]
-   },
-   {
-    "id": "e8b1914dc472460caef42218fd04ddea",
+    "id": "218780256fac42b6bb142b3f0748dcec",
     "question": [
      "Which stores have the largest average delivery-time gap over the last 30 days?"
     ]
    },
    {
-    "id": "ff79d42ae3ce43dca5654f0b853c0d4b",
+    "id": "347102692bd24f45a167ddf29ab7f12c",
+    "question": [
+     "What is the average gap between actual and estimated delivery time over the last 30 days?"
+    ]
+   },
+   {
+    "id": "45c9e623bfad4a73b096282b86d8303a",
+    "question": [
+     "Which stores have the highest SOS breach rate over the last 14 days?"
+    ]
+   },
+   {
+    "id": "5c3043713d2e4a5a9620895f9c324968",
+    "question": [
+     "Show the daily revenue trend for store 85 over the last 30 days"
+    ]
+   },
+   {
+    "id": "60ef6d375c5147a3b8ae47e4fdaf0785",
+    "question": [
+     "For the 8 worst SOS stores, show order volume and SOS breach rate over the last 14 days"
+    ]
+   },
+   {
+    "id": "6233e34fb5fc4ff8bc0a67f1ba305a37",
+    "question": [
+     "What is the late-delivery rate by channel over the last 14 days?"
+    ]
+   },
+   {
+    "id": "677a025a0f524bbb9f5bf6856f08e4a1",
+    "question": [
+     "What is the revenue by order type (delivery, carryout, catering) over the last 30 days?"
+    ]
+   },
+   {
+    "id": "71001e4f1f564a7fa5ee393e8ce88f67",
     "question": [
      "What are the top menu items by revenue at store 113 over the last 30 days?"
+    ]
+   },
+   {
+    "id": "89c675c1525348f79eefb882716bd1ce",
+    "question": [
+     "Give me the full details of web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb: order items, customer, and amount"
+    ]
+   },
+   {
+    "id": "a79466db64f646c6ac49c190206bb33c",
+    "question": [
+     "Which franchisees have the highest revenue this month?"
+    ]
+   },
+   {
+    "id": "b0ff45162c60439bb8d2783b942eea31",
+    "question": [
+     "What is the SOS breach rate by channel over the last 14 days?"
+    ]
+   },
+   {
+    "id": "cc3d63b418ad4b0bb78ff2bc1e6b31e0",
+    "question": [
+     "Did web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb make it into the data?"
+    ]
+   },
+   {
+    "id": "d7799451063e44d7bea0927059fdd5d7",
+    "question": [
+     "How many real web orders have reconciled to the synth data?"
+    ]
+   },
+   {
+    "id": "f313e234c8a04a26a03e7374a62fa1cc",
+    "question": [
+     "How many orders were cancelled vs fulfilled over the last 14 days?"
     ]
    }
   ]
@@ -95,6 +113,9 @@
    },
    {
     "identifier": "jmrdemo.synth_metrics.order_performance"
+   },
+   {
+    "identifier": "jmrdemo.synth_metrics.order_reconciliation"
    },
    {
     "identifier": "jmrdemo.synth_ref.franchisee"
@@ -153,45 +174,30 @@
  "instructions": {
   "text_instructions": [
    {
-    "id": "fb1a3cbaa13040f7a3e1992c2052ff87",
+    "id": "1dc7e17c0ab042dd9634267a57329714",
     "content": [
-     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Orders & Speed-of-Service. Order header = synth_silver.guest_order (one row per order, grain guest_order_id). Line items = synth_silver.order_item (grain order_item_id; join to guest_order on guest_order_id, to menu_item on menu_item_id).\n\nRevenue = SUM(guest_order.total_amount) (= subtotal - discount_amount + tax_amount). AOV = AVG(total_amount). SOS breach rate = AVG(CASE WHEN sos_breach THEN 1 ELSE 0 END). Cancellation rate = AVG(CASE WHEN order_status='cancelled' THEN 1 ELSE 0 END). A delivery is LATE when delivery_order.actual_delivery_seconds > estimated_delivery_seconds.\n\nChannels: '3pd_delivery', 'own_delivery', 'carryout', 'catering'. For fast daily SOS trends use synth_silver.sos_compliance_summary.\n\nASSET SELECTION (follow in order): (1) For standard business measures, query the metric view with MEASURE(). (2) For time-windowed operational questions (last N days) prefer the trusted SQL functions (f_*). (3) For ad-hoc slicing not covered by either, query the silver tables directly using the joins and formulas above. The functions and metric view are the canonical definitions \u2014 do not re-derive a metric in raw SQL if a function or MEASURE() already provides it."
+     "Shared glossary: a 'store'/'location'/'restaurant'/'unit' = a row in jmrdemo.synth_ref.unit (unit_id 1..250). Always join facts to synth_ref.unit on unit_id to get unit_name, city, state, metro_area, region_id, district_id, franchisee_id. A 'franchisee'/'owner' = synth_ref.franchisee. Data covers roughly 2026-04-21 through today. 'This week'/'last 7 days' = the trailing 7 days from current_date(); 'this month' = current month to date. When a user names a store by number (e.g. 'store 36'), filter unit_id = 36.\n\nDOMAIN = Orders & Speed-of-Service. Order header = synth_silver.guest_order (one row per order, grain guest_order_id). Line items = synth_silver.order_item (grain order_item_id; join to guest_order on guest_order_id, to menu_item on menu_item_id).\n\nRevenue = SUM(guest_order.total_amount) (= subtotal - discount_amount + tax_amount). AOV = AVG(total_amount). SOS breach rate = AVG(CASE WHEN sos_breach THEN 1 ELSE 0 END). Cancellation rate = AVG(CASE WHEN order_status='cancelled' THEN 1 ELSE 0 END). A delivery is LATE when delivery_order.actual_delivery_seconds > estimated_delivery_seconds.\n\nChannels: '3pd_delivery', 'own_delivery', 'carryout', 'catering'. For fast daily SOS trends use synth_silver.sos_compliance_summary.\n\nRECONCILING REAL WEB ORDERS: when the user gives a web/website/online order ID (a UUID = the storefront app.order.id), query synth_metrics.order_reconciliation filtered WHERE web_order_id = '<uuid>'. It maps each real PizzaTel storefront order to its synth-pipeline row: web_order_id = storefront UUID; guest_order_id = bridged synth key in synth_silver.guest_order; reconciled=TRUE means it reached silver (amount_diff ~ 0). When the storefront injected app.order.member_id, the view also carries member_id (synth customer key), customer_matched, customer_tier, customer_total_orders, customer_lifetime_spend. Use it for 'did web order <UUID> land in the data?', 'which customer placed web order X?', 'how many real web orders reconciled?', or 'real vs synthetic order counts'. It only exists when the live OTel source is configured. FULL WEB-ORDER DRILL-DOWN: for 'give me the details / order items / everything about web order <UUID>', start from order_reconciliation on the UUID, then JOIN its guest_order_id to synth_silver.guest_order, then to synth_silver.order_item (line items) and synth_ref.menu_item (item names), and read the customer 360 columns the view already carries (member_id, customer_tier, customer_lifetime_spend). See the 'full details of web order' example SQL.\n\nASSET SELECTION (follow in order): (1) For standard business measures, query the metric view with MEASURE(). (2) For time-windowed operational questions (last N days) prefer the trusted SQL functions (f_*). (3) For ad-hoc slicing not covered by either, query the silver tables directly using the joins and formulas above. The functions and metric view are the canonical definitions \u2014 do not re-derive a metric in raw SQL if a function or MEASURE() already provides it."
     ]
    }
   ],
   "join_specs": [
    {
-    "id": "81fff3048a6a44578cca2453f8a34a93",
+    "id": "3b8ecfe9f39d45e2aa1b2ade82b85e22",
     "left": {
-     "identifier": "jmrdemo.synth_silver.delivery_order",
-     "alias": "delivery_order"
+     "identifier": "jmrdemo.synth_metrics.order_reconciliation",
+     "alias": "order_reconciliation"
     },
     "right": {
      "identifier": "jmrdemo.synth_silver.guest_order",
      "alias": "guest_order"
     },
     "sql": [
-     "`delivery_order`.`guest_order_id` = `guest_order`.`guest_order_id`",
+     "`order_reconciliation`.`guest_order_id` = `guest_order`.`guest_order_id`",
      "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
     ]
    },
    {
-    "id": "9fab153895fc457fb87649ade5b1bb2a",
-    "left": {
-     "identifier": "jmrdemo.synth_silver.order_item",
-     "alias": "order_item"
-    },
-    "right": {
-     "identifier": "jmrdemo.synth_silver.guest_order",
-     "alias": "guest_order"
-    },
-    "sql": [
-     "`order_item`.`guest_order_id` = `guest_order`.`guest_order_id`",
-     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
-    ]
-   },
-   {
-    "id": "a473112ca19b42ac885314f334e344ca",
+    "id": "560ef15e346245f79a7c2260d3946424",
     "left": {
      "identifier": "jmrdemo.synth_silver.order_item",
      "alias": "order_item"
@@ -206,7 +212,37 @@
     ]
    },
    {
-    "id": "da4952740d114db0b1e479f40d18b53b",
+    "id": "953a238277974c53ae43f2fa1e71f4e7",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.order_item",
+     "alias": "order_item"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_silver.guest_order",
+     "alias": "guest_order"
+    },
+    "sql": [
+     "`order_item`.`guest_order_id` = `guest_order`.`guest_order_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "a7ecabeb8f5d499eabca4da135afd8b3",
+    "left": {
+     "identifier": "jmrdemo.synth_silver.delivery_order",
+     "alias": "delivery_order"
+    },
+    "right": {
+     "identifier": "jmrdemo.synth_silver.guest_order",
+     "alias": "guest_order"
+    },
+    "sql": [
+     "`delivery_order`.`guest_order_id` = `guest_order`.`guest_order_id`",
+     "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+    ]
+   },
+   {
+    "id": "b8ca08b8241c4f0bb3c7745ccc890fbe",
     "left": {
      "identifier": "jmrdemo.synth_silver.guest_order",
      "alias": "guest_order"
@@ -221,7 +257,7 @@
     ]
    },
    {
-    "id": "e5fefbe515594f4bbe433f049109609c",
+    "id": "d8a5e9096e1244709db8496ba7e950cf",
     "left": {
      "identifier": "jmrdemo.synth_silver.guest_order",
      "alias": "guest_order"
@@ -238,25 +274,25 @@
   ],
   "sql_functions": [
    {
-    "id": "6fe1a014239f4ab88ec395b752e2da6e",
-    "identifier": "jmrdemo.synth_genie.f_late_delivery_rate"
-   },
-   {
-    "id": "b2f96931f6be48ebb96322a26e7ebe68",
-    "identifier": "jmrdemo.synth_genie.f_revenue_by_channel"
-   },
-   {
-    "id": "e1c7ec8fee374da480d950bec217fc5f",
+    "id": "4be4963201ab4e6b9b473325d08c886f",
     "identifier": "jmrdemo.synth_genie.f_sos_compliance"
    },
    {
-    "id": "ee59ccd22cfd4b80b052557183175237",
+    "id": "5ccb9a4c74f249818779f93b9d53425c",
     "identifier": "jmrdemo.synth_genie.f_top_menu_items"
+   },
+   {
+    "id": "73fc962981e84c8e835ace5c6bc000b9",
+    "identifier": "jmrdemo.synth_genie.f_revenue_by_channel"
+   },
+   {
+    "id": "edcce404ca2c4512b4a81f7cd13b27fa",
+    "identifier": "jmrdemo.synth_genie.f_late_delivery_rate"
    }
   ],
   "example_question_sqls": [
    {
-    "id": "82455e8d239a4b86baa0f1cfde136e53",
+    "id": "50a05200abe44668876a0aeddeeab0f4",
     "question": [
      "What was total revenue and average order value by channel over the last 30 days?"
     ],
@@ -268,31 +304,7 @@
     ]
    },
    {
-    "id": "870f1a80853b4573ad0f19819bbb777d",
-    "question": [
-     "What is the average gap between actual and estimated delivery time over the last 30 days?"
-    ],
-    "sql": [
-     "SELECT AVG(actual_delivery_seconds - estimated_delivery_seconds) AS avg_gap_seconds FROM jmrdemo.synth_silver.delivery_order WHERE created_at >= current_timestamp() - INTERVAL 30 DAYS"
-    ],
-    "usage_guidance": [
-     "Use for the overall delivery-time gap; group by unit_id for per-store."
-    ]
-   },
-   {
-    "id": "a7720c8b5189445d83ae70181502c98d",
-    "question": [
-     "What hours of the day have the highest SOS breach rate?"
-    ],
-    "sql": [
-     "SELECT hour(placed_at) AS hour_of_day, AVG(CASE WHEN sos_breach THEN 1.0 ELSE 0.0 END) AS sos_breach_rate, COUNT(*) AS orders FROM jmrdemo.synth_silver.guest_order WHERE placed_at >= current_timestamp() - INTERVAL 14 DAYS GROUP BY hour(placed_at) ORDER BY hour_of_day"
-    ],
-    "usage_guidance": [
-     "Use for hour-of-day SOS breach analysis."
-    ]
-   },
-   {
-    "id": "affc711e6a104892b607f0b9a313009b",
+    "id": "86d5cf77b35a4fc88f29aed0fd859087",
     "question": [
      "Which franchisees have the highest revenue this month?"
     ],
@@ -304,7 +316,7 @@
     ]
    },
    {
-    "id": "fdf6810f7baa45a88779542f8fb7d5c3",
+    "id": "86ec996d120e43a5a552347e00e6624c",
     "question": [
      "Which stores have the highest order cancellation rate this month?"
     ],
@@ -313,6 +325,66 @@
     ],
     "usage_guidance": [
      "Use for store-level cancellation-rate ranking within the current month."
+    ]
+   },
+   {
+    "id": "905ba11b67d64f39b035d8a29e2de9f0",
+    "question": [
+     "What is the average gap between actual and estimated delivery time over the last 30 days?"
+    ],
+    "sql": [
+     "SELECT AVG(actual_delivery_seconds - estimated_delivery_seconds) AS avg_gap_seconds FROM jmrdemo.synth_silver.delivery_order WHERE created_at >= current_timestamp() - INTERVAL 30 DAYS"
+    ],
+    "usage_guidance": [
+     "Use for the overall delivery-time gap; group by unit_id for per-store."
+    ]
+   },
+   {
+    "id": "adca8359bc4f40f49916c18f7463ffa2",
+    "question": [
+     "Give me the full details of web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb: order items, customer, and amount"
+    ],
+    "sql": [
+     "WITH rec AS (  SELECT web_order_id, guest_order_id, member_id, customer_matched, customer_tier,          customer_total_orders, customer_lifetime_spend   FROM jmrdemo.synth_metrics.order_reconciliation   WHERE web_order_id = 'b2b4819f-8080-11f1-9d1b-3641fe8bc2eb') SELECT rec.web_order_id, go.guest_order_id, go.placed_at, go.order_status, go.total_amount,        go.channel, go.order_type, go.unit_id, u.unit_name,        oi.order_item_id, oi.menu_item_id, mi.item_name, oi.quantity, oi.unit_price,        oi.line_net_amount,        rec.member_id, rec.customer_matched, rec.customer_tier, rec.customer_total_orders,        rec.customer_lifetime_spend FROM rec LEFT JOIN jmrdemo.synth_silver.guest_order go ON rec.guest_order_id = go.guest_order_id LEFT JOIN jmrdemo.synth_ref.unit u ON go.unit_id = u.unit_id LEFT JOIN jmrdemo.synth_silver.order_item oi ON go.guest_order_id = oi.guest_order_id LEFT JOIN jmrdemo.synth_ref.menu_item mi ON oi.menu_item_id = mi.menu_item_id ORDER BY oi.order_item_id"
+    ],
+    "usage_guidance": [
+     "CANONICAL full web-order drill-down. Given a storefront UUID, this reconciles it to the synth guest_order (via order_reconciliation.guest_order_id), then returns every line item (order_item -> menu_item), the store (unit), and the injected customer 360 (member_id/tier/lifetime spend). One row per line item; order/customer columns repeat across rows."
+    ]
+   },
+   {
+    "id": "b5a92d79266c43e59d17edced9b062d2",
+    "question": [
+     "What hours of the day have the highest SOS breach rate?"
+    ],
+    "sql": [
+     "SELECT hour(placed_at) AS hour_of_day, AVG(CASE WHEN sos_breach THEN 1.0 ELSE 0.0 END) AS sos_breach_rate, COUNT(*) AS orders FROM jmrdemo.synth_silver.guest_order WHERE placed_at >= current_timestamp() - INTERVAL 14 DAYS GROUP BY hour(placed_at) ORDER BY hour_of_day"
+    ],
+    "usage_guidance": [
+     "Use for hour-of-day SOS breach analysis."
+    ]
+   },
+   {
+    "id": "d4d3a66c5f594908a7db9ad4d6ef36f9",
+    "question": [
+     "Did web order b2b4819f-8080-11f1-9d1b-3641fe8bc2eb make it into the data?"
+    ],
+    "sql": [
+     "SELECT web_order_id, guest_order_id, reconciled, web_amount, silver_total_amount, amount_diff FROM jmrdemo.synth_metrics.order_reconciliation WHERE web_order_id = 'b2b4819f-8080-11f1-9d1b-3641fe8bc2eb'"
+    ],
+    "usage_guidance": [
+     "Look up a single web order UUID and its bridged synth guest_order_id; reconciled tells you if it reached silver."
+    ]
+   },
+   {
+    "id": "d891d51de4c647d1a24e2b45efffa548",
+    "question": [
+     "How many real web orders have reconciled to the synth data?"
+    ],
+    "sql": [
+     "SELECT reconciled, COUNT(*) AS orders, ROUND(SUM(web_amount),2) AS web_revenue FROM jmrdemo.synth_metrics.order_reconciliation GROUP BY reconciled"
+    ],
+    "usage_guidance": [
+     "Use synth_metrics.order_reconciliation to audit real web orders vs their synth rows; reconciled=TRUE means it reached silver."
     ]
    }
   ],
@@ -325,7 +397,21 @@
  "benchmarks": {
   "questions": [
    {
-    "id": "2f3759039354432a89f0b4e1364f1ab7",
+    "id": "063926dba43c49d6984109352bef7d0d",
+    "question": [
+     "What is the late-delivery rate by channel over the last 14 days?"
+    ],
+    "answer": [
+     {
+      "content": [
+       "SELECT * FROM jmrdemo.synth_genie.f_late_delivery_rate(p_days => 14)"
+      ],
+      "format": "SQL"
+     }
+    ]
+   },
+   {
+    "id": "0fe178d3dd4646f787549fb5a0a586c8",
     "question": [
      "What was total revenue and average order value by channel over the last 30 days?"
     ],
@@ -339,7 +425,7 @@
     ]
    },
    {
-    "id": "3f3b5f5c0dd440d9b0d695b167c7713e",
+    "id": "6a736cc676514267a7d869c004a09fcd",
     "question": [
      "What are the top menu items by revenue at store 113 over the last 30 days?"
     ],
@@ -353,7 +439,7 @@
     ]
    },
    {
-    "id": "97827b5aa0d048d8986d4ac013486c97",
+    "id": "c9249c6df5b04165a7130f0ed30b80f8",
     "question": [
      "Which franchisees have the highest revenue this month?"
     ],
@@ -367,7 +453,7 @@
     ]
    },
    {
-    "id": "cc154943c2304ba4859a67575127abe8",
+    "id": "ff6204a086fd45508cb9f249d863e8b3",
     "question": [
      "Which stores have the highest SOS breach rate over the last 14 days?"
     ],
@@ -375,20 +461,6 @@
      {
       "content": [
        "SELECT * FROM jmrdemo.synth_genie.f_sos_compliance(p_days => 14) ORDER BY sos_breach_rate DESC LIMIT 10"
-      ],
-      "format": "SQL"
-     }
-    ]
-   },
-   {
-    "id": "db04268473904b7d9744bba1e6f54ff1",
-    "question": [
-     "What is the late-delivery rate by channel over the last 14 days?"
-    ],
-    "answer": [
-     {
-      "content": [
-       "SELECT * FROM jmrdemo.synth_genie.f_late_delivery_rate(p_days => 14)"
       ],
       "format": "SQL"
      }
